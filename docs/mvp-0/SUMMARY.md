@@ -22,3 +22,29 @@
 - `corepack pnpm --filter @kkultong/server build` 성공
 - `corepack pnpm --filter @kkultong/contracts typecheck` 성공
 - `corepack pnpm server:test` 성공 (Phase 0에는 테스트 대상이 없어 `--passWithNoTests` 적용)
+
+## Phase 1. PostgreSQL / 환경설정
+
+### 완료 내용
+
+- PostgreSQL 16만 포함한 개발용 `docker-compose.yml`을 추가했다. 데이터는 `kkultong_postgres` named volume으로 유지한다.
+- `.env.example`에 `NODE_ENV`, `DATABASE_URL`, `MAX_HOUSEHOLD_SIZE`만 정의했다. 이후 MVP 범위인 JWT·Redis·LLM 관련 변수는 추가하지 않았다.
+- Zod 기반 환경변수 schema를 추가해 앱 시작 시 PostgreSQL URL, 실행 환경, 양의 정수 가구원 수를 검증한다. 잘못된 값은 명확한 오류 메시지와 함께 즉시 실패한다.
+- TypeORM `DataSource`를 PostgreSQL 연결, 향후 entity/migration 탐색 경로, `synchronize: false`로 구성했다. migration은 다음 Phase에서 추가한다.
+- `AppModule`에 전역 `ConfigModule`을 연결해 서버 시작 경로에서도 같은 환경변수 검증을 적용했다.
+
+### 주요 파일
+
+- `docker-compose.yml`: PostgreSQL 16 개발 컨테이너
+- `.env.example`: 로컬 실행 환경변수 예시
+- `apps/server/src/common/config/env.schema.ts`: 환경변수 Zod schema 및 검증 함수
+- `apps/server/src/database/datasource.ts`: TypeORM DataSource
+- `apps/server/src/common/config/env.schema.spec.ts`, `apps/server/src/database/datasource.spec.ts`: 환경변수 및 DataSource 설정 검증
+
+### 검증
+
+- `corepack pnpm --filter @kkultong/server build` 성공
+- `corepack pnpm --filter @kkultong/server test` 성공 (2개 suite, 5개 test)
+- `docker compose config --quiet` 성공
+- `docker compose up -d postgres` 및 컨테이너 내부 `pg_isready` 성공
+- 동일 Compose 네트워크에서 실제 `datasource.ts`의 `DataSource.initialize()` 성공

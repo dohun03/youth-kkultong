@@ -261,6 +261,8 @@ Nest/TypeORM이 PostgreSQL에 연결되고 migration을 실행할 준비를 한�
 
 ## 1-1. Docker Compose
 
+- [x] PostgreSQL 16 개발 컨테이너 구성
+
 MVP0에서는 PostgreSQL만 사용한다.
 
 ```yaml
@@ -282,6 +284,8 @@ volumes:
 
 ## 1-2. `.env.example`
 
+- [x] 개발 환경변수 예시 구성
+
 ```text
 NODE_ENV=development
 DATABASE_URL=postgresql://kkultong:kkultong_local@localhost:5432/youth_kkultong
@@ -291,6 +295,8 @@ MAX_HOUSEHOLD_SIZE=8
 JWT/Redis/LLM 변수는 추가하지 않는다.
 
 ## 1-3. Env schema
+
+- [x] 필수 환경변수 Zod 검증 구성
 
 `apps/server/src/common/config/env.schema.ts`
 
@@ -305,6 +311,8 @@ MAX_HOUSEHOLD_SIZE
 잘못된 환경변수면 시작 시 즉시 실패한다.
 
 ## 1-4. TypeORM DataSource
+
+- [x] PostgreSQL DataSource 및 migration 탐색 설정 구성
 
 `apps/server/src/database/datasource.ts`
 
