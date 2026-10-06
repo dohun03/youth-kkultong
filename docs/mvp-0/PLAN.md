@@ -1,6 +1,6 @@
 # 청년꿀통 (youth-kkultong) — MVP 0 PLAN.md
 
-> 기준: `PRD.md` / `ARCHITECTURE.md` / `MVP0_SPEC.md`  
+> 기준: `PRD.md` / `ARCHITECTURE.md` / `SPEC.md`
 > 목표: 실제 정책 30~50건을 검증된 Canonical Policy Schema로 PostgreSQL에 안전하게 적재하고, MVP1이 그대로 사용할 데이터 기반을 완성한다.  
 > 구현 범위: 백엔드 / DB / 데이터 / CLI / 테스트  
 > 프론트엔드 작업: 없음
@@ -166,6 +166,11 @@ Phase 10 최종 검증
 MVP0 구현을 위한 monorepo 기반을 준비한다.
 
 ## 작업
+
+- [x] 0-1. pnpm workspace 구성
+- [x] 0-2. `apps/server` NestJS + TypeScript strict 기반 구성
+- [x] 0-3. `packages/contracts` 공유 계약 패키지 기반 구성
+- [x] 0-4. Root script 구성
 
 ### 0-1. pnpm workspace
 
