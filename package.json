@@ -1,0 +1,15 @@
+{
+  "name": "youth-kkultong",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.19.0",
+  "scripts": {
+    "server:dev": "corepack pnpm --filter @kkultong/server dev",
+    "server:test": "corepack pnpm --filter @kkultong/server test",
+    "db:migrate": "corepack pnpm --filter @kkultong/server db:migrate",
+    "db:revert": "corepack pnpm --filter @kkultong/server db:revert",
+    "db:seed": "corepack pnpm --filter @kkultong/server db:seed",
+    "policy:validate": "corepack pnpm --filter @kkultong/server policy:validate",
+    "policy:import": "corepack pnpm --filter @kkultong/server policy:import"
+  }
+}
