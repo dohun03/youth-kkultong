@@ -1,0 +1,10 @@
+[
+  { "year": 2026, "householdSize": 1, "amount": 2564238 },
+  { "year": 2026, "householdSize": 2, "amount": 4199292 },
+  { "year": 2026, "householdSize": 3, "amount": 5359036 },
+  { "year": 2026, "householdSize": 4, "amount": 6494738 },
+  { "year": 2026, "householdSize": 5, "amount": 7556719 },
+  { "year": 2026, "householdSize": 6, "amount": 8555952 },
+  { "year": 2026, "householdSize": 7, "amount": 9515150 },
+  { "year": 2026, "householdSize": 8, "amount": 10474348 }
+]

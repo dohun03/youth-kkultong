@@ -799,6 +799,8 @@ revert 성공
 
 ## 4-1. MANUAL source
 
+- [x] `MANUAL` 정책 출처를 code 기준으로 upsert
+
 ```text
 code = MANUAL
 name = 수동 등록
@@ -810,6 +812,8 @@ base_url = null
 `code` 기준 upsert.
 
 ## 4-2. Region
+
+- [x] 행정안전부 2026-07-01 기준 시·도·시·군·구 284건을 부모 → 자식 순으로 upsert
 
 파일:
 
@@ -841,6 +845,8 @@ code
 ```
 
 ## 4-3. Median Income
+
+- [x] 보건복지부 2026년 기준 중위소득 1~8인 데이터를 복합 키 기준으로 upsert
 
 파일:
 
@@ -879,6 +885,8 @@ upsert key:
 
 ## 4-4. Seed runner
 
+- [x] transaction 기반 seed runner와 `db:seed` 명령 구성
+
 순서:
 
 ```text
@@ -890,6 +898,8 @@ policy source
 오류 시 exit 1.
 
 ## 테스트
+
+- [x] seed 2회 실행 시 중복 없이 동일한 행 수를 유지하는지 검증
 
 ```text
 seed 1회

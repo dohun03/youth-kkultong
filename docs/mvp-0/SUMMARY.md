@@ -100,3 +100,30 @@
 - `corepack pnpm --filter @kkultong/server build` 성공
 - 빈 임시 PostgreSQL에서 migration 적용 성공 → revert 성공 → 재적용 성공
 - 프로젝트 PostgreSQL에서 migration 적용 성공. 4개 테이블, 4개 지정 인덱스, `policies`의 6개 CHECK 제약조건과 1개 UNIQUE 제약조건을 확인했다.
+
+## Phase 4. Seed
+
+### 완료 내용
+
+- `MANUAL` 정책 출처를 `code` 기준으로 idempotent upsert하도록 구현했다.
+- 행정안전부 2026-07-01 행정구역 코드에서 시·도 16건과 시·군·구 268건을 추출해 `regions.json`으로 관리한다. 시·군·구가 아닌 출장소와 이름 없는 코드 행은 제외했다.
+- 보건복지부 고시의 2026년 기준 중위소득을 가구원 수 1~8인 범위로 `median-income.json`에 저장했다. 8인 금액은 고시에 명시된 7인·6인 차액 산식으로 확정했다.
+- seed runner는 정책 출처 → 상위 지역 → 하위 지역 → 기준 중위소득 순서로 하나의 transaction 안에서 실행한다. 파일 읽기와 DB 초기 연결은 일시 오류에 대비해 재시도하며, 실패 시 오류를 반환한다.
+- 데이터는 `upsert`만 사용하므로 반복 실행해도 행이 중복되지 않는다.
+
+### 주요 파일
+
+- `apps/server/src/database/seeds/data/regions.json`: 행정안전부 기준 지역 코드 284건
+- `apps/server/src/database/seeds/data/median-income.json`: 2026년 기준 중위소득 8건
+- `apps/server/src/database/seeds/seed-policy-sources.ts`: MANUAL 출처 seed
+- `apps/server/src/database/seeds/seed-regions.ts`: 지역 seed
+- `apps/server/src/database/seeds/seed-median-income.ts`: 기준 중위소득 seed
+- `apps/server/src/database/seeds/run-seeds.ts`: transaction 기반 실행 진입점
+- `apps/server/src/database/seeds/seeds.spec.ts`: 데이터·upsert 순서 검증
+
+### 검증
+
+- `corepack pnpm --filter @kkultong/server typecheck` 성공
+- `corepack pnpm --filter @kkultong/server test` 성공 (3개 suite, 7개 test)
+- `corepack pnpm --filter @kkultong/server build` 성공
+- 프로젝트 PostgreSQL에서 seed를 2회 실행했다. 최종 행 수는 `policy_sources` 1건, `regions` 284건, `median_income_table` 8건으로 중복이 없음을 확인했다.
