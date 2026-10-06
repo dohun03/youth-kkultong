@@ -346,6 +346,8 @@ DB보다 먼저 청년꿀통 Canonical Policy Schema를 코드로 확정한다.
 
 ## 2-1. enums
 
+- [x] 정책·사용자 상태·출처 공통 열거값 및 타입 정의
+
 `packages/contracts/src/enums.ts`
 
 ```ts
@@ -381,6 +383,8 @@ MVP0 import는 `MANUAL`, `ACTIVE`만 사용한다.
 
 ## 2-2. Schema 구현 순서
 
+- [x] Canonical Policy Zod schema 구현
+
 `packages/contracts/src/policy.ts`
 
 ```text
@@ -397,12 +401,16 @@ PolicyImportArraySchema
 
 ## 2-3. NumberRange
 
+- [x] null 경계 및 min/max 관계 검증
+
 ```text
 min/max = null 또는 number
 둘 다 있으면 min <= max
 ```
 
 ## 2-4. AgeBasis
+
+- [x] 나이 기준 discriminated union 및 날짜·범위 검증
 
 지원:
 
@@ -420,6 +428,8 @@ BIRTH_YEAR
 `BIRTH_YEAR`는 min/max를 연도로 해석한다.
 
 ## 2-5. IncomeRule
+
+- [x] 기준 중위소득 비율 및 확정 여부 검증
 
 ```ts
 {
@@ -441,6 +451,8 @@ basisConfirmed literal true
 
 ## 2-6. Constraint
 
+- [x] ANY, RULE, UNKNOWN constraint 검증
+
 ```ts
 { kind: 'ANY' }
 { kind: 'UNKNOWN' }
@@ -456,6 +468,8 @@ ANY/UNKNOWN → value 금지
 
 ## 2-7. PolicyConditions
 
+- [x] 필수 5개 정책 조건 검증
+
 반드시 존재:
 
 ```text
@@ -467,6 +481,8 @@ householdSize
 ```
 
 ## 2-8. BenefitAmount
+
+- [x] 혜택 종류별 discriminated union 검증
 
 Zod `discriminatedUnion('kind', ...)`.
 
@@ -503,6 +519,8 @@ amountWon 필드 금지
 ```
 
 ## 2-9. PolicyImportInput
+
+- [x] 정책 import 필드 및 교차 필드 검증
 
 필드:
 
@@ -546,9 +564,13 @@ unresolved=true → unresolvedConditionNote non-empty
 
 ## 2-10. 배열 단위 검증
 
+- [x] 파일 내 externalId 중복 검증
+
 `PolicyImportArraySchema`에서 파일 내부 `externalId` 중복을 거부한다.
 
 ## 테스트
+
+- [x] Policy Contracts unit test 구현
 
 필수 케이스:
 
@@ -1680,7 +1702,7 @@ MVP0 acceptance 확인
 ```text
 [ ] workspace 정상
 [ ] apps/server build 성공
-[ ] contracts typecheck/test 성공
+[x] contracts typecheck/test 성공
 
 [ ] PostgreSQL 16 실행
 [ ] synchronize=false
@@ -1691,11 +1713,11 @@ MVP0 acceptance 확인
 [ ] MANUAL source seed
 [ ] seed 재실행 중복 없음
 
-[ ] PolicyImportInputSchema
-[ ] BenefitAmount schema
-[ ] 5개 PolicyConditions
-[ ] cross-field validation
-[ ] duplicate externalId validation
+[x] PolicyImportInputSchema
+[x] BenefitAmount schema
+[x] 5개 PolicyConditions
+[x] cross-field validation
+[x] duplicate externalId validation
 
 [ ] PolicyWriteService
 [ ] 신규 CREATED

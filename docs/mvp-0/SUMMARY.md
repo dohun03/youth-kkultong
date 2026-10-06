@@ -48,3 +48,27 @@
 - `docker compose config --quiet` 성공
 - `docker compose up -d postgres` 및 컨테이너 내부 `pg_isready` 성공
 - 동일 Compose 네트워크에서 실제 `datasource.ts`의 `DataSource.initialize()` 성공
+
+## Phase 2. Policy Contracts / Zod
+
+### 완료 내용
+
+- `@kkultong/contracts`에 정책 카테고리, 사용자 상태, 출처 타입의 공통 열거값과 TypeScript 타입을 정의했다.
+- Canonical Policy Zod schema를 추가했다. NumberRange, 나이 기준과 나이 조건, 소득 조건, 5개 Constraint 조건, 혜택 금액, 정책 import 배열을 포함한다.
+- `ANY`·`UNKNOWN`에 `value`가 포함되거나 혜택 종류와 맞지 않는 금액 필드가 전달되는 것을 strict object로 차단했다.
+- 실제 존재하지 않는 날짜, HTTP(S)가 아닌 공식 URL, 기간 순서 오류, 상시 정책의 마감일, 미확인 자격 사유 누락, 파일 내 `externalId` 중복을 검증한다.
+- DB를 조회하는 지역 코드 존재 여부 검증은 Phase 5의 `PolicyWriteService` 범위로 남겼다. 이번 단계에서는 지역 코드 형식과 중복만 검증한다.
+
+### 주요 파일
+
+- `packages/contracts/src/enums.ts`: 공통 enum과 TypeScript 타입
+- `packages/contracts/src/policy.ts`: 정책 입력 Zod schema 및 추론 타입
+- `packages/contracts/src/index.ts`: contracts 공개 export
+- `packages/contracts/test/policy.spec.ts`: 정상 및 오류 정책 입력 검증 테스트
+- `packages/contracts/jest.config.cjs`: contracts Jest 설정
+
+### 검증
+
+- `corepack pnpm --filter @kkultong/contracts typecheck` 성공
+- `corepack pnpm --filter @kkultong/contracts test` 성공 (1개 suite, 12개 test)
+- `corepack pnpm --filter @kkultong/contracts build` 성공
