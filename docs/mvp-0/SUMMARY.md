@@ -72,3 +72,31 @@
 - `corepack pnpm --filter @kkultong/contracts typecheck` 성공
 - `corepack pnpm --filter @kkultong/contracts test` 성공 (1개 suite, 12개 test)
 - `corepack pnpm --filter @kkultong/contracts build` 성공
+
+## Phase 3. MVP0 Migration / Entity
+
+### 완료 내용
+
+- `pgcrypto` 확장과 함께 MVP 0에 필요한 `regions`, `median_income_table`, `policy_sources`, `policies` 4개 테이블만 생성하는 TypeORM migration을 추가했다.
+- 정책 테이블에 출처·외부 식별자 고유성, 카테고리·출처 상태·URL·신청 기간·상시 신청·미확인 자격 조건 제약과 정책 조회용 인덱스를 구성했다.
+- 4개 테이블에 대응하는 TypeORM Entity를 추가했다. 정책의 `benefitAmount`, `conditions`는 JSONB로, `requiredDocs`는 PostgreSQL `text[]`로 매핑했다.
+- 서버 패키지가 공유 계약 타입을 참조하도록 workspace 내부 `@kkultong/contracts` 의존성을 연결했다. 외부 패키지는 추가하지 않았다.
+- 루트의 `db:migrate`, `db:revert` 명령이 실제 TypeORM migration CLI를 실행하도록 연결했다.
+
+### 주요 파일
+
+- `apps/server/src/database/migrations/001-mvp0-core-policy.ts`: 4개 핵심 테이블의 up/down migration
+- `apps/server/src/modules/meta/entities/region.entity.ts`: 지역 Entity
+- `apps/server/src/modules/meta/entities/median-income.entity.ts`: 기준 중위소득 Entity
+- `apps/server/src/modules/policies/entities/policy-source.entity.ts`: 정책 출처 Entity
+- `apps/server/src/modules/policies/entities/policy.entity.ts`: 정책 Entity
+- `apps/server/package.json`: DB migration/revert 명령 및 contracts workspace 의존성
+
+### 검증
+
+- `corepack pnpm --filter @kkultong/contracts build` 성공
+- `corepack pnpm --filter @kkultong/server typecheck` 성공
+- `corepack pnpm --filter @kkultong/server test` 성공 (2개 suite, 5개 test)
+- `corepack pnpm --filter @kkultong/server build` 성공
+- 빈 임시 PostgreSQL에서 migration 적용 성공 → revert 성공 → 재적용 성공
+- 프로젝트 PostgreSQL에서 migration 적용 성공. 4개 테이블, 4개 지정 인덱스, `policies`의 6개 CHECK 제약조건과 1개 UNIQUE 제약조건을 확인했다.

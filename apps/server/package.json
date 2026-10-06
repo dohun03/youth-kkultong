@@ -7,9 +7,12 @@
     "dev": "nest start --watch",
     "start": "node dist/main",
     "typecheck": "tsc --noEmit",
-    "test": "jest --passWithNoTests"
+    "test": "jest --passWithNoTests",
+    "db:migrate": "typeorm-ts-node-commonjs -d src/database/datasource.ts migration:run",
+    "db:revert": "typeorm-ts-node-commonjs -d src/database/datasource.ts migration:revert"
   },
   "dependencies": {
+    "@kkultong/contracts": "workspace:*",
     "@nestjs/common": "^11.1.6",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.1.6",

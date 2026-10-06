@@ -613,6 +613,8 @@ policies
 
 ## 3-1. Migration
 
+- [x] `regions`, `median_income_table`, `policy_sources`, `policies` 생성 migration 구현
+
 파일 예:
 
 ```text
@@ -626,6 +628,8 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 ```
 
 ## 3-2. regions
+
+- [x] `regions` 테이블, self FK, level 제약조건 및 parent_code 인덱스 구현
 
 ```text
 code          PK
@@ -643,6 +647,8 @@ parent_code
 
 ## 3-3. median_income_table
 
+- [x] 복합 PK 및 가구원 수·금액 검증 제약조건 구현
+
 ```text
 year
 household_size
@@ -658,6 +664,8 @@ amount > 0
 ```
 
 ## 3-4. policy_sources
+
+- [x] 출처 타입 제약조건과 생성·수정 시각 기본값 구현
 
 ```text
 id
@@ -677,6 +685,8 @@ MANUAL | API
 ```
 
 ## 3-5. policies
+
+- [x] 정책 필드, FK·고유성·도메인 제약조건 및 조회용 인덱스 구현
 
 필드:
 
@@ -739,6 +749,8 @@ last_verified_at
 
 ## 3-6. Entity
 
+- [x] 4개 테이블에 대응하는 TypeORM Entity 구현
+
 작성:
 
 ```text
@@ -755,6 +767,8 @@ Migration schema와 Entity가 일치해야 한다.
 `required_docs`는 text[].
 
 ## 3-7. Revert
+
+- [x] FK 역순 down migration 및 재적용 검증
 
 FK 역순:
 
