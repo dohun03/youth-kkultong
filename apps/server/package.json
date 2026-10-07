@@ -10,7 +10,10 @@
     "test": "jest --passWithNoTests",
     "db:migrate": "typeorm-ts-node-commonjs -d src/database/datasource.ts migration:run",
     "db:revert": "typeorm-ts-node-commonjs -d src/database/datasource.ts migration:revert",
-    "db:seed": "ts-node src/database/seeds/run-seeds.ts"
+    "db:seed": "ts-node src/database/seeds/run-seeds.ts",
+    "import:policies": "ts-node src/cli/import-policies.ts",
+    "policy:validate": "pnpm import:policies --dry-run",
+    "policy:import": "pnpm import:policies"
   },
   "dependencies": {
     "@kkultong/contracts": "workspace:*",

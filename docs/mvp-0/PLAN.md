@@ -1122,6 +1122,8 @@ dry-run DB 변경 없음
 
 ## 6-1. 파일
 
+- [x] HTTP 서버 없이 실행되는 정책 JSON import CLI 구현
+
 ```text
 apps/server/src/cli/import-policies.ts
 ```
@@ -1133,6 +1135,8 @@ Nest Application Context 또는 import 전용 module을 사용한다.
 실행 종료 시 connection을 닫는다.
 
 ## 6-2. Arguments
+
+- [x] `--file <path>` 필수 인자 및 `--dry-run` 선택 인자 검증
 
 ```text
 --file <path>
@@ -1156,6 +1160,8 @@ pnpm --filter server import:policies \
 
 ## 6-3. 처리 순서
 
+- [x] 파일 읽기·JSON/Zod 검증 후 `PolicyWriteService.importManualBatch` 호출
+
 ```text
 1. args 검증
 2. 파일 존재 확인
@@ -1172,6 +1178,8 @@ DB transaction은 Service가 책임진다.
 
 ## 6-4. 성공 출력
 
+- [x] WRITE 모드의 생성·수정·무변경 요약 출력
+
 ```text
 Policy import succeeded.
 
@@ -1185,6 +1193,8 @@ Unchanged:  0
 ```
 
 ## 6-5. Dry-run 출력
+
+- [x] DRY RUN 모드의 예상 변경 요약 및 rollback 안내 출력
 
 ```text
 Policy validation succeeded.
@@ -1201,6 +1211,8 @@ No database changes were committed.
 
 ## 6-6. 실패 출력
 
+- [x] 정책 위치·필드·사유와 전체 미저장 안내를 포함한 오류 출력
+
 ```text
 Policy import failed.
 
@@ -1213,6 +1225,8 @@ No policies were saved.
 ```
 
 ## 6-7. Exit code
+
+- [x] 성공 시 `0`, 실패 시 `1` 종료 코드 반환
 
 ```text
 0 success
@@ -1761,12 +1775,12 @@ MVP0 acceptance 확인
 [ ] 1건 실패 전체 rollback
 [ ] dry-run DB 변경 없음
 
-[ ] import CLI
-[ ] --file
-[ ] --dry-run
-[ ] summary
-[ ] error location
-[ ] exit code
+[x] import CLI
+[x] --file
+[x] --dry-run
+[x] summary
+[x] error location
+[x] exit code
 
 [ ] sample JSON
 [ ] 실제 정책 30~50건

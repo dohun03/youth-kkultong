@@ -156,3 +156,36 @@
 - `corepack pnpm --filter @kkultong/server test` 성공 (4개 suite, 11개 test)
 - `corepack pnpm --filter @kkultong/server build` 성공
 - 로컬 Docker PostgreSQL 컨테이너는 실행 중임을 확인했다. 다만 현재 실행 권한 경계에서 호스트 포트 연결이 거부되어 실제 DB 연결 검증은 수행하지 못했다. 실제 PostgreSQL 통합 검증은 계획된 Phase 8 Testcontainers 테스트에서 수행한다.
+
+## Phase 6. JSON Import CLI
+
+### 완료 내용
+
+- HTTP 서버를 띄우지 않는 정책 JSON import CLI를 추가했다. 파일·JSON·Zod 검증은 DB 연결 전에 끝내므로 잘못된 입력이 DB 연결을 시도하지 않는다.
+- `--file <path>`는 필수이고 `--dry-run`은 선택이다. 지원하지 않는 옵션·중복 옵션·파일 읽기 실패·JSON 형식 오류도 저장 전에 실패한다.
+- 스키마 오류는 JSON 배열의 index, `externalId`, 필드 경로, 사유를 출력한다. `PolicyWriteService`의 지역·DB 오류도 같은 형식으로 전달해 전체 미저장 사실을 명확히 알린다.
+- 실제 저장은 `PolicyWriteService.importManualBatch`만 호출한다. WRITE와 DRY RUN의 트랜잭션·rollback 책임은 기존 서비스에 유지했다.
+- DB 초기 연결은 일시 오류에 대비해 최대 2회 시도하며, 실행이 끝나면 초기화된 TypeORM DataSource를 항상 닫는다. 성공은 종료 코드 `0`, 실패는 `1`을 반환한다.
+
+### 주요 파일
+
+- `apps/server/src/cli/import-policies.ts`: 인자 처리, 파일·스키마 검증, import 실행, 표준 출력·오류 출력
+- `apps/server/src/cli/policy-import.module.ts`: DB 연결, `PolicyWriteService` 조립 및 실행 종료 시 연결 정리
+- `apps/server/src/cli/import-policies.spec.ts`: WRITE/DRY RUN, 필수 인자, JSON·스키마 오류, 서비스 오류 출력 검증
+- `apps/server/package.json`: `import:policies`, `policy:validate`, `policy:import` CLI 스크립트
+
+### 실행 방법
+
+```bash
+pnpm --filter @kkultong/server import:policies --file ../../data/policies/policies.json
+pnpm --filter @kkultong/server import:policies --file ../../data/policies/policies.json --dry-run
+```
+
+`data/policies/policies.json`은 Phase 7에서 작성한다.
+
+### 검증
+
+- `corepack pnpm --filter @kkultong/server typecheck` 성공
+- `corepack pnpm --filter @kkultong/server exec jest --runInBand` 성공 (5개 suite, 17개 test)
+- `corepack pnpm --filter @kkultong/server build` 성공
+- `corepack pnpm --filter @kkultong/server import:policies --dry-run` 실행 시 `--file` 누락 오류와 종료 코드 `1`을 확인했다.
