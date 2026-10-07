@@ -1,7 +1,19 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { z } from 'zod';
 
 const NODE_ENV_VALUES = ['development', 'test', 'production'] as const;
 const POSTGRES_PROTOCOLS = ['postgres:', 'postgresql:'] as const;
+const WORKSPACE_ENV_FILE_PATH = join(__dirname, '../../../../../.env');
+
+/** 서버 실행 위치와 관계없이 workspace 루트의 .env를 한 번만 읽는다. */
+function loadWorkspaceEnvironment(): void {
+  if (existsSync(WORKSPACE_ENV_FILE_PATH)) {
+    process.loadEnvFile(WORKSPACE_ENV_FILE_PATH);
+  }
+}
+
+loadWorkspaceEnvironment();
 
 const databaseUrlSchema = z
   .string()

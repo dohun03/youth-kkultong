@@ -1474,6 +1474,22 @@ Integration 전체 통과
 
 # Phase 9. 실행 명령 정리
 
+## 사전 준비
+
+로컬 개발 환경에서는 최초 한 번 아래 명령으로 루트 환경 파일을 만든다.
+
+```bash
+cp .env.example .env
+```
+
+모든 migration·seed·정책 CLI는 이 루트 `.env`를 공통으로 읽는다.
+
+## 작업
+
+- [x] 루트 DB·정책·테스트 명령을 인자 없이 실행할 수 있도록 구성
+- [x] 정책 검증·import의 기본 입력 파일을 `data/policies/policies.json`으로 고정
+- [x] migration·seed·정책 CLI의 루트 `.env` 공통 로드 구성
+
 루트에서 최소 다음 흐름이 가능해야 한다.
 
 ```bash

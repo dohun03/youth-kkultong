@@ -12,8 +12,8 @@
     "db:revert": "typeorm-ts-node-commonjs -d src/database/datasource.ts migration:revert",
     "db:seed": "ts-node src/database/seeds/run-seeds.ts",
     "import:policies": "ts-node src/cli/import-policies.ts",
-    "policy:validate": "pnpm import:policies --dry-run",
-    "policy:import": "pnpm import:policies"
+    "policy:validate": "ts-node src/cli/import-policies.ts --file ../../data/policies/policies.json --dry-run",
+    "policy:import": "ts-node src/cli/import-policies.ts --file ../../data/policies/policies.json"
   },
   "dependencies": {
     "@kkultong/contracts": "workspace:*",

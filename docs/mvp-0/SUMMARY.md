@@ -235,3 +235,32 @@ pnpm --filter @kkultong/server import:policies --file ../../data/policies/polici
 - `corepack pnpm --filter @kkultong/server typecheck` 성공
 - `corepack pnpm --filter @kkultong/server test` 성공 (6개 suite, 23개 test; PostgreSQL 16 Testcontainers 포함)
 - `corepack pnpm --filter @kkultong/server build` 성공
+
+## Phase 9. 실행 명령 정리
+
+### 완료 내용
+
+- 환경변수 검증 진입점에서 Node 22 내장 `process.loadEnvFile`로 workspace 루트 `.env`를 읽도록 구성했다. migration·seed·정책 CLI가 같은 DB 연결 설정을 사용한다.
+- `policy:validate`, `policy:import`는 내부 `pnpm` 재실행 없이 기본 `data/policies/policies.json` 경로를 직접 전달한다.
+- 로컬 실행 전에는 `.env.example`을 루트 `.env`로 복사하면 된다. `.env`는 Git에 포함하지 않는다.
+
+### DB 변경사항
+
+- 없음. 실행 명령과 환경변수 로딩만 정리했다.
+
+### 주요 파일
+
+- `apps/server/src/common/config/env.schema.ts`: workspace 루트 `.env` 공통 로드
+- `apps/server/package.json`: 기본 정책 파일을 사용하는 정책 validate/import 명령
+- `package.json`: Phase 0에서 추가한 루트 명령 진입점 유지
+
+### 검증
+
+별도 PostgreSQL 16 임시 컨테이너와 루트 `.env`를 사용해 다음 명령을 인자 없이 순서대로 실행했다.
+
+- `corepack pnpm db:migrate` 성공
+- `corepack pnpm db:seed` 성공
+- `corepack pnpm policy:validate` 성공: 30건 dry-run, 생성 예정 30건
+- `corepack pnpm policy:import` 성공: 30건 생성
+- 동일 `corepack pnpm policy:import` 재실행 성공: 30건 `UNCHANGED`
+- `corepack pnpm server:test` 성공: 6개 suite, 23개 test
