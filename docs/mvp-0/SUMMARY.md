@@ -189,3 +189,23 @@ pnpm --filter @kkultong/server import:policies --file ../../data/policies/polici
 - `corepack pnpm --filter @kkultong/server exec jest --runInBand` 성공 (5개 suite, 17개 test)
 - `corepack pnpm --filter @kkultong/server build` 성공
 - `corepack pnpm --filter @kkultong/server import:policies --dry-run` 실행 시 `--file` 누락 오류와 종료 코드 `1`을 확인했다.
+
+## Phase 7. 정책 JSON
+
+### 완료 내용
+
+- `policies.sample.json`에 공식 정책 기반 5건을 작성했다. 고정 금액, 월 지원, 현물성 지원, 전국·지역 조건, 상시·기간제 정책을 포함한다.
+- `policies.json`에 실제 정책 30건을 작성했다. 주거 7건, 금융 5건, 교육 8건, 일자리 4건, 복지 6건으로 구성했다.
+- 정책별 공식 URL과 `lastVerifiedAt`을 모두 기록했다. 고용노동부, 국토교통부·마이홈, 서민금융진흥원, 한국장학재단, 농림축산식품부, 서울·부산·경기도 공식 페이지를 출처로 사용했다.
+- 건강보험료, 개인소득, 자산, 공고별 우선순위처럼 현재 조건 모델로 안전하게 비교할 수 없는 값은 중위소득 비율로 변환하지 않고 `UNKNOWN`과 미확인 사유로 남겼다.
+
+### 주요 파일
+
+- `data/policies/policies.sample.json`: 데이터 모델 조합을 확인하는 5건의 샘플 정책
+- `data/policies/policies.json`: MVP 0 적재 대상 실제 정책 30건
+
+### 검증
+
+- `PolicyImportArraySchema.safeParse`로 샘플 5건과 실제 정책 30건의 JSON·Zod 검증을 통과했다.
+- 빈 PostgreSQL에서 migration 적용 후 기준 데이터 seed를 완료했다.
+- PostgreSQL과 같은 Docker 네트워크에서 CLI dry-run을 실행했다. 결과는 `Total: 30`, `Would create: 30`, `Would update: 0`, `Unchanged: 0`이며 정책 행은 rollback되어 저장되지 않았다.

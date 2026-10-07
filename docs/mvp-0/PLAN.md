@@ -1243,6 +1243,8 @@ MVP0 데이터 모델을 실제 정책으로 검증한다.
 
 ## 7-1. Sample
 
+- [x] 공식 정책 기반 sample JSON 5건 작성
+
 `data/policies/policies.sample.json`
 
 3~6건.
@@ -1264,6 +1266,8 @@ ANY
 ```
 
 ## 7-2. Actual
+
+- [x] 공식 기관 정책 30건 작성 및 `externalId` 고유성 확인
 
 `data/policies/policies.json`
 
@@ -1291,6 +1295,8 @@ ANY
 ```
 
 ## 7-3. 데이터 원칙
+
+- [x] 자동 비교 불가 소득·자산·세부 자격을 `UNKNOWN` 및 미확인 사유로 보존
 
 추측하지 않는다.
 
@@ -1321,6 +1327,8 @@ unresolvedConditionNote="..."
 ```
 
 ## 7-4. 다양성
+
+- [x] 주거·금융·일자리·교육·복지 5개 카테고리와 전국·지역 정책 구성
 
 가능하면 포함:
 
@@ -1782,11 +1790,11 @@ MVP0 acceptance 확인
 [x] error location
 [x] exit code
 
-[ ] sample JSON
-[ ] 실제 정책 30~50건
-[ ] officialUrl 100%
-[ ] lastVerifiedAt 100%
-[ ] actual dry-run 성공
+[x] sample JSON
+[x] 실제 정책 30~50건
+[x] officialUrl 100%
+[x] lastVerifiedAt 100%
+[x] actual dry-run 성공
 [ ] actual import 성공
 
 [ ] same reimport 중복 없음
