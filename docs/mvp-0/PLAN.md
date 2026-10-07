@@ -918,6 +918,14 @@ seed 2회
 
 CLI가 Repository를 직접 이용해 정책 row를 저장하지 않는다.
 
+- [x] 5-1. `PolicyRepository` 구현
+- [x] 5-2. 지역 코드 참조 일괄 검증 구현
+- [x] 5-3. 시스템 필드를 제외한 안정적 비교 구현
+- [x] 5-4. `upsertManual` 구현
+- [x] 5-5. 단일 transaction 기반 batch import 구현
+- [x] 5-6. 실제 쓰기 경로를 사용하는 dry-run rollback 구현
+- [x] 5-7. 정책 저장 도메인 오류 정보 구현
+
 ## 5-1. PolicyRepository
 
 필요 기능:

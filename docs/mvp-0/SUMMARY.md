@@ -127,3 +127,32 @@
 - `corepack pnpm --filter @kkultong/server test` 성공 (3개 suite, 7개 test)
 - `corepack pnpm --filter @kkultong/server build` 성공
 - 프로젝트 PostgreSQL에서 seed를 2회 실행했다. 최종 행 수는 `policy_sources` 1건, `regions` 284건, `median_income_table` 8건으로 중복이 없음을 확인했다.
+
+## Phase 5. Policy Repository / PolicyWriteService
+
+### 완료 내용
+
+- 모든 정책 저장을 `PolicyWriteService`로 통일했다. 이후 CLI는 Repository를 직접 사용하지 않고 이 서비스만 호출한다.
+- `PolicyRepository`는 `EntityManager`를 선택적으로 받아 MANUAL 출처 조회, 출처와 `externalId` 기준 정책 조회, 정책 저장, 지역 코드 일괄 조회를 수행한다.
+- batch import는 하나의 `QueryRunner` transaction으로 처리한다. `dryRun`도 동일한 INSERT/UPDATE 경로를 실행한 후 rollback하여 DB 제약조건을 함께 검증한다.
+- 지역 `RULE` 조건의 코드에서 `KR`을 제외하고 중복을 제거한 뒤 한 번만 조회한다. 존재하지 않는 코드가 있으면 정책 저장 전에 `REGION_NOT_FOUND` 오류와 index·`externalId`·필드 위치를 반환한다.
+- 수동 입력의 `sourceStatus`는 항상 `ACTIVE`로 저장한다. 시스템 필드(`id`, 출처, 생성·수정 시각)를 제외한 stable JSON 비교로 신규·변경·동일 상태를 각각 `CREATED`·`UPDATED`·`UNCHANGED`로 구분한다.
+- DB 일시 오류 코드에 한해 전체 transaction을 최대 2회 시도하며, 그 외 저장 오류는 `DB_CONSTRAINT_FAILED` 도메인 오류로 정규화한다.
+
+### DB 변경사항
+
+- 없음. Phase 3에서 생성한 `policies`, `policy_sources`, `regions` 테이블을 그대로 사용한다.
+
+### 주요 파일
+
+- `apps/server/src/modules/policies/repositories/policy.repository.ts`: transaction-aware 정책 저장소
+- `apps/server/src/modules/policies/services/policy-write.service.ts`: upsert, batch transaction, dry-run, 지역 검증, 오류 처리
+- `apps/server/src/common/utils/stable-json.util.ts`: 객체 키 순서에 영향받지 않는 JSON 비교용 직렬화
+- `apps/server/src/modules/policies/services/policy-write.service.spec.ts`: 저장 결과·지역 검증·rollback·dry-run 단위 테스트
+
+### 검증
+
+- `corepack pnpm --filter @kkultong/server typecheck` 성공
+- `corepack pnpm --filter @kkultong/server test` 성공 (4개 suite, 11개 test)
+- `corepack pnpm --filter @kkultong/server build` 성공
+- 로컬 Docker PostgreSQL 컨테이너는 실행 중임을 확인했다. 다만 현재 실행 권한 경계에서 호스트 포트 연결이 거부되어 실제 DB 연결 검증은 수행하지 못했다. 실제 PostgreSQL 통합 검증은 계획된 Phase 8 Testcontainers 테스트에서 수행한다.
