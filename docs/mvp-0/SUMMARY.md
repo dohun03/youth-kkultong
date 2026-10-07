@@ -209,3 +209,29 @@ pnpm --filter @kkultong/server import:policies --file ../../data/policies/polici
 - `PolicyImportArraySchema.safeParse`로 샘플 5건과 실제 정책 30건의 JSON·Zod 검증을 통과했다.
 - 빈 PostgreSQL에서 migration 적용 후 기준 데이터 seed를 완료했다.
 - PostgreSQL과 같은 Docker 네트워크에서 CLI dry-run을 실행했다. 결과는 `Total: 30`, `Would create: 30`, `Would update: 0`, `Unchanged: 0`이며 정책 행은 rollback되어 저장되지 않았다.
+
+## Phase 8. 테스트
+
+### 완료 내용
+
+- 정책 계약 단위 테스트에 MONTHLY 금액·개월 수 오류, 신청 기간 역전, 나이 경계값, 중복 지역·상태, `ANY`·`UNKNOWN`의 불필요한 값, `RULE` 값 누락 검증을 보강했다.
+- PostgreSQL 16 Testcontainers 통합 테스트를 추가했다. 각 실행은 컨테이너 생성 후 migration과 기준 데이터 seed를 적용하고, 종료 시 DataSource와 컨테이너를 정리한다.
+- 실제 DB에서 신규 3건 생성, 동일 3건 재import, 변경 정책 update, 잘못된 지역 코드 batch rollback, dry-run 미저장, 기준 데이터 seed 반복 실행을 검증했다.
+- PostgreSQL 공식 이미지의 초기화용 임시 서버 로그를 피하기 위해 최종 서버의 준비 로그까지 기다린 뒤 migration을 시작한다.
+
+### DB 변경사항
+
+- 없음. 기존 migration과 seed, `PolicyWriteService` 동작을 실제 PostgreSQL에서 검증했다.
+
+### 주요 파일
+
+- `packages/contracts/test/policy.spec.ts`: Canonical Policy Schema 단위 테스트
+- `apps/server/test/integration/policy-import.integration.spec.ts`: PostgreSQL 16 Testcontainers 정책 import 통합 테스트
+
+### 검증
+
+- `corepack pnpm --filter @kkultong/contracts typecheck` 성공
+- `corepack pnpm --filter @kkultong/contracts exec jest --runInBand` 성공 (1개 suite, 18개 test)
+- `corepack pnpm --filter @kkultong/server typecheck` 성공
+- `corepack pnpm --filter @kkultong/server test` 성공 (6개 suite, 23개 test; PostgreSQL 16 Testcontainers 포함)
+- `corepack pnpm --filter @kkultong/server build` 성공

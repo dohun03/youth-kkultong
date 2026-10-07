@@ -1358,6 +1358,8 @@ dry-run 전체 성공
 
 ## 8-1. Contracts Unit
 
+- [x] 정책 계약 Zod schema 단위 테스트
+
 필수:
 
 ```text
@@ -1378,6 +1380,8 @@ duplicate externalId
 
 ## 8-2. PostgreSQL Integration
 
+- [x] Testcontainers PostgreSQL 16 기반 정책 import 통합 테스트
+
 Testcontainers PostgreSQL 16 사용.
 
 흐름:
@@ -1393,6 +1397,8 @@ container
 
 ## 8-3. Create Test
 
+- [x] 신규 정책 3건 생성 및 DB 저장 검증
+
 ```text
 3건 import
 → created=3
@@ -1400,6 +1406,8 @@ container
 ```
 
 ## 8-4. Same Reimport
+
+- [x] 동일 정책 재import 시 무변경·행 수·식별자 유지 검증
 
 ```text
 같은 3건 재import
@@ -1409,6 +1417,8 @@ container
 ```
 
 ## 8-5. Update
+
+- [x] 수정 정책 재import 시 동일 행 갱신 및 생성·수정 시각 검증
 
 ```text
 같은 externalId 내용 변경
@@ -1421,6 +1431,8 @@ container
 
 ## 8-6. Rollback
 
+- [x] 잘못된 지역 코드가 포함된 batch의 전체 rollback 검증
+
 ```text
 정상 2 + invalid region 1
 → 전체 실패
@@ -1431,6 +1443,8 @@ container
 
 ## 8-7. Dry Run
 
+- [x] 신규 정책 dry-run의 생성 예정 결과 및 미저장 검증
+
 ```text
 신규 3건 dry-run
 → would create 3
@@ -1438,6 +1452,8 @@ container
 ```
 
 ## 8-8. Seed idempotency
+
+- [x] 기준 데이터 seed 반복 실행의 중복 미생성 검증
 
 ```text
 seed

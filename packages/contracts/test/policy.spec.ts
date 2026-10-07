@@ -81,6 +81,27 @@ describe('PolicyImportInputSchema', () => {
     ).toMatchObject({ kind: 'MONTHLY', amountWon: 200_000, months: 12 });
   });
 
+  it('MONTHLY 혜택의 잘못된 금액과 개월 수를 거부한다', () => {
+    expectInvalidPolicy({
+      ...validPolicy,
+      benefitAmount: {
+        kind: 'MONTHLY',
+        amountWon: 0,
+        months: 12,
+        text: '매월 20만원, 최대 12개월',
+      },
+    });
+    expectInvalidPolicy({
+      ...validPolicy,
+      benefitAmount: {
+        kind: 'MONTHLY',
+        amountWon: 200_000,
+        months: 0,
+        text: '매월 20만원, 최대 12개월',
+      },
+    });
+  });
+
   it('0 이하의 amountWon을 거부한다', () => {
     expectInvalidPolicy({
       ...validPolicy,
@@ -92,6 +113,14 @@ describe('PolicyImportInputSchema', () => {
     expectInvalidPolicy({ ...validPolicy, applyStart: '2026-02-31' });
   });
 
+  it('신청 시작일이 마감일보다 늦으면 거부한다', () => {
+    expectInvalidPolicy({
+      ...validPolicy,
+      applyStart: '2026-12-31',
+      applyEnd: '2026-01-01',
+    });
+  });
+
   it('min이 max보다 큰 나이 조건을 거부한다', () => {
     expectInvalidPolicy({
       ...validPolicy,
@@ -101,6 +130,25 @@ describe('PolicyImportInputSchema', () => {
           kind: 'RULE',
           value: { min: 35, max: 34, basis: { kind: 'TODAY' } },
         },
+      },
+    });
+  });
+
+  it('나이 조건의 경계값만 허용한다', () => {
+    expect(
+      PolicyImportInputSchema.safeParse({
+        ...validPolicy,
+        conditions: {
+          ...validPolicy.conditions,
+          age: { kind: 'RULE', value: { min: 0, max: 120, basis: { kind: 'TODAY' } } },
+        },
+      }).success,
+    ).toBe(true);
+    expectInvalidPolicy({
+      ...validPolicy,
+      conditions: {
+        ...validPolicy.conditions,
+        age: { kind: 'RULE', value: { min: -1, max: 120, basis: { kind: 'TODAY' } } },
       },
     });
   });
@@ -131,6 +179,60 @@ describe('PolicyImportInputSchema', () => {
       conditions: {
         ...validPolicy.conditions,
         status: { kind: 'RULE', value: [] },
+      },
+    });
+  });
+
+  it('중복된 지역 또는 상태 RULE 값을 거부한다', () => {
+    expectInvalidPolicy({
+      ...validPolicy,
+      conditions: {
+        ...validPolicy.conditions,
+        region: { kind: 'RULE', value: ['11', '11'] },
+      },
+    });
+    expectInvalidPolicy({
+      ...validPolicy,
+      conditions: {
+        ...validPolicy.conditions,
+        status: { kind: 'RULE', value: ['JOB_SEEKER', 'JOB_SEEKER'] },
+      },
+    });
+  });
+
+  it('ANY·UNKNOWN·RULE 제약을 각각 허용한다', () => {
+    expect(
+      PolicyImportInputSchema.safeParse({
+        ...validPolicy,
+        conditions: {
+          ...validPolicy.conditions,
+          age: { kind: 'ANY' },
+          region: { kind: 'UNKNOWN' },
+        },
+      }).success,
+    ).toBe(true);
+  });
+
+  it('ANY·UNKNOWN에는 value를, RULE에는 value 누락을 허용하지 않는다', () => {
+    expectInvalidPolicy({
+      ...validPolicy,
+      conditions: {
+        ...validPolicy.conditions,
+        income: { kind: 'ANY', value: { min: null, max: 150, basisConfirmed: true } },
+      },
+    });
+    expectInvalidPolicy({
+      ...validPolicy,
+      conditions: {
+        ...validPolicy.conditions,
+        region: { kind: 'UNKNOWN', value: ['11'] },
+      },
+    });
+    expectInvalidPolicy({
+      ...validPolicy,
+      conditions: {
+        ...validPolicy.conditions,
+        income: { kind: 'RULE' },
       },
     });
   });
