@@ -264,3 +264,28 @@ pnpm --filter @kkultong/server import:policies --file ../../data/policies/polici
 - `corepack pnpm policy:import` 성공: 30건 생성
 - 동일 `corepack pnpm policy:import` 재실행 성공: 30건 `UNCHANGED`
 - `corepack pnpm server:test` 성공: 6개 suite, 23개 test
+
+## Phase 10. 최종 검증
+
+### 완료 내용
+
+- 기존 개발 DB를 변경하지 않도록 별도 PostgreSQL 16 임시 컨테이너의 빈 DB에서 최종 흐름을 검증했다.
+- migration → seed → dry-run → import 순서로 실행해 실제 정책 30건이 저장되는 것을 확인했다.
+- 동일 정책 파일 재import 결과는 `Created: 0`, `Updated: 0`, `Unchanged: 30`이며 행 수는 30건으로 유지됐다.
+- 정책 1건을 수정한 임시 JSON import는 `Updated: 1`로 처리됐고, 기존 UUID·생성 시각과 전체 행 수 30건을 유지했다.
+- 존재하지 않는 지역 코드 `99999`를 넣은 임시 JSON import는 종료 코드 1로 실패했고, 저장된 정책 행 수와 기존 정책 내용은 변하지 않았다.
+- 전체 30건은 `MANUAL` 출처·`ACTIVE` 상태이고 `externalId`도 모두 고유함을 집계로 확인했다. DB 조회에서 정책별 공개 여부도 함께 확인했다.
+
+### DB 변경사항
+
+- 없음. 최종 검증은 폐기한 임시 PostgreSQL 16 컨테이너에서만 수행했다.
+
+### 검증
+
+- 빈 DB: `db:migrate` → `db:seed` → `policy:validate` → `policy:import` 성공
+- dry-run: 총 30건, 생성 예정 30건, DB 미저장 확인
+- 재import: 총 30건, `UNCHANGED` 30건, 행 수 30건
+- update: 동일 UUID·생성 시각 유지, `UPDATED` 1건, 행 수 30건
+- rollback: `REGION_NOT_FOUND` 오류와 종료 코드 1, DB 변경 없음
+- `corepack pnpm server:test` 성공 (6개 suite, 23개 test)
+- `corepack pnpm --filter @kkultong/server build` 성공

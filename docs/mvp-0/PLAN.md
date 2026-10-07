@@ -1515,6 +1515,8 @@ CLI/seed/migration은:
 
 ## 10-1. Clean DB
 
+- [x] 빈 PostgreSQL에서 migration·seed·dry-run·import 검증
+
 완전히 빈 DB에서:
 
 ```text
@@ -1532,6 +1534,8 @@ import
 
 ## 10-2. Same Reimport
 
+- [x] 동일 정책 파일 재import 시 무변경·행 수 유지 검증
+
 같은 파일 다시 import.
 
 기대:
@@ -1546,6 +1550,8 @@ row count 동일.
 
 ## 10-3. Update
 
+- [x] 임시 정책 파일 수정 시 동일 행 1건 update 검증
+
 임시 JSON copy에서 정책 하나 수정.
 
 기대:
@@ -1558,6 +1564,8 @@ row count 동일
 
 ## 10-4. Rollback
 
+- [x] 잘못된 지역 코드 import 실패 및 DB 무변경 검증
+
 임시 JSON copy에 invalid region 삽입.
 
 기대:
@@ -1568,6 +1576,8 @@ DB 변경 0
 ```
 
 ## 10-5. DB inspect
+
+- [x] 정책 수·출처·상태·공개 여부 조회 검증
 
 ```sql
 SELECT COUNT(*) FROM policies;
