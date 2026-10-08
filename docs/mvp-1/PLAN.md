@@ -191,9 +191,9 @@ PolicySearchResponse
 
 ## 완료 체크
 
-- [ ] 요청/응답 contract 구현
-- [ ] 한글 JSDoc
-- [ ] contracts test 통과
+- [x] 요청/응답 contract 구현
+- [x] 한글 JSDoc
+- [x] contracts test 통과
 
 **여기서 중단.**
 
