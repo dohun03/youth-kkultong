@@ -90,9 +90,9 @@ MVP0 코드를 리팩터링하지 않는다.
 
 ## 완료 체크
 
-- [ ] MVP0 build/test 확인
-- [ ] MVP1에서 재사용할 type/entity 목록 확인
-- [ ] 기존 코드 중 MVP1과 충돌하는 구조 유무 보고
+- [x] MVP0 build/test 확인
+- [x] MVP1에서 재사용할 type/entity 목록 확인
+- [x] 기존 코드 중 MVP1과 충돌하는 구조 유무 보고
 
 **여기서 중단.**
 
