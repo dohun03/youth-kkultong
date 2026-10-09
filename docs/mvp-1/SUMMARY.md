@@ -168,3 +168,20 @@
 - `corepack pnpm --filter @kkultong/server typecheck` 성공
 - `corepack pnpm --filter @kkultong/server build` 성공
 - `git diff --check` 성공
+
+## Step 9. Matching Engine — 지역 / 상태
+
+### 완료 내용
+
+- `evaluateRegion`은 전국(`KR`), 시·도, 시·군·구 정책 조건을 평가한다. 동일 시·도에 한정된 특정 시·군·구 정책은 사용자 시·도 입력만으로 확정하지 않아 `NOT_PROVIDED`로 남긴다.
+- 시·군·구의 부모 시·도를 `MatchContext`에서 찾지 못하면 임의로 불일치 처리하지 않고 `POLICY_UNKNOWN`으로 처리한다.
+- `evaluateStatus`는 사용자 상태와 정책 허용 상태의 교집합으로 `MATCH` 또는 `MISMATCH`를 결정하며, ANY·UNKNOWN·미입력 상태도 구분한다.
+- `evaluatePolicy`가 나이·지역·상태 평가를 하나의 결과 객체로 조립하도록 확장했다. 가구원·소득·최종 summary는 Step 10 범위로 남겼다.
+
+### 검증
+
+- `corepack pnpm --filter @kkultong/server exec jest src/modules/matching --runInBand` 성공: 3개 suite, 21개 test
+- `corepack pnpm --filter @kkultong/server exec jest --runInBand` 성공: 14개 suite, 61개 test. PostgreSQL 16 Testcontainers 통합 테스트를 포함한다.
+- `corepack pnpm --filter @kkultong/server typecheck` 성공
+- `corepack pnpm --filter @kkultong/server build` 성공
+- `git diff --check` 성공

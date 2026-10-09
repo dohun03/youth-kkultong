@@ -785,10 +785,10 @@ not provided
 
 ## 완료 체크
 
-- [ ] region
-- [ ] status
-- [ ] policy evaluator 연결
-- [ ] unit tests
+- [x] region
+- [x] status
+- [x] policy evaluator 연결
+- [x] unit tests
 
 **여기서 중단.**
 

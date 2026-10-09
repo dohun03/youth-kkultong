@@ -70,10 +70,12 @@ describe('evaluateAge', () => {
 });
 
 describe('evaluatePolicy', () => {
-  it('Step 8에서는 나이 평가 결과만 조립한다', () => {
+  it('Step 9에서는 나이·지역·상태 평가 결과를 조립한다', () => {
     expect(evaluatePolicy(createPolicy({ kind: 'ANY' }), { age: 25 }, DEFAULT_CONTEXT)).toEqual({
       fieldEvaluations: {
         age: 'MATCH',
+        region: 'NOT_PROVIDED',
+        status: 'NOT_PROVIDED',
       },
     });
   });
