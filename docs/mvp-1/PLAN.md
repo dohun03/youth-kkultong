@@ -525,12 +525,12 @@ Mobile: 1 column
 
 ## 완료 체크
 
-- [ ] Next.js 기본 구성
-- [ ] PolicyCard
-- [ ] 목록 API 연결
-- [ ] loading/error/empty
-- [ ] frontend test
-- [ ] browser 확인
+- [x] Next.js 기본 구성
+- [x] PolicyCard
+- [x] 목록 API 연결
+- [x] loading/error/empty
+- [x] frontend test
+- [x] browser 확인
 
 **여기서 중단.**
 

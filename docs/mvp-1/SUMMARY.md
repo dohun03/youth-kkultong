@@ -94,3 +94,21 @@
 - `corepack pnpm --filter @kkultong/server exec jest --runInBand` 성공
 - `corepack pnpm --filter @kkultong/server build` 성공
 - `git diff --check` 성공
+
+## Step 5. Next.js Web 기본 구성 + 정책 목록
+
+### 완료 내용
+
+- `apps/web`에 Next.js App Router, TypeScript strict, Tailwind CSS 기반 웹 앱을 구성했다. 기본 개발·실행 포트는 API CORS 설정과 같은 `3001`이다.
+- 홈 화면은 서비스 소개, 현재 공개 정책 전체 수, 반응형 정책 카드 목록과 페이지네이션을 제공한다. 넓은 화면은 최대 3열 grid, 모바일은 1열로 표시한다.
+- `PolicyCard`는 정책명, 지원 내용, 신청 기간, 카테고리, 지역, 나이, 기관, 상세 보기 링크를 보여 준다. Step 5 범위를 지켜 매칭 badge나 검색 조건 UI는 추가하지 않았다.
+- 브라우저의 native `fetch`로 `GET /api/v1/policies`를 호출하며, 로딩·API 오류(재시도)·빈 목록 상태를 각각 표시한다. 별도 server-state 라이브러리는 추가하지 않았다.
+- 프런트엔드 의존성으로 Next.js·React·Tailwind 및 Vitest/Testing Library를 추가했다. Turbopack은 이 실행 환경에서 Tailwind 변환 프로세스의 포트 권한 오류가 발생해, `build`는 안정적으로 검증된 Webpack 경로를 사용한다.
+
+### 검증
+
+- `corepack pnpm --filter @kkultong/web typecheck` 성공
+- `corepack pnpm --filter @kkultong/web test` 성공: 1개 suite, 4개 test. PolicyCard 필수 정보, 목록·전체 건수, empty, error 상태를 검증했다.
+- `corepack pnpm --filter @kkultong/web build` 성공: Next.js Webpack production build
+- `git diff --check` 성공
+- 임시 PostgreSQL 16에 migration·seed·정책 30건 import 후 API를 확인했다. `http://127.0.0.1:3000/api/v1/policies?page=1&size=20`은 공개 정책 24건 중 20건을 반환했고, 첫 정책은 `2026 국가근로장학금`이었다. 웹 앱 `/`은 `200`과 `청년꿀통` 제목으로 응답했다. 검증용 웹·API 프로세스와 DB 컨테이너는 모두 종료·삭제했다.

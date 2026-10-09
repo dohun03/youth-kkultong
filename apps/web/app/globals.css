@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+:root {
+  color: #172033;
+  background: #f8fafc;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #f8fafc;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
