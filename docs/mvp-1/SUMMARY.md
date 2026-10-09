@@ -151,3 +151,20 @@
 - `corepack pnpm --filter @kkultong/web build` 성공: Next.js Webpack production build. `/policies/[id]` 동적 route 생성을 확인했다.
 - 실행 중인 로컬 웹 앱에서 `http://127.0.0.1:3001/policies/30ce595b-443c-4f8b-86db-aa6d9d549c4c`가 200으로 응답하고 상세 화면의 로딩 상태를 반환하는 것을 확인했다. 이 환경에는 브라우저 자동 제어 도구가 없어 클릭 상호작용은 컴포넌트 테스트로 확인했다.
 - `git diff --check` 성공
+
+## Step 8. Matching Engine — 공통 / 나이
+
+### 완료 내용
+
+- DB, HTTP, 현재 시각 직접 조회에 의존하지 않는 순수 매칭 엔진의 `MatchContext`, `MatchablePolicy`, `PolicyEvaluation` 최소 타입을 추가했다. 날짜와 기준 데이터는 호출자가 `MatchContext`로 주입한다.
+- `evaluateAge`는 사용자 나이 미입력 시 `NOT_PROVIDED`, 정책 `ANY` 시 `MATCH`, `UNKNOWN` 시 `POLICY_UNKNOWN`을 반환한다.
+- `TODAY` 나이 RULE은 min/max 경계를 포함해 비교하며, `FIXED_DATE`·`YEAR_DIFF`·`BIRTH_YEAR`처럼 현재 나이만으로 확정할 수 없는 기준은 정책을 제외하지 않도록 `POLICY_UNKNOWN`으로 처리한다.
+- `evaluatePolicy`는 이후 조건 평가에도 유지할 순수 함수 계약으로 `policy`, `criteria`, `context`를 받고, 이번 Step 범위에서는 나이 결과만 조립한다.
+
+### 검증
+
+- `corepack pnpm --filter @kkultong/server exec jest src/modules/matching/evaluate-age.spec.ts --runInBand` 성공: 1개 suite, 8개 test
+- `corepack pnpm --filter @kkultong/server exec jest --runInBand` 성공: 12개 suite, 48개 test. PostgreSQL 16 Testcontainers 통합 테스트를 포함한다.
+- `corepack pnpm --filter @kkultong/server typecheck` 성공
+- `corepack pnpm --filter @kkultong/server build` 성공
+- `git diff --check` 성공

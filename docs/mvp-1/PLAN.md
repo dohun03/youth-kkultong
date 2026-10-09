@@ -705,10 +705,10 @@ TODAY RULE → MATCH/MISMATCH
 
 ## 완료 체크
 
-- [ ] types
-- [ ] age evaluator
-- [ ] 최소 policy evaluator
-- [ ] unit tests
+- [x] types
+- [x] age evaluator
+- [x] 최소 policy evaluator
+- [x] unit tests
 
 **여기서 중단.**
 
