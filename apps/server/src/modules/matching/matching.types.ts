@@ -1,4 +1,9 @@
-import type { FieldEvaluation, PolicyConditions, SearchCriteria } from '@kkultong/contracts';
+import type {
+  MatchSummary,
+  PolicyConditions,
+  PolicyFieldEvaluations,
+  SearchCriteria,
+} from '@kkultong/contracts';
 
 /** 정책 조건을 순수하게 평가하는 데 필요한 기준 데이터다. */
 export interface MatchContext {
@@ -13,13 +18,12 @@ export interface MatchablePolicy {
   hasUnresolvedEligibilityCondition: boolean;
 }
 
-/** Step 8에서 조립하는 정책 평가 결과다. 이후 Step에서 지역·상태·가구원·소득 결과를 같은 객체에 추가한다. */
+/** 정책별 조건 평가, 검색 제외 여부, UI용 요약 상태를 함께 나타낸다. */
 export interface PolicyEvaluation {
-  fieldEvaluations: {
-    age: FieldEvaluation;
-    region: FieldEvaluation;
-    status: FieldEvaluation;
-  };
+  fieldEvaluations: PolicyFieldEvaluations;
+  excluded: boolean;
+  matchSummary: MatchSummary;
+  requiresManualCheck: boolean;
 }
 
 /** 나이 평가에 사용할 사용자 입력만 분리한 형태다. */
@@ -30,3 +34,9 @@ export type RegionCriteria = Pick<SearchCriteria, 'regionCode'>;
 
 /** 상태 평가에 사용할 사용자 입력만 분리한 형태다. */
 export type StatusCriteria = Pick<SearchCriteria, 'statuses'>;
+
+/** 가구원 수 평가에 사용할 사용자 입력만 분리한 형태다. */
+export type HouseholdCriteria = Pick<SearchCriteria, 'householdSize'>;
+
+/** 소득 평가에 사용할 사용자 입력만 분리한 형태다. */
+export type IncomeCriteria = Pick<SearchCriteria, 'householdMonthlyIncome' | 'householdSize'>;

@@ -1,26 +1,5 @@
 import type { PolicyConditions } from '@kkultong/contracts';
 import { evaluateAge } from './evaluate-age';
-import { evaluatePolicy } from './evaluate-policy';
-import type { MatchContext, MatchablePolicy } from './matching.types';
-
-const DEFAULT_CONTEXT: MatchContext = {
-  today: new Date('2026-10-09T00:00:00.000Z'),
-  medianIncomeByHouseholdSize: new Map(),
-  regionParentByCode: new Map(),
-};
-
-function createPolicy(age: PolicyConditions['age']): MatchablePolicy {
-  return {
-    conditions: {
-      age,
-      region: { kind: 'ANY' },
-      income: { kind: 'ANY' },
-      status: { kind: 'ANY' },
-      householdSize: { kind: 'ANY' },
-    },
-    hasUnresolvedEligibilityCondition: false,
-  };
-}
 
 describe('evaluateAge', () => {
   it('나이를 입력하지 않으면 정책 조건과 무관하게 NOT_PROVIDED를 반환한다', () => {
@@ -66,17 +45,5 @@ describe('evaluateAge', () => {
     } as PolicyConditions['age'];
 
     expect(evaluateAge(condition, { age: 25 })).toBe('POLICY_UNKNOWN');
-  });
-});
-
-describe('evaluatePolicy', () => {
-  it('Step 9에서는 나이·지역·상태 평가 결과를 조립한다', () => {
-    expect(evaluatePolicy(createPolicy({ kind: 'ANY' }), { age: 25 }, DEFAULT_CONTEXT)).toEqual({
-      fieldEvaluations: {
-        age: 'MATCH',
-        region: 'NOT_PROVIDED',
-        status: 'NOT_PROVIDED',
-      },
-    });
   });
 });

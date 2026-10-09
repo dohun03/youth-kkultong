@@ -185,3 +185,20 @@
 - `corepack pnpm --filter @kkultong/server typecheck` 성공
 - `corepack pnpm --filter @kkultong/server build` 성공
 - `git diff --check` 성공
+
+## Step 10. Matching Engine — 가구원 / 소득 / 최종 Summary
+
+### 완료 내용
+
+- 가구원 수 ANY·UNKNOWN·RULE 범위 평가를 추가했다.
+- 소득 RULE은 월 가구소득과 가구원 수를 모두 요구하고, 해당 가구원 수의 기준 중위소득이 없으면 임의 대체 없이 `POLICY_UNKNOWN`으로 처리한다.
+- `evaluatePolicy`가 다섯 조건을 모두 평가해 `excluded`, `matchSummary`, `requiresManualCheck`을 계산한다. `MISMATCH`만 제외하며, `POLICY_UNKNOWN` 및 미해결 조건은 결과에 남겨 `NEEDS_CHECK`으로 표시한다.
+- 사용자 입력이 전혀 없으면 `UNASSESSED`, 입력이 부족한 비교 가능 RULE이 있으면 `PARTIAL`, 나머지는 `MATCHED`로 결정한다.
+
+### 검증
+
+- `corepack pnpm --filter @kkultong/server exec jest src/modules/matching --runInBand` 성공: 6개 suite, 34개 test
+- `corepack pnpm --filter @kkultong/server exec jest --runInBand` 성공: 17개 suite, 74개 test. PostgreSQL 16 Testcontainers 통합 테스트를 포함한다.
+- `corepack pnpm --filter @kkultong/server typecheck` 성공
+- `corepack pnpm --filter @kkultong/server build` 성공
+- `git diff --check` 성공

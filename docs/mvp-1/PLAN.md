@@ -868,10 +868,10 @@ UNKNOWN/unresolved 존재 → NEEDS_CHECK
 
 ## 완료 체크
 
-- [ ] household
-- [ ] income
-- [ ] final summary
-- [ ] full matching tests
+- [x] household
+- [x] income
+- [x] final summary
+- [x] full matching tests
 
 **여기서 중단.**
 
