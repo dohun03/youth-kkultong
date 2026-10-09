@@ -220,3 +220,21 @@
 - `corepack pnpm --filter @kkultong/server build` 성공
 - 임시 PostgreSQL에 migration·seed·정책 30건 import 후 `curl -X POST http://127.0.0.1:3002/api/v1/policies/search`로 `{ "age": 27, "regionCode": "11", "statuses": ["JOB_SEEKER"] }` 요청을 확인했다. 응답은 16건, `appliedCriteria`, 정책별 `fieldEvaluations` 및 `matchSummary`를 포함했다. 검증용 DB 컨테이너는 종료·삭제했다.
 - `git diff --check` 성공
+
+## Step 12. 검색 UI — 기본 조건
+
+### 완료 내용
+
+- 홈 화면에 `SearchPanel`을 연결해 카테고리, 시·도, 나이, 다중 선택 가능한 현재 상태를 제공했다. 선택지는 기존 Meta API에서 읽어 하드코딩하지 않았다.
+- 결과 보기 시 입력한 조건만 JSON body에 담아 `POST /api/v1/policies/search`를 호출하고, 명백한 불일치 정책을 제외한 결과 수와 정책 카드를 표시한다. 실시간 검색은 추가하지 않았다.
+- 조건 초기화는 입력값을 모두 비우고 `GET /api/v1/policies` 기본 목록으로 전환한다. 기존 페이지 이동도 검색·기본 목록 양쪽에서 유지했다.
+- 검색 결과 0건은 자격을 단정하지 않는 안내 문구를 제공하고, 오류와 로딩 상태에서는 재시도 UI를 제공한다.
+- Node 24에서 Next가 TypeScript CLI 설정 출력을 읽지 못해 build가 중단되는 문제를 피하도록 TypeScript API 경로를 사용하게 설정했다.
+
+### 검증
+
+- `corepack pnpm --filter @kkultong/web typecheck` 성공
+- `corepack pnpm --filter @kkultong/web test` 성공: 3개 suite, 13개 test. 기본 입력, submit body, reset의 GET 재호출, 결과 수, empty 상태를 확인했다.
+- `corepack pnpm --filter @kkultong/web build` 성공: Next.js Webpack production build
+- 빌드된 로컬 웹 앱의 `/`가 200으로 응답하고 조건 검색, 카테고리, 현재 상태, 결과 보기, 조건 초기화 UI 문자열을 반환하는 것을 확인했다. 이 환경에는 브라우저 자동 제어 도구가 없어 상호작용은 컴포넌트 테스트로 검증했다.
+- `git diff --check` 성공

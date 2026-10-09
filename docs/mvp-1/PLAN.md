@@ -1032,12 +1032,12 @@ apps/web/app/page.tsx
 
 ## 완료 체크
 
-- [ ] primary search form
-- [ ] submit
-- [ ] reset
-- [ ] result rendering
-- [ ] frontend test
-- [ ] browser 확인
+- [x] primary search form
+- [x] submit
+- [x] reset
+- [x] result rendering
+- [x] frontend test
+- [x] browser 확인
 
 **여기서 중단.**
 

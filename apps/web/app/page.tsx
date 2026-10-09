@@ -1,4 +1,4 @@
-import { PolicyList } from '../components/policy/PolicyList';
+import { SearchPanel } from '../components/search/SearchPanel';
 
 export default function HomePage(): React.ReactElement {
   return (
@@ -11,7 +11,7 @@ export default function HomePage(): React.ReactElement {
         </p>
       </header>
 
-      <PolicyList />
+      <SearchPanel />
     </main>
   );
 }
