@@ -238,3 +238,19 @@
 - `corepack pnpm --filter @kkultong/web build` 성공: Next.js Webpack production build
 - 빌드된 로컬 웹 앱의 `/`가 200으로 응답하고 조건 검색, 카테고리, 현재 상태, 결과 보기, 조건 초기화 UI 문자열을 반환하는 것을 확인했다. 이 환경에는 브라우저 자동 제어 도구가 없어 상호작용은 컴포넌트 테스트로 검증했다.
 - `git diff --check` 성공
+
+## Step 13. 검색 UI — 추가 조건 / 결과 상태
+
+### 완료 내용
+
+- `SearchPanel`에 접을 수 있는 추가 조건 영역을 추가했다. 가구원 수와 월 가구소득은 기본 조건보다 뒤에 노출하며, 소득 기준은 자동 판정하기 어려울 수 있다는 설명을 함께 표시한다.
+- 두 보조 입력은 값이 있을 때만 검색 요청의 JSON body에 `householdSize`, `householdMonthlyIncome`으로 담긴다. URL query에 소득·가구원 값을 넣지 않는다.
+- 검색 결과 `PolicyCard`는 `MATCHED`, `PARTIAL`, `NEEDS_CHECK` 상태에 따라 입력 조건 결과를 표시한다. `requiresManualCheck`와 `NEEDS_CHECK`는 별도의 작은 `추가 조건 확인 필요` 안내로 처리해, 현재 미해결 조건이 많은 데이터에서 카드 전체를 과도하게 경고하지 않는다.
+- 자격 확정 표현은 사용하지 않았고, 일반 정책 목록 카드에는 검색 결과 상태를 표시하지 않는다.
+
+### 검증
+
+- `corepack pnpm --filter @kkultong/web typecheck` 성공
+- `corepack pnpm --filter @kkultong/web test` 성공: 3개 suite, 17개 test. 추가 조건 접힘, 소득·가구원 request body, MATCHED/PARTIAL/NEEDS_CHECK, 자격 확정 문구 미사용을 확인했다.
+- `corepack pnpm --filter @kkultong/web build` 성공: Next.js Webpack production build
+- `git diff --check` 성공

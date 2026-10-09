@@ -1,4 +1,4 @@
-import type { PolicyCard as PolicyCardData, PolicyListResponse } from '@kkultong/contracts';
+import type { PolicyCard as PolicyCardData, PolicyListResponse, PolicySearchCard } from '@kkultong/contracts';
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchPolicies } from '../../lib/api/policies';
@@ -39,6 +39,10 @@ const policyList: PolicyListResponse = {
 
 const mockedFetchPolicies = vi.mocked(fetchPolicies);
 
+function createSearchResult(matchSummary: PolicySearchCard['matchSummary'], requiresManualCheck = false) {
+  return { matchSummary, requiresManualCheck };
+}
+
 describe('PolicyCard', () => {
   beforeEach(() => {
     mockedFetchPolicies.mockReset();
@@ -53,6 +57,30 @@ describe('PolicyCard', () => {
     expect(screen.getByText('전국')).toBeInTheDocument();
     expect(screen.getByText('만 19~34세')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '상세 보기' })).toHaveAttribute('href', '/policies/policy-1');
+  });
+
+  it('MATCHED 검색 결과를 자격 확정 없이 입력 조건과 잘 맞는다고 안내한다', () => {
+    render(<PolicyCard policy={policy} searchResult={createSearchResult('MATCHED')} />);
+
+    expect(screen.getByText('입력한 조건과 잘 맞아요')).toBeInTheDocument();
+    expect(screen.queryByText(/받을 수 있습니다|자격이 확정/)).not.toBeInTheDocument();
+  });
+
+  it('PARTIAL 검색 결과는 추가 입력 필요를 안내한다', () => {
+    render(<PolicyCard policy={policy} searchResult={createSearchResult('PARTIAL')} />);
+
+    expect(screen.getByText('입력한 조건과 충돌 없음')).toBeInTheDocument();
+    expect(screen.getByText('일부 조건은 추가 입력이 필요해요')).toBeInTheDocument();
+  });
+
+  it('NEEDS_CHECK 또는 미해결 조건은 작은 추가 확인 안내를 보여 준다', () => {
+    const { rerender } = render(<PolicyCard policy={policy} searchResult={createSearchResult('NEEDS_CHECK')} />);
+
+    expect(screen.getByText('추가 조건 확인 필요')).toBeInTheDocument();
+
+    rerender(<PolicyCard policy={policy} searchResult={createSearchResult('PARTIAL', true)} />);
+
+    expect(screen.getByText('추가 조건 확인 필요')).toBeInTheDocument();
   });
 
   it('정책 목록과 전체 개수를 보여 준다', async () => {

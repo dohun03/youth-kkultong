@@ -97,6 +97,28 @@ describe('SearchPanel', () => {
     });
   });
 
+  it('추가 조건을 펼치고 가구원 수와 월 가구소득을 body로 검색 요청한다', async () => {
+    mockedSearchPolicies.mockResolvedValue(searchResponse);
+    render(<SearchPanel />);
+
+    await screen.findByLabelText('카테고리');
+    const advancedButton = screen.getByRole('button', { name: '추가 조건 열기' });
+    expect(advancedButton).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(advancedButton);
+
+    expect(screen.getByText('일부 정책은 소득 기준을 자동으로 판단하기 어려울 수 있습니다.')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('가구원 수'), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('월 가구소득'), { target: { value: '3000000' } });
+    fireEvent.click(screen.getByRole('button', { name: '결과 보기' }));
+
+    await waitFor(() => {
+      expect(mockedSearchPolicies).toHaveBeenCalledWith(
+        { householdSize: 2, householdMonthlyIncome: 3000000, page: 1 },
+        expect.any(AbortSignal),
+      );
+    });
+  });
+
   it('조건 초기화 시 기본 목록 GET을 다시 요청한다', async () => {
     mockedSearchPolicies.mockResolvedValue(searchResponse);
     render(<SearchPanel />);

@@ -1109,11 +1109,11 @@ PolicyCard.tsx
 
 ## 완료 체크
 
-- [ ] advanced inputs
-- [ ] match display
-- [ ] manual check display
-- [ ] privacy 확인
-- [ ] frontend tests
+- [x] advanced inputs
+- [x] match display
+- [x] manual check display
+- [x] privacy 확인
+- [x] frontend tests
 
 **여기서 중단.**
 

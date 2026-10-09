@@ -1,4 +1,4 @@
-import type { PolicyCard as PolicyCardData } from '@kkultong/contracts';
+import type { PolicyCard as PolicyCardData, PolicySearchCard } from '@kkultong/contracts';
 
 const categoryLabels = {
   HOUSING: '주거',
@@ -11,10 +11,11 @@ const categoryLabels = {
 
 interface PolicyCardProps {
   policy: PolicyCardData;
+  searchResult?: Pick<PolicySearchCard, 'matchSummary' | 'requiresManualCheck'>;
 }
 
 /** 일반 목록에서 정책의 핵심 지원 내용과 기본 자격 기준을 보여 준다. */
-export function PolicyCard({ policy }: PolicyCardProps): React.ReactElement {
+export function PolicyCard({ policy, searchResult }: PolicyCardProps): React.ReactElement {
   return (
     <article className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <div className="flex items-start justify-between gap-4">
@@ -33,6 +34,8 @@ export function PolicyCard({ policy }: PolicyCardProps): React.ReactElement {
         <InfoRow label="기관" value={policy.agency} />
       </dl>
 
+      {searchResult !== undefined ? <SearchMatchStatus searchResult={searchResult} /> : null}
+
       <a
         className="mt-7 inline-flex w-fit items-center rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 focus:outline-2 focus:outline-offset-2 focus:outline-slate-900"
         href={`/policies/${policy.id}`}
@@ -40,6 +43,27 @@ export function PolicyCard({ policy }: PolicyCardProps): React.ReactElement {
         상세 보기
       </a>
     </article>
+  );
+}
+
+/** 검색 결과에서 자동 비교 결과와 별도 확인이 필요한 조건을 분리해 알린다. */
+function SearchMatchStatus({
+  searchResult,
+}: {
+  searchResult: Pick<PolicySearchCard, 'matchSummary' | 'requiresManualCheck'>;
+}): React.ReactElement {
+  if (searchResult.matchSummary === 'MATCHED') {
+    return <p className="mt-5 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900">입력한 조건과 잘 맞아요</p>;
+  }
+
+  const needsManualCheck = searchResult.matchSummary === 'NEEDS_CHECK' || searchResult.requiresManualCheck;
+
+  return (
+    <div className="mt-5 rounded-lg bg-slate-50 p-3 text-sm text-slate-800">
+      <p className="font-semibold">입력한 조건과 충돌 없음</p>
+      {searchResult.matchSummary === 'PARTIAL' ? <p className="mt-1">일부 조건은 추가 입력이 필요해요</p> : null}
+      {needsManualCheck ? <p className="mt-1 text-amber-800">추가 조건 확인 필요</p> : null}
+    </div>
   );
 }
 

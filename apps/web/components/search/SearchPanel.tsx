@@ -1,6 +1,14 @@
 'use client';
 
-import type { PolicyCard as PolicyCardData, PolicyCategory, PolicyListResponse, PolicySearchResponse, SearchCriteria, UserStatus } from '@kkultong/contracts';
+import type {
+  PolicyCard as PolicyCardData,
+  PolicyCategory,
+  PolicyListResponse,
+  PolicySearchCard,
+  PolicySearchResponse,
+  SearchCriteria,
+  UserStatus,
+} from '@kkultong/contracts';
 import { FormEvent, useEffect, useState } from 'react';
 import { fetchPolicies, fetchSearchOptions, searchPolicies, type SearchOptions } from '../../lib/api/policies';
 import { PolicyCard } from '../policy/PolicyCard';
@@ -28,6 +36,9 @@ export function SearchPanel(): React.ReactElement {
   const [regionCode, setRegionCode] = useState('');
   const [age, setAge] = useState('');
   const [statuses, setStatuses] = useState<UserStatus[]>([]);
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+  const [householdSize, setHouseholdSize] = useState('');
+  const [householdMonthlyIncome, setHouseholdMonthlyIncome] = useState('');
   const [submittedCriteria, setSubmittedCriteria] = useState<SearchCriteria | null>(null);
   const [page, setPage] = useState(1);
   const [refreshId, setRefreshId] = useState(0);
@@ -84,6 +95,12 @@ export function SearchPanel(): React.ReactElement {
     if (statuses.length > 0) {
       criteria.statuses = statuses;
     }
+    if (householdSize !== '') {
+      criteria.householdSize = Number(householdSize);
+    }
+    if (householdMonthlyIncome !== '') {
+      criteria.householdMonthlyIncome = Number(householdMonthlyIncome);
+    }
 
     setPage(1);
     setSubmittedCriteria(criteria);
@@ -94,6 +111,9 @@ export function SearchPanel(): React.ReactElement {
     setRegionCode('');
     setAge('');
     setStatuses([]);
+    setIsAdvancedOpen(false);
+    setHouseholdSize('');
+    setHouseholdMonthlyIncome('');
     setPage(1);
     setSubmittedCriteria(null);
     setRefreshId((current) => current + 1);
@@ -106,7 +126,7 @@ export function SearchPanel(): React.ReactElement {
   }
 
   const isSearchResult = submittedCriteria !== null;
-  const policies = result === null ? [] : toPolicyCards(result);
+  const resultCards = result === null ? [] : toResultCards(result);
 
   return (
     <>
@@ -174,6 +194,48 @@ export function SearchPanel(): React.ReactElement {
             </fieldset>
           </div>
 
+          <div className="mt-6 border-t border-slate-100 pt-6">
+            <button
+              aria-controls="advanced-conditions"
+              aria-expanded={isAdvancedOpen}
+              className="text-sm font-semibold text-emerald-800 underline"
+              onClick={() => setIsAdvancedOpen((current) => !current)}
+              type="button"
+            >
+              {isAdvancedOpen ? '추가 조건 닫기' : '추가 조건 열기'}
+            </button>
+
+            {isAdvancedOpen ? (
+              <div id="advanced-conditions" className="mt-4 rounded-xl bg-slate-50 p-4">
+                <p className="text-sm leading-6 text-slate-600">일부 정책은 소득 기준을 자동으로 판단하기 어려울 수 있습니다.</p>
+                <div className="mt-4 grid gap-5 md:grid-cols-2">
+                  <label className="grid gap-2 text-sm font-semibold text-slate-800">
+                    가구원 수
+                    <input
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-normal"
+                      min="1"
+                      onChange={(event) => setHouseholdSize(event.target.value)}
+                      placeholder="예: 1"
+                      type="number"
+                      value={householdSize}
+                    />
+                  </label>
+                  <label className="grid gap-2 text-sm font-semibold text-slate-800">
+                    월 가구소득
+                    <input
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-normal"
+                      min="0"
+                      onChange={(event) => setHouseholdMonthlyIncome(event.target.value)}
+                      placeholder="예: 3000000"
+                      type="number"
+                      value={householdMonthlyIncome}
+                    />
+                  </label>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
           <div className="mt-7 flex flex-wrap gap-3">
             <button className="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white" type="submit">
               결과 보기
@@ -199,7 +261,7 @@ export function SearchPanel(): React.ReactElement {
             <h2 id="policy-results-title" className="text-2xl font-bold text-slate-950">정책 결과</h2>
             <p className="mt-3 text-slate-600">정책을 불러오는 중입니다.</p>
           </div>
-        ) : policies.length === 0 ? (
+        ) : resultCards.length === 0 ? (
           <div className="rounded-2xl border border-slate-200 bg-white p-6">
             <h2 id="policy-results-title" className="text-2xl font-bold text-slate-950">정책 결과</h2>
             <p className="mt-3 text-slate-600">
@@ -224,7 +286,9 @@ export function SearchPanel(): React.ReactElement {
             </div>
 
             <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {policies.map((policy) => <PolicyCard key={policy.id} policy={policy} />)}
+              {resultCards.map(({ policy, searchResult }) => (
+                <PolicyCard key={policy.id} policy={policy} searchResult={searchResult} />
+              ))}
             </div>
 
             {result.totalPages > 1 ? (
@@ -241,6 +305,18 @@ export function SearchPanel(): React.ReactElement {
   );
 }
 
-function toPolicyCards(result: PolicyListResponse | PolicySearchResponse): PolicyCardData[] {
-  return 'appliedCriteria' in result ? result.items.map((item) => item.policy) : result.items;
+interface ResultCard {
+  policy: PolicyCardData;
+  searchResult?: Pick<PolicySearchCard, 'matchSummary' | 'requiresManualCheck'>;
+}
+
+function toResultCards(result: PolicyListResponse | PolicySearchResponse): ResultCard[] {
+  if ('appliedCriteria' in result) {
+    return result.items.map(({ policy, matchSummary, requiresManualCheck }) => ({
+      policy,
+      searchResult: { matchSummary, requiresManualCheck },
+    }));
+  }
+
+  return result.items.map((policy) => ({ policy }));
 }
