@@ -1,11 +1,27 @@
+import type { PolicyCategory, SourceStatus } from '@kkultong/contracts';
 import { In, type DataSource, type EntityManager } from 'typeorm';
 import { RegionEntity } from '../../meta/entities/region.entity';
 import { PolicyEntity } from '../entities/policy.entity';
 import { PolicySourceEntity } from '../entities/policy-source.entity';
 
+export interface FindPublicPoliciesOptions {
+  category?: PolicyCategory;
+  offset: number;
+  limit: number;
+  today: string;
+  hideBefore: Date;
+}
+
+export interface PublicPoliciesPage {
+  policies: PolicyEntity[];
+  total: number;
+}
+
+const ACTIVE_SOURCE_STATUS: SourceStatus = 'ACTIVE';
+
 /**
- * 정책 저장 흐름에서 사용하는 `policies`, `policy_sources`, `regions` 엔티티의 조회와 저장을 맡는다.
- * Service가 transaction 경계를 결정하고, 이 Repository는 전달받은 EntityManager 안에서만 DB 작업을 수행한다.
+ * 공개 정책 목록과 정책 저장 흐름에 필요한 `policies`, `policy_sources`, `regions` DB 접근을 맡는다.
+ * 저장 흐름은 Service가 transaction 경계를 결정하고, 이 Repository는 전달받은 EntityManager를 우선 사용한다.
  */
 export class PolicyRepository {
   public constructor(private readonly dataSource: DataSource) {}
@@ -43,6 +59,37 @@ export class PolicyRepository {
       .find({ select: { code: true }, where: { code: In(codes) } });
 
     return regions.map((region) => region.code);
+  }
+
+  /** 정책과 전체 건수를 정렬된 페이지 단위로 조회한다. */
+  public async findPublicPolicies({
+    category,
+    offset,
+    limit,
+    today,
+    hideBefore,
+  }: FindPublicPoliciesOptions): Promise<PublicPoliciesPage> {
+    const query = this.dataSource
+      .getRepository(PolicyEntity)
+      .createQueryBuilder('policy')
+      .where('policy.is_published = :isPublished', { isPublished: true })
+      .andWhere('policy.source_status = :sourceStatus', { sourceStatus: ACTIVE_SOURCE_STATUS })
+      .andWhere('(policy.apply_end IS NULL OR policy.apply_end >= :today)', { today })
+      .andWhere('policy.last_verified_at >= :hideBefore', { hideBefore });
+
+    if (category !== undefined) {
+      query.andWhere('policy.category = :category', { category });
+    }
+
+    const [policies, total] = await query
+      .orderBy('policy.apply_end', 'ASC', 'NULLS LAST')
+      .addOrderBy('policy.title', 'ASC')
+      .addOrderBy('policy.id', 'ASC')
+      .skip(offset)
+      .take(limit)
+      .getManyAndCount();
+
+    return { policies, total };
   }
 
   /** 생성 또는 변경된 `PolicyEntity`를 현재 transaction에 저장한다. */

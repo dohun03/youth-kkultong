@@ -270,8 +270,12 @@ apps/server/src/
 ├─ modules/
 │  ├─ meta/
 │  ├─ policies/
-│  │  ├─ policy-query.service.ts
-│  │  ├─ policy-write.service.ts
+│  │  ├─ policies.module.ts
+│  │  ├─ controllers/
+│  │  │  └─ policies.controller.ts
+│  │  ├─ services/
+│  │  │  ├─ policy-query.service.ts
+│  │  │  └─ policy-write.service.ts
 │  │  ├─ repositories/
 │  │  └─ entities/
 │  ├─ matching/
