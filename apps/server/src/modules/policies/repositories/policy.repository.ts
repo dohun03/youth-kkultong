@@ -1,5 +1,6 @@
 import type { PolicyCategory, SourceStatus } from '@kkultong/contracts';
 import { In, type DataSource, type EntityManager } from 'typeorm';
+import { MedianIncomeEntity } from '../../meta/entities/median-income.entity';
 import { RegionEntity } from '../../meta/entities/region.entity';
 import { PolicyEntity } from '../entities/policy.entity';
 import { PolicySourceEntity } from '../entities/policy-source.entity';
@@ -21,6 +22,10 @@ export interface FindPublicPolicyOptions {
   id: string;
   today: string;
   hideBefore: Date;
+}
+
+export interface FindSearchContextOptions {
+  medianIncomeYear: number;
 }
 
 const ACTIVE_SOURCE_STATUS: SourceStatus = 'ACTIVE';
@@ -96,6 +101,63 @@ export class PolicyRepository {
       .getManyAndCount();
 
     return { policies, total };
+  }
+
+  /** 조건 검색 전에 공개 정책 전체를 마감일 순으로 한 번에 조회한다. */
+  public async findAllPublicPolicies({
+    categories,
+    today,
+    hideBefore,
+  }: Omit<FindPublicPoliciesOptions, 'category' | 'offset' | 'limit'> & {
+    categories?: PolicyCategory[];
+  }): Promise<PolicyEntity[]> {
+    const query = this.dataSource
+      .getRepository(PolicyEntity)
+      .createQueryBuilder('policy')
+      .where('policy.is_published = :isPublished', { isPublished: true })
+      .andWhere('policy.source_status = :sourceStatus', { sourceStatus: ACTIVE_SOURCE_STATUS })
+      .andWhere('(policy.apply_end IS NULL OR policy.apply_end >= :today)', { today })
+      .andWhere('policy.last_verified_at >= :hideBefore', { hideBefore });
+
+    if (categories !== undefined) {
+      query.andWhere('policy.category IN (:...categories)', { categories });
+    }
+
+    return query
+      .orderBy('policy.apply_end', 'ASC', 'NULLS LAST')
+      .addOrderBy('policy.title', 'ASC')
+      .addOrderBy('policy.id', 'ASC')
+      .getMany();
+  }
+
+  /** 매칭에 필요한 지역 부모 관계와 해당 연도의 중위소득을 각각 한 번에 가져온다. */
+  public async findSearchContext({
+    medianIncomeYear,
+  }: FindSearchContextOptions): Promise<{
+    regionParentByCode: Map<string, string | null>;
+    medianIncomeByHouseholdSize: Map<number, number>;
+  }> {
+    const [regions, medianIncomes] = await Promise.all([
+      this.dataSource
+        .getRepository(RegionEntity)
+        .find({ select: { code: true, parentCode: true } }),
+      this.dataSource
+        .getRepository(MedianIncomeEntity)
+        .find({
+          select: { householdSize: true, amount: true },
+          where: { year: medianIncomeYear },
+        }),
+    ]);
+
+    return {
+      regionParentByCode: new Map(regions.map((region) => [region.code, region.parentCode])),
+      medianIncomeByHouseholdSize: new Map(
+        medianIncomes.map((medianIncome) => [
+          medianIncome.householdSize,
+          Number(medianIncome.amount),
+        ]),
+      ),
+    };
   }
 
   /** 목록과 같은 공개 기준을 만족하는 정책 한 건만 반환한다. */

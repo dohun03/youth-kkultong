@@ -1,9 +1,16 @@
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import type { PolicyConditions, PolicyDetail, PolicyListResponse } from '@kkultong/contracts';
+import type {
+  PolicyConditions,
+  PolicyDetail,
+  PolicyListResponse,
+  PolicySearchResponse,
+} from '@kkultong/contracts';
 import { GenericContainer, type StartedTestContainer, Wait } from 'testcontainers';
 import { DataSource, type DeepPartial } from 'typeorm';
 import { Mvp0CorePolicy1760000000000 } from '../../src/database/migrations/001-mvp0-core-policy';
+import { MedianIncomeEntity } from '../../src/modules/meta/entities/median-income.entity';
+import { RegionEntity } from '../../src/modules/meta/entities/region.entity';
 import { PolicyEntity } from '../../src/modules/policies/entities/policy.entity';
 import { PolicySourceEntity } from '../../src/modules/policies/entities/policy-source.entity';
 import { PoliciesController } from '../../src/modules/policies/controllers/policies.controller';
@@ -64,7 +71,7 @@ function createPolicy(
   };
 }
 
-describe('GET /api/v1/policies PostgreSQL 통합', () => {
+describe('정책 목록·검색 API PostgreSQL 통합', () => {
   let container: StartedTestContainer;
   let dataSource: DataSource;
   let app: INestApplication;
@@ -86,7 +93,7 @@ describe('GET /api/v1/policies PostgreSQL 통합', () => {
     dataSource = new DataSource({
       type: 'postgres',
       url: `postgresql://${TEST_DATABASE_USER}:${TEST_DATABASE_PASSWORD}@${container.getHost()}:${container.getMappedPort(POSTGRES_PORT)}/${TEST_DATABASE_NAME}`,
-      entities: [PolicyEntity, PolicySourceEntity],
+      entities: [PolicyEntity, PolicySourceEntity, RegionEntity, MedianIncomeEntity],
       migrations: [Mvp0CorePolicy1760000000000],
       synchronize: false,
     });
@@ -229,6 +236,133 @@ describe('GET /api/v1/policies PostgreSQL 통합', () => {
     expect(response.status).toBe(400);
   });
 
+  it('조건 없이 검색하면 공개 정책 전체와 미평가 상태를 반환한다', async () => {
+    await savePolicies(createPolicy('00000000-0000-4000-8000-000000000061', '전체 검색 정책'));
+
+    const { response, body } = await searchPolicies({});
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      page: 1,
+      size: 20,
+      total: 1,
+      totalPages: 1,
+      appliedCriteria: {
+        age: false,
+        region: false,
+        status: false,
+        householdSize: false,
+        income: false,
+      },
+    });
+    expect(body.items[0]).toMatchObject({
+      policy: { title: '전체 검색 정책' },
+      matchSummary: 'UNASSESSED',
+      requiresManualCheck: false,
+      fieldEvaluations: {
+        age: 'NOT_PROVIDED',
+        region: 'NOT_PROVIDED',
+        status: 'NOT_PROVIDED',
+        householdSize: 'NOT_PROVIDED',
+        income: 'NOT_PROVIDED',
+      },
+    });
+  });
+
+  it('나이·지역·상태가 명백히 불일치한 정책은 검색 결과에서 제거한다', async () => {
+    await savePolicies(
+      createPolicy('00000000-0000-4000-8000-000000000062', '나이 불일치 정책', {
+        conditions: conditionsWith({
+          age: { kind: 'RULE', value: { min: 19, max: 34, basis: { kind: 'TODAY' } } },
+          region: { kind: 'ANY' },
+        }),
+      }),
+      createPolicy('00000000-0000-4000-8000-000000000063', '지역 불일치 정책', {
+        conditions: conditionsWith({ region: { kind: 'RULE', value: ['11'] } }),
+      }),
+      createPolicy('00000000-0000-4000-8000-000000000064', '상태 불일치 정책', {
+        conditions: conditionsWith({
+          region: { kind: 'ANY' },
+          status: { kind: 'RULE', value: ['STUDENT'] },
+        }),
+      }),
+    );
+
+    await expectSearchExcludes({ age: 35 }, '나이 불일치 정책');
+    await expectSearchExcludes({ regionCode: '26' }, '지역 불일치 정책');
+    await expectSearchExcludes({ statuses: ['EMPLOYEE'] }, '상태 불일치 정책');
+  });
+
+  it('UNKNOWN·미해결·누락된 소득 기준값 정책은 제거하지 않는다', async () => {
+    await savePolicies(
+      createPolicy('00000000-0000-4000-8000-000000000065', '알 수 없는 나이 조건', {
+        conditions: conditionsWith({ age: { kind: 'UNKNOWN' } }),
+      }),
+      createPolicy('00000000-0000-4000-8000-000000000066', '미해결 조건 정책', {
+        hasUnresolvedEligibilityCondition: true,
+        unresolvedConditionNote: '공고 원문에서 추가 조건을 확인해야 합니다.',
+      }),
+      createPolicy('00000000-0000-4000-8000-000000000067', '기준값 누락 소득 정책', {
+        conditions: conditionsWith({
+          income: { kind: 'RULE', value: { min: null, max: 100, basisConfirmed: true } },
+        }),
+      }),
+    );
+
+    const { body } = await searchPolicies({ age: 27, householdSize: 1, householdMonthlyIncome: 100_000 });
+
+    expect(body.total).toBe(3);
+    expect(body.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          policy: expect.objectContaining({ title: '알 수 없는 나이 조건' }),
+          requiresManualCheck: true,
+          fieldEvaluations: expect.objectContaining({ age: 'POLICY_UNKNOWN' }),
+        }),
+        expect.objectContaining({
+          policy: expect.objectContaining({ title: '미해결 조건 정책' }),
+          matchSummary: 'NEEDS_CHECK',
+          requiresManualCheck: true,
+        }),
+        expect.objectContaining({
+          policy: expect.objectContaining({ title: '기준값 누락 소득 정책' }),
+          requiresManualCheck: true,
+          fieldEvaluations: expect.objectContaining({ income: 'POLICY_UNKNOWN' }),
+        }),
+      ]),
+    );
+  });
+
+  it('카테고리 필터 후 마감일 순으로 pagination을 적용한다', async () => {
+    await savePolicies(
+      createPolicy('00000000-0000-4000-8000-000000000071', '첫 번째 주거 정책', {
+        applyEnd: dateFromToday(1),
+      }),
+      createPolicy('00000000-0000-4000-8000-000000000072', '두 번째 주거 정책', {
+        applyEnd: dateFromToday(2),
+      }),
+      createPolicy('00000000-0000-4000-8000-000000000073', '취업 정책', {
+        category: 'JOB',
+        applyEnd: dateFromToday(3),
+      }),
+    );
+
+    const { body } = await searchPolicies({ category: ['HOUSING'], page: 2, size: 1 });
+
+    expect(body).toMatchObject({ page: 2, size: 1, total: 2, totalPages: 2 });
+    expect(body.items.map((item) => item.policy.title)).toEqual(['두 번째 주거 정책']);
+  });
+
+  it('형식이 잘못된 검색 body를 400으로 거부한다', async () => {
+    const response = await fetch(`${baseUrl}/api/v1/policies/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ age: 121 }),
+    });
+
+    expect(response.status).toBe(400);
+  });
+
   it('공개 정책의 상세 정보와 미해결 조건 원문을 반환한다', async () => {
     const id = '00000000-0000-4000-8000-000000000041';
     await savePolicies(
@@ -313,9 +447,37 @@ describe('GET /api/v1/policies PostgreSQL 통합', () => {
     return { response, body };
   }
 
+  async function searchPolicies(
+    criteria: Record<string, unknown>,
+  ): Promise<{ response: Response; body: PolicySearchResponse }> {
+    const response = await fetch(`${baseUrl}/api/v1/policies/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(criteria),
+    });
+    const body = (await response.json()) as PolicySearchResponse;
+
+    return { response, body };
+  }
+
+  async function expectSearchExcludes(
+    criteria: Record<string, unknown>,
+    excludedTitle: string,
+  ): Promise<void> {
+    const { response, body } = await searchPolicies(criteria);
+
+    expect(response.status).toBe(200);
+    expect(body.total).toBe(2);
+    expect(body.items.map((item) => item.policy.title)).not.toContain(excludedTitle);
+  }
+
   async function expectPolicyNotFound(id: string): Promise<void> {
     const response = await fetch(`${baseUrl}/api/v1/policies/${id}`);
 
     expect(response.status).toBe(404);
   }
 });
+
+function conditionsWith(overrides: Partial<PolicyConditions>): PolicyConditions {
+  return { ...DEFAULT_CONDITIONS, ...overrides };
+}

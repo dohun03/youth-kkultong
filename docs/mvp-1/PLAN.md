@@ -960,11 +960,11 @@ curl -X POST \
 
 ## 완료 체크
 
-- [ ] search endpoint
-- [ ] context load
-- [ ] MISMATCH filtering
-- [ ] integration tests
-- [ ] curl 확인
+- [x] search endpoint
+- [x] context load
+- [x] MISMATCH filtering
+- [x] integration tests
+- [x] curl 확인
 
 **여기서 중단.**
 

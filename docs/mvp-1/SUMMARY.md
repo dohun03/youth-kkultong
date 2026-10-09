@@ -202,3 +202,21 @@
 - `corepack pnpm --filter @kkultong/server typecheck` 성공
 - `corepack pnpm --filter @kkultong/server build` 성공
 - `git diff --check` 성공
+
+## Step 11. 정책 Search API
+
+### 완료 내용
+
+- `POST /api/v1/policies/search`를 추가했다. 검색 조건은 URL query가 아닌 body로 받고, 공유 `SearchCriteriaSchema`으로 검증해 잘못된 입력은 400으로 거부한다.
+- 공개 조건을 만족한 정책 전체를 마감일 순으로 조회하고, 카테고리 배열이 있으면 DB에서 먼저 좁힌 뒤 메모리에서 `evaluatePolicy`를 실행한다. `MISMATCH`가 하나라도 있는 정책만 제거하고 그 후 pagination을 적용한다.
+- 지역 부모 관계와 요청 시각의 연도에 해당하는 기준 중위소득은 각각 한 번의 조회로 읽어 `MatchContext`에 전달한다. 정책별 DB 조회는 하지 않는다.
+- 검색 응답에 정책 카드, 필드별 평가, 최종 매칭 상태, 추가 확인 여부와 실제 적용된 조건을 반환한다. 검색 조건은 저장하거나 로그에 기록하지 않는다.
+
+### 검증
+
+- PostgreSQL 16 Testcontainers 통합 테스트에서 조건 없음, 나이·지역·상태 불일치 제거, UNKNOWN·미해결 조건 유지, 중위소득 기준값 누락 유지, category, pagination, body validation을 검증했다.
+- `corepack pnpm server:test` 성공: 17개 suite, 79개 test.
+- `corepack pnpm --filter @kkultong/server typecheck` 성공
+- `corepack pnpm --filter @kkultong/server build` 성공
+- 임시 PostgreSQL에 migration·seed·정책 30건 import 후 `curl -X POST http://127.0.0.1:3002/api/v1/policies/search`로 `{ "age": 27, "regionCode": "11", "statuses": ["JOB_SEEKER"] }` 요청을 확인했다. 응답은 16건, `appliedCriteria`, 정책별 `fieldEvaluations` 및 `matchSummary`를 포함했다. 검증용 DB 컨테이너는 종료·삭제했다.
+- `git diff --check` 성공
