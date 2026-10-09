@@ -277,8 +277,8 @@ MVP1의 단순 public API 보호 수준으로 시작한다.
 
 ```text
 apps/server/src/modules/policies/repositories/policy.repository.ts
-apps/server/src/modules/policies/policy-query.service.ts
-apps/server/src/modules/policies/policies.controller.ts
+apps/server/src/modules/policies/services/policy-query.service.ts
+apps/server/src/modules/policies/controllers/policies.controller.ts
 ```
 
 필요한 module 파일 변경은 허용한다.
@@ -370,11 +370,11 @@ curl "http://localhost:3000/api/v1/policies?page=1&size=20"
 
 ## 완료 체크
 
-- [ ] Repository public query
-- [ ] Query Service
-- [ ] Controller
-- [ ] Integration test
-- [ ] curl 확인
+- [x] Repository public query
+- [x] Query Service
+- [x] Controller
+- [x] Integration test
+- [x] curl 확인
 
 **여기서 중단.**
 
@@ -548,8 +548,8 @@ Mobile: 1 column
 
 ```text
 policy.repository.ts
-policy-query.service.ts
-policies.controller.ts
+services/policy-query.service.ts
+controllers/policies.controller.ts
 ```
 
 새 계층을 만들지 않는다.
@@ -851,7 +851,7 @@ UNKNOWN/unresolved 존재 → NEEDS_CHECK
 나머지 → MATCHED
 ```
 
-`requiresManualCheck`, `manualCheckNote`도 계산한다.
+`requiresManualCheck`를 계산한다. 원문 `manualCheckNote`는 목록·검색 응답에 포함하지 않고, Step 6의 정책 상세 응답에서만 제공한다.
 
 ## 테스트
 
@@ -888,8 +888,8 @@ Matching Engine을 실제 DB 정책에 연결한다.
 기존 중심:
 
 ```text
-policy-query.service.ts
-policies.controller.ts
+services/policy-query.service.ts
+controllers/policies.controller.ts
 matching orchestration 파일
 ```
 

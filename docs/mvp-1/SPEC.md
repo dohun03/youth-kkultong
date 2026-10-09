@@ -601,14 +601,13 @@ hasUnresolvedEligibilityCondition=true
 
 이면 절대 검색 결과에서 제거하지 않는다.
 
-API는 최소 다음 값을 결과에 포함한다.
+목록 카드와 검색 결과에는 최소 다음 값만 포함한다.
 
 ```ts
 requiresManualCheck: boolean;
-manualCheckNote: string | null;
 ```
 
-상세 화면에서는 원문 note를 사용자가 이해할 수 있게 표시한다.
+원문 `manualCheckNote`는 목록 카드와 검색 결과에 포함하지 않는다. 이 값은 정책 상세 응답에서만 제공하고, 상세 화면에서 사용자가 이해할 수 있게 표시한다.
 
 ---
 
@@ -727,7 +726,6 @@ Response:
     householdSize: FieldEvaluation;
   };
   requiresManualCheck: boolean;
-  manualCheckNote: string | null;
 }
 ```
 
@@ -754,6 +752,7 @@ Response에 포함:
 - 소득
 - 가구원
 - 미해결 조건
+- `requiresManualCheck`와 원문 `manualCheckNote`
 - 제출 서류
 - 공식 URL
 - 마지막 확인일

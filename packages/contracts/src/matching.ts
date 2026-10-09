@@ -34,13 +34,13 @@ export interface PolicyFieldEvaluations {
 
 /**
  * 조건 검색 결과 카드로, 정책 정보와 자동 비교 결과를 함께 제공한다.
+ * 원문 미해결 조건 메모는 목록에 노출하지 않고 정책 상세에서만 제공한다.
  */
 export interface PolicySearchCard {
   policy: PolicyCard;
   matchSummary: MatchSummary;
   fieldEvaluations: PolicyFieldEvaluations;
   requiresManualCheck: boolean;
-  manualCheckNote: string | null;
 }
 
 /**

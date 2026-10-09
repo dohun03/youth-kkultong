@@ -364,14 +364,13 @@ hasUnresolvedEligibilityCondition = true
 
 여도 결과에서 제외하지 않는다.
 
-API/UI에서:
+목록·검색 API/UI에서는:
 
 ```text
 requiresManualCheck
-manualCheckNote
 ```
 
-를 보여준다.
+만 보여준다. 원문 `manualCheckNote`는 정책 상세에서만 보여준다.
 
 최종 신청 전 공식 공고 확인을 안내한다.
 

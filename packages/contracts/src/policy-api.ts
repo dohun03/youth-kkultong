@@ -24,6 +24,7 @@ export interface PaginationMeta {
 
 /**
  * 일반 정책 목록에서 엔터티 전체 대신 사용자에게 보여 줄 최소 정보다.
+ * 원문 미해결 조건 메모는 목록에 노출하지 않고 정책 상세에서만 제공한다.
  */
 export interface PolicyCard {
   id: string;

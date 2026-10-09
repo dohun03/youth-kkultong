@@ -30,6 +30,7 @@
 - `PolicyListQuerySchema`와 `SearchCriteriaSchema`는 page 1, size 20 기본값 및 최대 size 50을 적용한다.
 - 나이(0~120), 가구원 수(양의 정수), 월 가구소득(0 이상의 정수), 지역 코드, 카테고리·상태 enum을 Zod로 검증한다.
 - 모든 새 공개 type과 schema에 도메인 의미를 설명하는 한글 JSDoc을 작성했고, 패키지 공개 진입점에서 export했다.
+- 목록 카드와 검색 결과에는 `requiresManualCheck`만 포함한다. 원문 `manualCheckNote`는 이후 정책 상세 응답 전용으로 제공하도록 SPEC과 계약을 정리했다.
 - 서버 API와 DB는 아직 구현하거나 변경하지 않았다. 이 계약은 이후 Step에서 공통으로 사용한다.
 
 ### 검증
@@ -57,3 +58,23 @@
 - `corepack pnpm --filter @kkultong/server exec jest --runInBand` 성공: 9개 suite, 30개 test
 - `corepack pnpm --filter @kkultong/server build` 성공
 - `git diff --check` 성공
+
+## Step 3. 정책 목록 Backend
+
+### 완료 내용
+
+- `PolicyRepository.findPublicPolicies`가 공개 여부, ACTIVE 출처, 신청 마감일, `HIDE_DAYS` 검증일을 한 DB query에 적용하고 전체 건수를 함께 반환한다.
+- `PolicyQueryService`가 목록 query의 page·size를 정규화하고, `PolicyEntity`를 공개용 `PolicyCard`로 변환한다. 기본 정렬은 신청 마감일, 정책명, id 순서이며 마감일이 없는 정책은 마지막에 둔다.
+- `GET /api/v1/policies`를 추가했다. `page`, `size`, `category`는 공유 Zod 계약으로 검증하며 유효하지 않은 query는 400으로 거부한다.
+- Nest 모듈에서 기존 TypeORM `DataSource`를 초기화해 별도 ORM 패키지 없이 정책 목록 API의 DB 연결을 제공한다.
+- 정책 모듈은 NestJS 관례에 맞춰 HTTP 진입점을 `controllers/`, 조회·저장 흐름을 `services/`로 분리했다.
+- 목록 카드와 검색 결과 계약은 `requiresManualCheck`만 포함한다. 원문 `manualCheckNote`는 정책 상세 응답에서만 제공하도록 SPEC과 공유 계약을 정리했다.
+
+### 검증
+
+- `corepack pnpm --filter @kkultong/contracts exec jest --runInBand` 성공: 2개 suite, 35개 test
+- `corepack pnpm --filter @kkultong/server exec jest --runInBand` 성공: 10개 suite, 35개 test. PostgreSQL 16 Testcontainers로 공개 조건, pagination, category, 고정 정렬, query validation을 확인했다.
+- `corepack pnpm --filter @kkultong/contracts typecheck` 성공
+- `corepack pnpm --filter @kkultong/server typecheck` 성공
+- `corepack pnpm --filter @kkultong/server build` 성공
+- 임시 PostgreSQL에 migration·seed·정책 30건 import 후 `curl "http://127.0.0.1:3002/api/v1/policies?page=1&size=20"` 성공: 공개 조건을 만족한 24건과 정책 카드 응답을 확인했다. 임시 서버와 컨테이너는 검증 후 제거했다.
