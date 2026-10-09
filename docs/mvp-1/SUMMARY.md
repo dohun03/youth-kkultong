@@ -133,3 +133,21 @@
 - `corepack pnpm --filter @kkultong/server build` 성공
 - `curl http://127.0.0.1:3000/api/v1/policies/30ce595b-443c-4f8b-86db-aa6d9d549c4c`로 실제 상세 응답을 확인했다.
 - `git diff --check` 성공
+
+## Step 7. 정책 상세 Frontend
+
+### 완료 내용
+
+- `apps/web/app/policies/[id]/page.tsx`를 추가해 목록 카드의 상세 보기 링크가 정책 상세 화면으로 이동한다.
+- `PolicyDetail`이 `GET /api/v1/policies/:id`를 호출해 정책명·기관·지원 내용·신청 기간·다섯 가지 자격 조건·추가 확인 조건·필요 서류·마지막 확인일을 표시한다.
+- UNKNOWN 자격 조건은 `직접 확인 필요`로, 미해결 조건은 `추가 조건 확인 필요`와 원문 메모로 표시한다.
+- 공식 공고 CTA는 새 탭으로 열며 `rel="noreferrer"`를 적용했다.
+- 로딩, API 오류(재시도), API 404 안내 상태를 컴포넌트 로컬 state로 처리한다. 별도 전역 상태 라이브러리는 추가하지 않았다.
+
+### 검증
+
+- `corepack pnpm --filter @kkultong/web typecheck` 성공
+- `corepack pnpm --filter @kkultong/web test` 성공: 2개 suite, 8개 test. 정상 상세, UNKNOWN, 미해결 원문, 404 상태를 검증했다.
+- `corepack pnpm --filter @kkultong/web build` 성공: Next.js Webpack production build. `/policies/[id]` 동적 route 생성을 확인했다.
+- 실행 중인 로컬 웹 앱에서 `http://127.0.0.1:3001/policies/30ce595b-443c-4f8b-86db-aa6d9d549c4c`가 200으로 응답하고 상세 화면의 로딩 상태를 반환하는 것을 확인했다. 이 환경에는 브라우저 자동 제어 도구가 없어 클릭 상호작용은 컴포넌트 테스트로 확인했다.
+- `git diff --check` 성공
