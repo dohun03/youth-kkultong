@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ThrottlerGuard, ThrottlerModule, type ThrottlerModuleOptions } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { validateEnv } from './common/config/env.schema';
+import { MetaModule } from './modules/meta/meta.module';
 import { PoliciesModule } from './modules/policies/policies.module';
 
 /** 공개 API가 단일 IP에서 허용하는 1분 요청 수다. */
@@ -29,6 +30,7 @@ export const publicApiThrottlerOptions = {
     }),
     ThrottlerModule.forRoot(publicApiThrottlerOptions),
     PoliciesModule,
+    MetaModule,
   ],
   providers: [
     {

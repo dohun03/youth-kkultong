@@ -429,10 +429,10 @@ contracts enum에서 반환한다.
 
 ## 완료 체크
 
-- [ ] regions
-- [ ] categories
-- [ ] statuses
-- [ ] test
+- [x] regions
+- [x] categories
+- [x] statuses
+- [x] test
 
 **여기서 중단.**
 

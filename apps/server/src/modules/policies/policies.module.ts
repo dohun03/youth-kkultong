@@ -33,5 +33,7 @@ const dataSourceProvider = {
         new PolicyQueryService(policyRepository, configService.getOrThrow<number>('HIDE_DAYS')),
     },
   ],
+  // Meta API도 같은 연결을 사용해 초기화 경쟁 없이 하나의 TypeORM DataSource를 공유한다.
+  exports: [DataSource],
 })
 export class PoliciesModule {}

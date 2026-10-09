@@ -78,3 +78,19 @@
 - `corepack pnpm --filter @kkultong/server typecheck` 성공
 - `corepack pnpm --filter @kkultong/server build` 성공
 - 임시 PostgreSQL에 migration·seed·정책 30건 import 후 `curl "http://127.0.0.1:3002/api/v1/policies?page=1&size=20"` 성공: 공개 조건을 만족한 24건과 정책 카드 응답을 확인했다. 임시 서버와 컨테이너는 검증 후 제거했다.
+
+## Step 4. Meta API
+
+### 완료 내용
+
+- `GET /api/v1/meta/regions`가 활성 상태인 시·도(level 1)만 행정 코드 순서로 `{ code, name }` 목록에 반환한다. 시·군·구와 비활성 지역은 MVP1 초기 검색 UI에 필요하지 않아 제외한다.
+- `GET /api/v1/meta/categories`, `GET /api/v1/meta/statuses`가 각각 `@kkultong/contracts`의 `POLICY_CATEGORIES`, `USER_STATUSES`를 그대로 반환한다. 별도 메타 테이블은 만들지 않았다.
+- Meta 모듈은 기존 정책 모듈의 TypeORM `DataSource`를 공유한다. 애플리케이션에서 DB 연결을 중복 초기화하지 않으면서 Meta API가 기존 지역 기준 데이터를 조회한다.
+
+### 검증
+
+- PostgreSQL 16 Testcontainers 통합 테스트에서 활성 시·도 필터, 행정 코드 정렬, 카테고리·상태 enum 응답을 검증했다.
+- `corepack pnpm --filter @kkultong/server typecheck` 성공
+- `corepack pnpm --filter @kkultong/server exec jest --runInBand` 성공
+- `corepack pnpm --filter @kkultong/server build` 성공
+- `git diff --check` 성공
