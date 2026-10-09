@@ -17,6 +17,12 @@ export interface PublicPoliciesPage {
   total: number;
 }
 
+export interface FindPublicPolicyOptions {
+  id: string;
+  today: string;
+  hideBefore: Date;
+}
+
 const ACTIVE_SOURCE_STATUS: SourceStatus = 'ACTIVE';
 
 /**
@@ -90,6 +96,23 @@ export class PolicyRepository {
       .getManyAndCount();
 
     return { policies, total };
+  }
+
+  /** 목록과 같은 공개 기준을 만족하는 정책 한 건만 반환한다. */
+  public async findPublicPolicy({
+    id,
+    today,
+    hideBefore,
+  }: FindPublicPolicyOptions): Promise<PolicyEntity | null> {
+    return this.dataSource
+      .getRepository(PolicyEntity)
+      .createQueryBuilder('policy')
+      .where('policy.id = :id', { id })
+      .andWhere('policy.is_published = :isPublished', { isPublished: true })
+      .andWhere('policy.source_status = :sourceStatus', { sourceStatus: ACTIVE_SOURCE_STATUS })
+      .andWhere('(policy.apply_end IS NULL OR policy.apply_end >= :today)', { today })
+      .andWhere('policy.last_verified_at >= :hideBefore', { hideBefore })
+      .getOne();
   }
 
   /** 생성 또는 변경된 `PolicyEntity`를 현재 transaction에 저장한다. */

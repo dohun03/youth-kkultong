@@ -67,6 +67,32 @@ export interface PolicyListResponse extends PaginationMeta {
 }
 
 /**
+ * 공개 정책 상세 화면에 필요한 전체 정보다.
+ * DB 엔터티의 출처·공개 상태 등 내부 관리 필드는 포함하지 않는다.
+ */
+export interface PolicyDetail {
+  id: string;
+  title: string;
+  agency: string;
+  category: PolicyCategory;
+  benefitSummary: string;
+  benefitAmount: BenefitAmount;
+  applyStart: string | null;
+  applyEnd: string | null;
+  isAlwaysOpen: boolean;
+  ageCondition: PolicyConditions['age'];
+  regionCondition: PolicyConditions['region'];
+  statusCondition: PolicyConditions['status'];
+  incomeCondition: PolicyConditions['income'];
+  householdSizeCondition: PolicyConditions['householdSize'];
+  requiresManualCheck: boolean;
+  manualCheckNote: string | null;
+  requiredDocs: string[];
+  officialUrl: string;
+  lastVerifiedAt: string;
+}
+
+/**
  * 사용자가 선택적으로 입력하는 정책 검색 및 매칭 조건이다.
  */
 export const SearchCriteriaSchema = z.strictObject({

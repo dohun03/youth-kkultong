@@ -581,10 +581,10 @@ DB Entity를 그대로 serialize하지 않는다.
 
 ## 완료 체크
 
-- [ ] detail repository/service
-- [ ] endpoint
-- [ ] integration test
-- [ ] curl 확인
+- [x] detail repository/service
+- [x] endpoint
+- [x] integration test
+- [x] curl 확인
 
 **여기서 중단.**
 

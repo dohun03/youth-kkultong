@@ -1,9 +1,11 @@
 import {
+  type PolicyDetail,
   PolicyListQuerySchema,
   type PolicyCard,
   type PolicyListQuery,
   type PolicyListResponse,
 } from '@kkultong/contracts';
+import { NotFoundException } from '@nestjs/common';
 import type { PolicyEntity } from '../entities/policy.entity';
 import { PolicyRepository } from '../repositories/policy.repository';
 
@@ -40,6 +42,20 @@ export class PolicyQueryService {
     };
   }
 
+  /** 목록과 같은 공개 기준을 통과한 정책의 상세 정보만 반환한다. */
+  public async findPublicPolicy(id: string): Promise<PolicyDetail> {
+    const today = toIsoDate(this.now());
+    const hideBefore = new Date(`${today}T00:00:00.000Z`);
+    hideBefore.setUTCDate(hideBefore.getUTCDate() - this.hideDays);
+
+    const policy = await this.policyRepository.findPublicPolicy({ id, today, hideBefore });
+    if (policy === null) {
+      throw new NotFoundException('정책을 찾을 수 없습니다.');
+    }
+
+    return this.toPolicyDetail(policy);
+  }
+
   private toPolicyCard(policy: PolicyEntity): PolicyCard {
     return {
       id: policy.id,
@@ -54,6 +70,30 @@ export class PolicyQueryService {
       regionCondition: policy.conditions.region,
       ageCondition: policy.conditions.age,
       requiresManualCheck: policy.hasUnresolvedEligibilityCondition,
+    };
+  }
+
+  private toPolicyDetail(policy: PolicyEntity): PolicyDetail {
+    return {
+      id: policy.id,
+      title: policy.title,
+      agency: policy.agency,
+      category: policy.category,
+      benefitSummary: policy.benefitSummary,
+      benefitAmount: policy.benefitAmount,
+      applyStart: policy.applyStart,
+      applyEnd: policy.applyEnd,
+      isAlwaysOpen: policy.isAlwaysOpen,
+      ageCondition: policy.conditions.age,
+      regionCondition: policy.conditions.region,
+      statusCondition: policy.conditions.status,
+      incomeCondition: policy.conditions.income,
+      householdSizeCondition: policy.conditions.householdSize,
+      requiresManualCheck: policy.hasUnresolvedEligibilityCondition,
+      manualCheckNote: policy.unresolvedConditionNote,
+      requiredDocs: policy.requiredDocs,
+      officialUrl: policy.officialUrl,
+      lastVerifiedAt: policy.lastVerifiedAt.toISOString(),
     };
   }
 }

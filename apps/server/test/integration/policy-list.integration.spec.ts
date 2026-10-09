@@ -1,6 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import type { PolicyConditions, PolicyListResponse } from '@kkultong/contracts';
+import type { PolicyConditions, PolicyDetail, PolicyListResponse } from '@kkultong/contracts';
 import { GenericContainer, type StartedTestContainer, Wait } from 'testcontainers';
 import { DataSource, type DeepPartial } from 'typeorm';
 import { Mvp0CorePolicy1760000000000 } from '../../src/database/migrations/001-mvp0-core-policy';
@@ -229,6 +229,72 @@ describe('GET /api/v1/policies PostgreSQL 통합', () => {
     expect(response.status).toBe(400);
   });
 
+  it('공개 정책의 상세 정보와 미해결 조건 원문을 반환한다', async () => {
+    const id = '00000000-0000-4000-8000-000000000041';
+    await savePolicies(
+      createPolicy(id, '상세 정책', {
+        conditions: {
+          age: { kind: 'RULE', value: { min: 19, max: 34, basis: { kind: 'TODAY' } } },
+          region: { kind: 'RULE', value: ['11'] },
+          income: { kind: 'UNKNOWN' },
+          status: { kind: 'RULE', value: ['STUDENT'] },
+          householdSize: { kind: 'ANY' },
+        },
+        hasUnresolvedEligibilityCondition: true,
+        unresolvedConditionNote: '근속 기간은 공고 원문을 확인해야 합니다.',
+        requiredDocs: ['신분증', '재학증명서'],
+      }),
+    );
+
+    const { response, body } = await getPolicy(id);
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual(
+      expect.objectContaining({
+        id,
+        title: '상세 정책',
+        ageCondition: { kind: 'RULE', value: { min: 19, max: 34, basis: { kind: 'TODAY' } } },
+        regionCondition: { kind: 'RULE', value: ['11'] },
+        statusCondition: { kind: 'RULE', value: ['STUDENT'] },
+        incomeCondition: { kind: 'UNKNOWN' },
+        householdSizeCondition: { kind: 'ANY' },
+        requiresManualCheck: true,
+        manualCheckNote: '근속 기간은 공고 원문을 확인해야 합니다.',
+        requiredDocs: ['신분증', '재학증명서'],
+        lastVerifiedAt: '2026-10-01T00:00:00.000Z',
+      }),
+    );
+    expect(body).not.toHaveProperty('sourceStatus');
+    expect(body).not.toHaveProperty('isPublished');
+  });
+
+  it('형식이 잘못된 정책 id는 400으로 거부한다', async () => {
+    const response = await fetch(`${baseUrl}/api/v1/policies/not-a-uuid`);
+
+    expect(response.status).toBe(400);
+  });
+
+  it('존재하지 않거나 공개 조건을 충족하지 않는 정책은 모두 404로 숨긴다', async () => {
+    await savePolicies(
+      createPolicy('00000000-0000-4000-8000-000000000051', '비공개 정책', { isPublished: false }),
+      createPolicy('00000000-0000-4000-8000-000000000052', '종료 출처 정책', {
+        sourceStatus: 'CLOSED',
+      }),
+      createPolicy('00000000-0000-4000-8000-000000000053', '마감 정책', {
+        applyEnd: dateFromToday(-1),
+      }),
+      createPolicy('00000000-0000-4000-8000-000000000054', '오래된 검증 정책', {
+        lastVerifiedAt: new Date('2026-09-08T23:59:59.000Z'),
+      }),
+    );
+
+    await expectPolicyNotFound('00000000-0000-4000-8000-000000000050');
+    await expectPolicyNotFound('00000000-0000-4000-8000-000000000051');
+    await expectPolicyNotFound('00000000-0000-4000-8000-000000000052');
+    await expectPolicyNotFound('00000000-0000-4000-8000-000000000053');
+    await expectPolicyNotFound('00000000-0000-4000-8000-000000000054');
+  });
+
   async function savePolicies(...policies: DeepPartial<PolicyEntity>[]): Promise<void> {
     await dataSource.getRepository(PolicyEntity).save(policies);
   }
@@ -238,5 +304,18 @@ describe('GET /api/v1/policies PostgreSQL 통합', () => {
     const body = (await response.json()) as PolicyListResponse;
 
     return { response, body };
+  }
+
+  async function getPolicy(id: string): Promise<{ response: Response; body: PolicyDetail }> {
+    const response = await fetch(`${baseUrl}/api/v1/policies/${id}`);
+    const body = (await response.json()) as PolicyDetail;
+
+    return { response, body };
+  }
+
+  async function expectPolicyNotFound(id: string): Promise<void> {
+    const response = await fetch(`${baseUrl}/api/v1/policies/${id}`);
+
+    expect(response.status).toBe(404);
   }
 });

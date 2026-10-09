@@ -112,3 +112,24 @@
 - `corepack pnpm --filter @kkultong/web build` 성공: Next.js Webpack production build
 - `git diff --check` 성공
 - 임시 PostgreSQL 16에 migration·seed·정책 30건 import 후 API를 확인했다. `http://127.0.0.1:3000/api/v1/policies?page=1&size=20`은 공개 정책 24건 중 20건을 반환했고, 첫 정책은 `2026 국가근로장학금`이었다. 웹 앱 `/`은 `200`과 `청년꿀통` 제목으로 응답했다. 검증용 웹·API 프로세스와 DB 컨테이너는 모두 종료·삭제했다.
+
+## Step 6. 정책 상세 Backend
+
+### 완료 내용
+
+- `GET /api/v1/policies/:id`를 추가했다. UUID v4 형식이 아닌 id는 400으로 거부한다.
+- 상세 조회도 목록과 동일하게 공개 여부, ACTIVE 출처, 신청 마감일, `HIDE_DAYS` 기준 마지막 확인일을 적용한다. 조건을 충족하지 않는 비공개·종료 출처·마감·오래된 검증 정책과 존재하지 않는 id는 구분하지 않고 모두 404로 처리한다.
+- 공유 contracts에 `PolicyDetail`을 추가했다. 상세 응답에는 다섯 가지 자격 조건, 미해결 조건 여부와 원문, 필요 서류, 공식 URL, 마지막 확인일을 포함한다.
+- DB Entity를 그대로 직렬화하지 않아 `sourceStatus`, `isPublished`, 출처 같은 내부 관리 필드는 API 응답에서 제외했다.
+
+### 검증
+
+- PostgreSQL 16 Testcontainers 통합 테스트에서 정상 상세 응답, 잘못된 UUID 400, 존재하지 않는 정책 404, 비공개·종료 출처·마감·오래된 검증 정책 404를 확인했다.
+- `corepack pnpm --filter @kkultong/contracts exec jest --runInBand` 성공: 2개 suite, 35개 test
+- `corepack pnpm --filter @kkultong/server exec jest --runInBand` 성공: 11개 suite, 40개 test
+- `corepack pnpm --filter @kkultong/contracts typecheck` 성공
+- `corepack pnpm --filter @kkultong/contracts build` 성공
+- `corepack pnpm --filter @kkultong/server typecheck` 성공
+- `corepack pnpm --filter @kkultong/server build` 성공
+- `curl http://127.0.0.1:3000/api/v1/policies/30ce595b-443c-4f8b-86db-aa6d9d549c4c`로 실제 상세 응답을 확인했다.
+- `git diff --check` 성공
