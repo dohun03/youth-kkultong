@@ -78,6 +78,16 @@ describe('SearchPanel', () => {
     expect(screen.getByLabelText('취업 준비 중')).toBeInTheDocument();
   });
 
+  it('목록을 불러오는 동안 검색과 초기화 버튼을 비활성화한다', async () => {
+    mockedFetchPolicies.mockImplementation(() => new Promise<PolicyListResponse>(() => undefined));
+    render(<SearchPanel />);
+
+    await screen.findByLabelText('카테고리');
+
+    expect(screen.getByRole('button', { name: '검색 중...' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '조건 초기화' })).toBeDisabled();
+  });
+
   it('입력한 기본 조건을 body로 검색 요청한다', async () => {
     mockedSearchPolicies.mockResolvedValue(searchResponse);
     render(<SearchPanel />);

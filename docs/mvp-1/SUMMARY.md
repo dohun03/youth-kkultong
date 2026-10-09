@@ -254,3 +254,20 @@
 - `corepack pnpm --filter @kkultong/web test` 성공: 3개 suite, 17개 test. 추가 조건 접힘, 소득·가구원 request body, MATCHED/PARTIAL/NEEDS_CHECK, 자격 확정 문구 미사용을 확인했다.
 - `corepack pnpm --filter @kkultong/web build` 성공: Next.js Webpack production build
 - `git diff --check` 성공
+
+## Step 14. UX 정리 / 반응형 / 접근성
+
+### 완료 내용
+
+- 검색 폼과 정책 카드의 기존 모바일 1열·중간 화면 2열·넓은 화면 3열 grid 및 페이지 최대 폭을 유지해, 정책 탐색 흐름이 화면 폭에 따라 자연스럽게 배치된다.
+- 검색 요청 중에는 `검색 중...` 상태와 함께 결과 보기·초기화 버튼을 비활성화해 중복 요청을 막는다. 오류 메시지는 `role="alert"`로 보조기술에 전달한다.
+- 모든 button, link, input, select에 일관된 `:focus-visible` outline을 추가해 키보드 탐색 위치를 알 수 있게 했다.
+- 정책 목록·상세의 긴 정책명, 기관명, 지원 내용을 줄바꿈 처리했다. 공식 공고 링크에는 `(새 창)` 표시와 기존 `target="_blank"`, `rel="noreferrer"`를 유지했다.
+
+### 검증
+
+- `corepack pnpm --filter @kkultong/web typecheck` 성공
+- `corepack pnpm --filter @kkultong/web test` 성공: 3개 suite, 19개 test. 로딩 중 버튼 비활성화, 오류 alert, 새 창 공식 공고 링크를 확인했다.
+- `corepack pnpm --filter @kkultong/web build` 성공: Next.js Webpack production build
+- 이미 실행 중인 로컬 웹 앱의 `/`가 200으로 응답하고 검색 UI를 반환하는 것을 확인했다. 이 환경에는 브라우저 자동 제어 도구가 없어 화면 폭별 실제 렌더링은 반응형 class와 컴포넌트 테스트로 확인했다.
+- `git diff --check` 성공

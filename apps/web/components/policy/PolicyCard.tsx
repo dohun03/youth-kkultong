@@ -25,8 +25,8 @@ export function PolicyCard({ policy, searchResult }: PolicyCardProps): React.Rea
         <span className="text-sm text-slate-500">{formatApplyPeriod(policy)}</span>
       </div>
 
-      <h2 className="mt-5 text-xl font-bold text-slate-950">{policy.title}</h2>
-      <p className="mt-3 leading-7 text-slate-700">{policy.benefitSummary}</p>
+      <h2 className="mt-5 break-words text-xl font-bold text-slate-950">{policy.title}</h2>
+      <p className="mt-3 break-words leading-7 text-slate-700">{policy.benefitSummary}</p>
 
       <dl className="mt-6 grid gap-3 border-t border-slate-100 pt-5 text-sm">
         <InfoRow label="지역" value={formatRegion(policy)} />

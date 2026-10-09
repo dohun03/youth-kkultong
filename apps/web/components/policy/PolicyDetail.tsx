@@ -41,7 +41,7 @@ export function PolicyDetail({ policyId }: PolicyDetailProps): React.ReactElemen
 
   if (hasError) {
     return (
-      <section aria-labelledby="policy-detail-title" className="rounded-2xl border border-rose-200 bg-rose-50 p-6">
+      <section aria-labelledby="policy-detail-title" className="rounded-2xl border border-rose-200 bg-rose-50 p-6" role="alert">
         <h1 id="policy-detail-title" className="text-2xl font-bold text-slate-950">
           정책 상세
         </h1>
@@ -94,13 +94,13 @@ function PolicyDetailContent({ policy }: { policy: PolicyDetailData }): React.Re
 
       <header className="mt-6 border-b border-slate-100 pb-7">
         <p className="text-sm font-semibold text-emerald-700">{formatCategory(policy.category)}</p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">{policy.title}</h1>
-        <p className="mt-3 text-slate-600">{policy.agency}</p>
+        <h1 className="mt-2 break-words text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">{policy.title}</h1>
+        <p className="mt-3 break-words text-slate-600">{policy.agency}</p>
       </header>
 
       <DetailSection title="지원 내용">
-        <p className="leading-7 text-slate-800">{policy.benefitSummary}</p>
-        <p className="mt-2 text-sm text-slate-600">{policy.benefitAmount.text}</p>
+        <p className="break-words leading-7 text-slate-800">{policy.benefitSummary}</p>
+        <p className="mt-2 break-words text-sm text-slate-600">{policy.benefitAmount.text}</p>
       </DetailSection>
 
       <DetailSection title="신청 기간">
@@ -150,7 +150,7 @@ function PolicyDetailContent({ policy }: { policy: PolicyDetailData }): React.Re
         rel="noreferrer"
         target="_blank"
       >
-        공식 공고 보기
+        공식 공고 보기 (새 창)
       </a>
     </article>
   );

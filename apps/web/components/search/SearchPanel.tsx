@@ -44,6 +44,7 @@ export function SearchPanel(): React.ReactElement {
   const [refreshId, setRefreshId] = useState(0);
   const [result, setResult] = useState<PolicyListResponse | PolicySearchResponse | null>(null);
   const [hasError, setHasError] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -61,22 +62,36 @@ export function SearchPanel(): React.ReactElement {
 
   useEffect(() => {
     const controller = new AbortController();
+    let isActive = true;
     setResult(null);
     setHasError(false);
+    setIsLoading(true);
 
     const request = submittedCriteria === null
       ? fetchPolicies(page, controller.signal)
       : searchPolicies({ ...submittedCriteria, page }, controller.signal);
 
     void request
-      .then(setResult)
+      .then((response) => {
+        if (isActive) {
+          setResult(response);
+        }
+      })
       .catch((error: unknown) => {
-        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+        if (isActive && !(error instanceof DOMException && error.name === 'AbortError')) {
           setHasError(true);
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsLoading(false);
         }
       });
 
-    return () => controller.abort();
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
   }, [page, refreshId, submittedCriteria]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
@@ -136,7 +151,7 @@ export function SearchPanel(): React.ReactElement {
           <p className="mt-2 text-slate-600">입력한 조건과 명확히 맞지 않는 정책을 제외해 보여 드립니다.</p>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form aria-busy={isLoading} onSubmit={handleSubmit}>
           <div className="grid gap-5 md:grid-cols-2">
             <label className="grid gap-2 text-sm font-semibold text-slate-800">
               카테고리
@@ -237,10 +252,19 @@ export function SearchPanel(): React.ReactElement {
           </div>
 
           <div className="mt-7 flex flex-wrap gap-3">
-            <button className="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white" type="submit">
-              결과 보기
+            <button
+              className="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={isLoading || options === null}
+              type="submit"
+            >
+              {isLoading ? '검색 중...' : '결과 보기'}
             </button>
-            <button className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-800" onClick={handleReset} type="button">
+            <button
+              className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={isLoading}
+              onClick={handleReset}
+              type="button"
+            >
               조건 초기화
             </button>
           </div>
@@ -249,10 +273,10 @@ export function SearchPanel(): React.ReactElement {
 
       <section aria-labelledby="policy-results-title" className="mt-10">
         {hasError ? (
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6">
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6" role="alert">
             <h2 id="policy-results-title" className="text-2xl font-bold text-slate-950">정책 결과</h2>
             <p className="mt-3 text-slate-700">정책을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</p>
-            <button className="mt-5 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white" onClick={() => setRefreshId((current) => current + 1)} type="button">
+            <button className="mt-5 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" disabled={isLoading} onClick={() => setRefreshId((current) => current + 1)} type="button">
               다시 시도
             </button>
           </div>

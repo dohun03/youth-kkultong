@@ -51,10 +51,11 @@ describe('PolicyDetail', () => {
     expect(screen.getByText('청년의 월세 부담을 지원하는 사업')).toBeInTheDocument();
     expect(screen.getByText('2026-01-01 ~ 2026-12-31')).toBeInTheDocument();
     expect(screen.getByText('신분증')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '공식 공고 보기' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: '공식 공고 보기 (새 창)' })).toHaveAttribute(
       'href',
       'https://example.go.kr/policies/1',
     );
+    expect(screen.getByRole('link', { name: '공식 공고 보기 (새 창)' })).toHaveAttribute('target', '_blank');
   });
 
   it('UNKNOWN 조건을 직접 확인 필요로 표시한다', async () => {
@@ -81,5 +82,13 @@ describe('PolicyDetail', () => {
 
     expect(await screen.findByRole('heading', { name: '정책을 찾을 수 없습니다' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '정책 목록으로 돌아가기' })).toHaveAttribute('href', '/');
+  });
+
+  it('API 오류를 접근 가능한 경고로 안내한다', async () => {
+    mockedFetchPolicy.mockRejectedValue(new Error('network failure'));
+
+    render(<PolicyDetail policyId={policy.id} />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('정책 정보를 불러오지 못했습니다.');
   });
 });

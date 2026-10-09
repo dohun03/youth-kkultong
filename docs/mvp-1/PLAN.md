@@ -1151,10 +1151,10 @@ API 오류
 
 ## 완료 체크
 
-- [ ] responsive
-- [ ] loading/error/empty
-- [ ] keyboard/basic accessibility
-- [ ] visual overflow 확인
+- [x] responsive
+- [x] loading/error/empty
+- [x] keyboard/basic accessibility
+- [x] visual overflow 확인
 
 **여기서 중단.**
 
