@@ -38,3 +38,22 @@
 - `corepack pnpm --filter @kkultong/contracts typecheck` 성공
 - `corepack pnpm --filter @kkultong/contracts build` 성공
 - `git diff --check` 성공
+
+## Step 2. Server Public API 기본 보안 / 오류 처리
+
+### 완료 내용
+
+- 모든 HTTP route에 `/api/v1` global prefix를 적용했다.
+- `WEB_ORIGIN` 한 곳만 CORS allowlist로 허용한다. Origin 헤더가 없는 서버 간 요청은 CORS 대상이 아니므로 허용하며, 그 외 브라우저 Origin에는 CORS 응답 헤더를 반환하지 않는다.
+- API 응답에는 CSP, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` 기본 보안 헤더를 설정했다.
+- `@nestjs/throttler`를 추가하고, Redis 없이 메모리 기반으로 단일 IP당 1분 60회 요청 제한을 전역 적용했다.
+- `HttpErrorFilter`가 모든 오류를 `{ statusCode, message }` 형식으로 반환한다. 예상하지 못한 오류의 message와 stack은 브라우저에 노출하지 않는다.
+- request body를 기록하는 HTTP logger를 등록하지 않았다. 이후 검색 조건 API가 추가돼도 소득 등 민감 조건의 전체 body가 로그에 남지 않도록 하는 기준이다.
+- `WEB_ORIGIN`, `API_ORIGIN`, `HIDE_DAYS`를 환경 변수 schema와 `.env.example`에 추가했다. `STALE_DAYS`는 현재 UI 요구가 없으므로 추가하지 않았다.
+
+### 검증
+
+- `corepack pnpm --filter @kkultong/server typecheck` 성공
+- `corepack pnpm --filter @kkultong/server exec jest --runInBand` 성공: 9개 suite, 30개 test
+- `corepack pnpm --filter @kkultong/server build` 성공
+- `git diff --check` 성공

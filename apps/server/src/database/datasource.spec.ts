@@ -4,6 +4,9 @@ describe('dataSource', () => {
   beforeAll(() => {
     process.env.NODE_ENV = 'test';
     process.env.DATABASE_URL = 'postgresql://kkultong:kkultong_local@localhost:5432/youth_kkultong';
+    process.env.WEB_ORIGIN = 'http://localhost:3001';
+    process.env.API_ORIGIN = 'http://localhost:3000';
+    process.env.HIDE_DAYS = '30';
     process.env.MAX_HOUSEHOLD_SIZE = '8';
   });
 

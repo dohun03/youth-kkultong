@@ -2,6 +2,9 @@ import { validateEnv } from './env.schema';
 
 const validEnvironment = {
   DATABASE_URL: 'postgresql://kkultong:kkultong_local@localhost:5432/youth_kkultong',
+  WEB_ORIGIN: 'http://localhost:3001',
+  API_ORIGIN: 'http://localhost:3000',
+  HIDE_DAYS: '30',
   MAX_HOUSEHOLD_SIZE: '8',
 };
 
@@ -10,6 +13,9 @@ describe('validateEnv', () => {
     expect(validateEnv(validEnvironment)).toEqual({
       NODE_ENV: 'development',
       DATABASE_URL: validEnvironment.DATABASE_URL,
+      WEB_ORIGIN: validEnvironment.WEB_ORIGIN,
+      API_ORIGIN: validEnvironment.API_ORIGIN,
+      HIDE_DAYS: 30,
       MAX_HOUSEHOLD_SIZE: 8,
     });
   });
@@ -39,5 +45,23 @@ describe('validateEnv', () => {
         MAX_HOUSEHOLD_SIZE: '0',
       }),
     ).toThrow('MAX_HOUSEHOLD_SIZE는 1 이상이어야 합니다.');
+  });
+
+  it('경로가 포함된 Origin을 거부한다', () => {
+    expect(() =>
+      validateEnv({
+        ...validEnvironment,
+        WEB_ORIGIN: 'http://localhost:3001/admin',
+      }),
+    ).toThrow('Origin에는 경로, 쿼리, hash를 포함할 수 없습니다.');
+  });
+
+  it('음수 HIDE_DAYS를 거부한다', () => {
+    expect(() =>
+      validateEnv({
+        ...validEnvironment,
+        HIDE_DAYS: '-1',
+      }),
+    ).toThrow('HIDE_DAYS는 0 이상이어야 합니다.');
   });
 });

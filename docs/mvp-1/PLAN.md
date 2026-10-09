@@ -259,9 +259,9 @@ MVP1의 단순 public API 보호 수준으로 시작한다.
 
 ## 완료 체크
 
-- [ ] Public API 기본 보안
-- [ ] 공통 오류 응답
-- [ ] test/build
+- [x] Public API 기본 보안
+- [x] 공통 오류 응답
+- [x] test/build
 
 **여기서 중단.**
 
