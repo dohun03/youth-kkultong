@@ -325,3 +325,25 @@
 - `corepack pnpm --filter @kkultong/server typecheck` 및 build 성공
 - `PolicySearchCacheService` 단위 테스트 성공: 초기 적재, 원자적 교체, 중복 갱신 방지, 갱신 실패 시 기존 스냅샷 유지 4건
 - PostgreSQL 통합 테스트 성공: 정책 목록·검색·상세 API 13건
+
+## Step 16. 실제 정책 데이터 50건+ 확장 / Schema 재평가
+
+### 완료 내용
+
+- 온통청년 정책 통합검색의 마감 제외 공식 정책 752건 가운데 최신 300건을 표본으로 수집했다. 기존 30건과 제목이 중복되는 8건은 제외하고 292건을 추가해 `data/policies/policies.json`은 총 322건이 됐다.
+- 추가 정책은 모두 온통청년 개별 상세 페이지를 공식 URL로 저장했다. 목록 원문에서 안전하게 확정할 수 없는 소득·고용형태·학력·전공·특화 대상·추가 신청자격 등은 임의 rule로 바꾸지 않고 `UNKNOWN` 및 상세 확인 메모로 유지했다.
+- 전체 322건 분포는 age ANY/RULE/UNKNOWN 145/164/13, region 0/321/1, income 262/3/57, status 256/27/39, householdSize 322/0/0이다. 202건은 하나 이상의 미해결 자격 조건을 가진다.
+- 반복성이 높고 입력값이 명확한 schema 후보는 학력(54건)과 현 enum 밖 고용형태(26건)로 확인했다. 그러나 정책별 의미를 하나의 rule로 안전하게 정규화하는 설계와 검색 품질 검증이 남아 있어 MVP1 schema/migration/API는 변경하지 않았다.
+- 자산(원문 문구 19건), 주택 조건(36건), 사업체 규모·매출(26건), 혼인(구조화 제한 7건), 병역(8건), 근속·성적(각 4건) 및 기타 반복 항목의 판단 근거는 `data/policies/STEP16_REPORT.md`에 기록했다.
+
+### 검증
+
+- `PolicyImportArraySchema`로 322건 전체를 직접 검증해 성공했다.
+- 정책 수, 조건별 ANY/RULE/UNKNOWN, 미해결 조건 유형별 빈도를 재집계했다.
+- 전국 예약 코드 `KR`을 제외한 모든 region RULE 코드가 현재 지역 seed에 존재하고, externalId가 중복되지 않음을 검증했다.
+- 온통청년 개별 상세 URL 표본 3건이 모두 HTTP 200으로 응답했다.
+- `corepack pnpm --filter @kkultong/contracts typecheck` 성공
+- `corepack pnpm --filter @kkultong/server exec jest src/cli/import-policies.spec.ts --runInBand` 성공: 1개 suite, 6개 test
+- 별도 임시 PostgreSQL 16 컨테이너에서 migration·seed 후 `policy:validate`를 실행했다. 실행 전 `policies`는 0건이었고, 322건 모두 `Would create`로 처리됐으며 update·unchanged·validation·region reference·transaction 오류는 없었다.
+- dry-run 뒤 같은 DB의 `policies` 행 수가 0건임을 확인했다. `regions` 284건, `median_income_table` 8건, `policy_sources` 1건의 기준 데이터는 유지됐고, 검증 컨테이너는 종료·삭제했다.
+- `git diff --check` 성공

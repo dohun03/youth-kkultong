@@ -1295,11 +1295,12 @@ Schema/migration은 임의 변경하지 않는다.
 
 ## 완료 체크
 
-- [ ] 50건+ 목표
-- [ ] 분포 재집계
-- [ ] unresolved 빈도
-- [ ] schema 후보 보고
-- [ ] 임의 schema 변경 없음
+- [x] 50건+ 목표
+- [x] 분포 재집계
+- [x] unresolved 빈도
+- [x] schema 후보 보고
+- [x] 임의 schema 변경 없음
+- [x] PostgreSQL import dry-run 및 rollback 검증
 
 **여기서 중단.**
 
