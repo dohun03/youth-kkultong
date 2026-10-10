@@ -14,6 +14,7 @@ const {
   PUBLIC_API_RATE_LIMIT_REQUESTS_PER_MINUTE,
   PUBLIC_API_RATE_LIMIT_WINDOW_MS,
   publicApiThrottlerOptions,
+  shouldSkipPublicApiRateLimit,
 } = require('./app.module') as typeof import('./app.module');
 
 describe('AppModule 공개 API 요청 제한', () => {
@@ -34,5 +35,14 @@ describe('AppModule 공개 API 요청 제한', () => {
       expect.objectContaining({ useValue: publicApiThrottlerOptions }),
     );
     expect(providers).toContainEqual({ provide: APP_GUARD, useClass: ThrottlerGuard });
+  });
+
+  it('부하 측정 우회는 test 환경에서 명시적으로 켠 경우에만 허용한다', () => {
+    expect(shouldSkipPublicApiRateLimit({ NODE_ENV: 'test', LOAD_TEST_SKIP_RATE_LIMIT: 'true' }))
+      .toBe(true);
+    expect(shouldSkipPublicApiRateLimit({ NODE_ENV: 'production', LOAD_TEST_SKIP_RATE_LIMIT: 'true' }))
+      .toBe(false);
+    expect(shouldSkipPublicApiRateLimit({ NODE_ENV: 'test', LOAD_TEST_SKIP_RATE_LIMIT: 'false' }))
+      .toBe(false);
   });
 });

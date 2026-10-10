@@ -13,7 +13,8 @@
     "db:seed": "ts-node src/database/seeds/run-seeds.ts",
     "import:policies": "ts-node src/cli/import-policies.ts",
     "policy:validate": "ts-node src/cli/import-policies.ts --file ../../data/policies/policies.json --dry-run",
-    "policy:import": "ts-node src/cli/import-policies.ts --file ../../data/policies/policies.json"
+    "policy:import": "ts-node src/cli/import-policies.ts --file ../../data/policies/policies.json",
+    "load:fixture": "ts-node test/load/generate-load-policies.ts"
   },
   "dependencies": {
     "@kkultong/contracts": "workspace:*",

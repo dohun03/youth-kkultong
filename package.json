@@ -10,6 +10,8 @@
     "db:revert": "corepack pnpm --filter @kkultong/server db:revert",
     "db:seed": "corepack pnpm --filter @kkultong/server db:seed",
     "policy:validate": "corepack pnpm --filter @kkultong/server policy:validate",
-    "policy:import": "corepack pnpm --filter @kkultong/server policy:import"
+    "policy:import": "corepack pnpm --filter @kkultong/server policy:import",
+    "load:fixture": "corepack pnpm --filter @kkultong/server load:fixture",
+    "load:test": "k6 run test/load/policies.load.js"
   }
 }

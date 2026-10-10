@@ -13,6 +13,8 @@ export const PUBLIC_API_RATE_LIMIT_WINDOW_MS = 60_000;
 /** 메모리 기반으로 적용하는 MVP1 공개 API 제한 설정이다. */
 export const publicApiThrottlerOptions = {
   errorMessage: '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.',
+  // 운영 환경에서는 어떤 환경 변수로도 제한을 우회할 수 없게 한다.
+  skipIf: () => shouldSkipPublicApiRateLimit(process.env),
   throttlers: [
     {
       ttl: PUBLIC_API_RATE_LIMIT_WINDOW_MS,
@@ -21,6 +23,11 @@ export const publicApiThrottlerOptions = {
     },
   ],
 } satisfies ThrottlerModuleOptions;
+
+/** 동일 IP에서 50 RPS를 재현하는 전용 test 프로세스에서만 API 제한을 끈다. */
+export function shouldSkipPublicApiRateLimit(environment: NodeJS.ProcessEnv): boolean {
+  return environment.NODE_ENV === 'test' && environment.LOAD_TEST_SKIP_RATE_LIMIT === 'true';
+}
 
 @Module({
   imports: [

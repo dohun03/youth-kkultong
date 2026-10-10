@@ -12,12 +12,20 @@ describe('validateEnv', () => {
   it('기본 NODE_ENV와 숫자형 가구원 수를 정규화한다', () => {
     expect(validateEnv(validEnvironment)).toEqual({
       NODE_ENV: 'development',
+      LOAD_TEST_SKIP_RATE_LIMIT: 'false',
       DATABASE_URL: validEnvironment.DATABASE_URL,
       WEB_ORIGIN: validEnvironment.WEB_ORIGIN,
       API_ORIGIN: validEnvironment.API_ORIGIN,
       HIDE_DAYS: 30,
       MAX_HOUSEHOLD_SIZE: 8,
     });
+  });
+
+  it('부하 측정용 rate limit 우회값은 true 또는 false만 허용한다', () => {
+    expect(validateEnv({ ...validEnvironment, LOAD_TEST_SKIP_RATE_LIMIT: 'true' }))
+      .toMatchObject({ LOAD_TEST_SKIP_RATE_LIMIT: 'true' });
+    expect(() => validateEnv({ ...validEnvironment, LOAD_TEST_SKIP_RATE_LIMIT: 'yes' }))
+      .toThrow();
   });
 
   it('PostgreSQL이 아닌 DATABASE_URL을 거부한다', () => {

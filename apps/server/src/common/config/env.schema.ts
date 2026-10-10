@@ -43,6 +43,8 @@ const databaseUrlSchema = z
 
 export const envSchema = z.object({
   NODE_ENV: z.enum(NODE_ENV_VALUES).default('development'),
+  // 부하 측정은 같은 로컬 IP에서 대량 요청을 보내므로 test 환경에서만 제한을 잠시 우회할 수 있다.
+  LOAD_TEST_SKIP_RATE_LIMIT: z.enum(['true', 'false']).default('false'),
   DATABASE_URL: databaseUrlSchema,
   WEB_ORIGIN: originSchema,
   API_ORIGIN: originSchema,
