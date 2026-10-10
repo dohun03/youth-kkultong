@@ -1225,11 +1225,11 @@ Redis/cache는 자동 추가하지 않는다.
 
 ## 완료 체크
 
-- [ ] integration
-- [ ] E2E
-- [ ] load
-- [ ] security baseline
-- [ ] 성능 위험 보고
+- [x] integration
+- [x] E2E
+- [x] load (측정 완료, p95 목표 미달)
+- [x] security baseline
+- [x] 성능 위험 보고
 
 **여기서 중단.**
 

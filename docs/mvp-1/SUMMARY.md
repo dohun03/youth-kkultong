@@ -271,3 +271,35 @@
 - `corepack pnpm --filter @kkultong/web build` 성공: Next.js Webpack production build
 - 이미 실행 중인 로컬 웹 앱의 `/`가 200으로 응답하고 검색 UI를 반환하는 것을 확인했다. 이 환경에는 브라우저 자동 제어 도구가 없어 화면 폭별 실제 렌더링은 반응형 class와 컴포넌트 테스트로 확인했다.
 - `git diff --check` 성공
+
+## Step 15. 통합 / E2E / 성능 검증
+
+### 완료 내용
+
+- 기존 PostgreSQL 통합 테스트가 `GET /policies`, `GET /policies/:id`, `POST /policies/search`, `GET /meta/*` 및 공개 정책 노출 조건을 실제 HTTP·DB 경계에서 검증하는 것을 재확인했다.
+- Playwright Chromium E2E를 추가했다. 전체 정책 목록에서 나이·지역·상태를 입력하고, 결과 감소·추가 조건 확인 표시·상세 화면·새 창 공식 공고 링크까지 하나의 브라우저 흐름으로 검증한다. API 응답은 고정 fixture로 가로채고, 실제 API 계약은 위 PostgreSQL 통합 테스트가 담당한다.
+- `load:fixture <출력 경로>`가 유효한 공개 정책 1,000건 JSON을 만들고, `load:test`가 검색 API에 50 RPS·5분 k6 시나리오를 실행한다.
+- 로컬 단일 IP 부하 측정과 운영의 분당 60회 공개 API 제한이 충돌하므로, `NODE_ENV=test`와 `LOAD_TEST_SKIP_RATE_LIMIT=true`가 함께 설정된 전용 측정 프로세스에서만 rate limit을 우회하도록 했다. production에서는 같은 환경 변수를 설정해도 우회되지 않는다.
+- 허용 Origin CORS, 비허용 Origin의 CORS 헤더 부재, CSP·frame·content-type·referrer 보안 헤더, 유효하지 않은 search body의 stack 없는 400 응답을 실제 API에서 확인했다. 검색 body에 소득을 포함하지 않는 k6 시나리오이며, HTTP body logger는 등록하지 않았다.
+
+### 성능 측정 결과
+
+- 임시 PostgreSQL 16에 migration·seed 뒤 별도 fixture 1,000건을 적재해 측정했다.
+- `POST /api/v1/policies/search` 50 RPS·5분 측정 결과: 14,583 요청, 48.29 RPS, 요청 실패 0건, p95 2,194.62ms, 평균 1,763.93ms, dropped iteration 418건이다. 목표 p95 500ms를 충족하지 못했다.
+- 같은 DB의 공개 정책 조회 실행 계획은 1,000행 seq scan·정렬로 4.339ms였다. 정책별 DB 조회는 없고, 단일 검색은 약 53ms였다. 현재 병목 위험은 50 RPS에서 매 요청마다 정책 1,000건 전체를 Node.js에서 평가·결과 객체로 만드는 메모리 매칭 경로다.
+- Redis/cache/index 고도화는 추가하지 않았다. 성능 기준을 만족하려면 다음 Step에서 실제 프로파일링 결과를 바탕으로 DB 사전 필터링 또는 평가·응답 객체 생성 범위를 줄이는 개선을 별도로 결정해야 한다.
+
+### 검증
+
+- `corepack pnpm --filter @kkultong/contracts test` 성공
+- `corepack pnpm --filter @kkultong/contracts typecheck` 성공
+- `corepack pnpm --filter @kkultong/contracts build` 성공
+- `corepack pnpm --filter @kkultong/server test` 성공: 18개 suite, 82개 test. PostgreSQL 16 Testcontainers 통합 테스트 포함.
+- `corepack pnpm --filter @kkultong/server typecheck` 성공
+- `corepack pnpm --filter @kkultong/server build` 성공
+- `corepack pnpm --filter @kkultong/web test` 성공: 3개 suite, 19개 test
+- `corepack pnpm --filter @kkultong/web typecheck` 성공
+- `corepack pnpm --filter @kkultong/web build` 성공
+- `corepack pnpm --filter @kkultong/web exec playwright test --list` 성공: Chromium E2E 1건을 인식했다.
+- 실제 Playwright Chromium E2E가 성공했다: 1개 test 통과. 기존 개발 서버와 충돌하지 않도록 전용 포트 3101과 `.next-e2e` build 디렉터리를 사용하며, API Origin과 무관하게 browser route fixture를 가로채도록 보완했다.
+- 이 호스트는 sudo 권한이 없어 `libnspr4`, `libnss3`, `libasound2t64`를 시스템 전체에 설치할 수 없었다. 검증 시에는 공식 Debian 패키지를 `/tmp`에 임시로 풀고 `LD_LIBRARY_PATH`로 제공했다. 새 환경에서 E2E를 실행하려면 같은 시스템 라이브러리를 관리자 권한으로 설치해야 한다.
