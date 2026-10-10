@@ -34,7 +34,7 @@ export class PoliciesController {
       throw new BadRequestException('정책 목록 query 형식이 올바르지 않습니다.');
     }
 
-    return this.policyQueryService.findPublicPolicies(parsedQuery.data satisfies PolicyListQuery);
+    return this.policyQueryService.list(parsedQuery.data satisfies PolicyListQuery);
   }
 
   /** 공개 정책을 조건별로 검색한다. */
@@ -46,7 +46,7 @@ export class PoliciesController {
       throw new BadRequestException('정책 검색 body 형식이 올바르지 않습니다.');
     }
 
-    return this.policyQueryService.searchPublicPolicies(parsedBody.data satisfies SearchCriteria);
+    return this.policyQueryService.search(parsedBody.data satisfies SearchCriteria);
   }
 
   /** 공개 가능한 정책 한 건의 상세 정보를 조회한다. */
@@ -54,6 +54,6 @@ export class PoliciesController {
   public async findPolicy(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ): Promise<PolicyDetail> {
-    return this.policyQueryService.findPublicPolicy(id);
+    return this.policyQueryService.get(id);
   }
 }

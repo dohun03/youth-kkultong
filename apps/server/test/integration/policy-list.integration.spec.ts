@@ -15,6 +15,7 @@ import { PolicyEntity } from '../../src/modules/policies/entities/policy.entity'
 import { PolicySourceEntity } from '../../src/modules/policies/entities/policy-source.entity';
 import { PoliciesController } from '../../src/modules/policies/controllers/policies.controller';
 import { PolicyRepository } from '../../src/modules/policies/repositories/policy.repository';
+import { PolicySearchCacheService } from '../../src/modules/policies/services/policy-search-cache.service';
 import { PolicyQueryService } from '../../src/modules/policies/services/policy-query.service';
 
 const TEST_TIMEOUT_MS = 60_000;
@@ -76,6 +77,7 @@ describe('정책 목록·검색 API PostgreSQL 통합', () => {
   let dataSource: DataSource;
   let app: INestApplication;
   let baseUrl: string;
+  let policySearchCache: PolicySearchCacheService;
 
   beforeAll(async () => {
     // 공식 이미지의 초기화용 임시 서버와 최종 서버 로그를 모두 기다려 TCP 연결을 보장한다.
@@ -101,7 +103,9 @@ describe('정책 목록·검색 API PostgreSQL 통합', () => {
     await dataSource.runMigrations();
 
     const policyRepository = new PolicyRepository(dataSource);
-    const policyQueryService = new PolicyQueryService(policyRepository, HIDE_DAYS, () => NOW);
+    policySearchCache = new PolicySearchCacheService(policyRepository, () => NOW);
+    await policySearchCache.onModuleInit();
+    const policyQueryService = new PolicyQueryService(policySearchCache, HIDE_DAYS, () => NOW);
     const testingModule = await Test.createTestingModule({
       controllers: [PoliciesController],
       providers: [{ provide: PolicyQueryService, useValue: policyQueryService }],
@@ -125,6 +129,7 @@ describe('정책 목록·검색 API PostgreSQL 통합', () => {
 
   afterAll(async () => {
     await app?.close();
+    policySearchCache?.onModuleDestroy();
 
     if (dataSource?.isInitialized) {
       await dataSource.destroy();
@@ -431,6 +436,7 @@ describe('정책 목록·검색 API PostgreSQL 통합', () => {
 
   async function savePolicies(...policies: DeepPartial<PolicyEntity>[]): Promise<void> {
     await dataSource.getRepository(PolicyEntity).save(policies);
+    await policySearchCache.refresh();
   }
 
   async function getPolicies(query = ''): Promise<{ response: Response; body: PolicyListResponse }> {

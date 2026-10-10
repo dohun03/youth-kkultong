@@ -1,4 +1,9 @@
-import type { PolicyCategory, SourceStatus } from '@kkultong/contracts';
+import type {
+  BenefitAmount,
+  PolicyCategory,
+  PolicyConditions,
+  SourceStatus,
+} from '@kkultong/contracts';
 import { In, type DataSource, type EntityManager } from 'typeorm';
 import { MedianIncomeEntity } from '../../meta/entities/median-income.entity';
 import { RegionEntity } from '../../meta/entities/region.entity';
@@ -26,6 +31,25 @@ export interface FindPublicPolicyOptions {
 
 export interface FindSearchContextOptions {
   medianIncomeYear: number;
+}
+
+/** 목록·검색·상세 응답과 매칭에 필요한 공개 정책의 메모리 보관 형태다. */
+export interface CachedPublicPolicy {
+  id: string;
+  title: string;
+  agency: string;
+  category: PolicyCategory;
+  benefitSummary: string;
+  benefitAmount: BenefitAmount;
+  conditions: PolicyConditions;
+  hasUnresolvedEligibilityCondition: boolean;
+  unresolvedConditionNote: string | null;
+  requiredDocs: string[];
+  applyStart: string | null;
+  applyEnd: string | null;
+  isAlwaysOpen: boolean;
+  officialUrl: string;
+  lastVerifiedAt: Date;
 }
 
 const ACTIVE_SOURCE_STATUS: SourceStatus = 'ACTIVE';
@@ -128,6 +152,57 @@ export class PolicyRepository {
       .addOrderBy('policy.title', 'ASC')
       .addOrderBy('policy.id', 'ASC')
       .getMany();
+  }
+
+  /**
+   * 메모리 스냅샷에 적재할 공개·활성 출처 정책만 일반 객체로 반환한다.
+   * 마감일과 검증일은 요청 시각에 따라 달라질 수 있어 캐시 사용 시점에 다시 판단한다.
+   */
+  public async loadCachePolicies(): Promise<CachedPublicPolicy[]> {
+    const policies = await this.dataSource
+      .getRepository(PolicyEntity)
+      .createQueryBuilder('policy')
+      .select([
+        'policy.id',
+        'policy.title',
+        'policy.agency',
+        'policy.category',
+        'policy.benefitSummary',
+        'policy.benefitAmount',
+        'policy.conditions',
+        'policy.hasUnresolvedEligibilityCondition',
+        'policy.unresolvedConditionNote',
+        'policy.requiredDocs',
+        'policy.applyStart',
+        'policy.applyEnd',
+        'policy.isAlwaysOpen',
+        'policy.officialUrl',
+        'policy.lastVerifiedAt',
+      ])
+      .where('policy.is_published = :isPublished', { isPublished: true })
+      .andWhere('policy.source_status = :sourceStatus', { sourceStatus: ACTIVE_SOURCE_STATUS })
+      .orderBy('policy.apply_end', 'ASC', 'NULLS LAST')
+      .addOrderBy('policy.title', 'ASC')
+      .addOrderBy('policy.id', 'ASC')
+      .getMany();
+
+    return policies.map((policy) => ({
+      id: policy.id,
+      title: policy.title,
+      agency: policy.agency,
+      category: policy.category,
+      benefitSummary: policy.benefitSummary,
+      benefitAmount: policy.benefitAmount,
+      conditions: policy.conditions,
+      hasUnresolvedEligibilityCondition: policy.hasUnresolvedEligibilityCondition,
+      unresolvedConditionNote: policy.unresolvedConditionNote,
+      requiredDocs: policy.requiredDocs,
+      applyStart: policy.applyStart,
+      applyEnd: policy.applyEnd,
+      isAlwaysOpen: policy.isAlwaysOpen,
+      officialUrl: policy.officialUrl,
+      lastVerifiedAt: policy.lastVerifiedAt,
+    }));
   }
 
   /** 매칭에 필요한 지역 부모 관계와 해당 연도의 중위소득을 각각 한 번에 가져온다. */

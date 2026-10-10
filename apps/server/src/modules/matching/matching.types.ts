@@ -8,8 +8,8 @@ import type {
 /** 정책 조건을 순수하게 평가하는 데 필요한 기준 데이터다. */
 export interface MatchContext {
   today: Date;
-  medianIncomeByHouseholdSize: Map<number, number>;
-  regionParentByCode: Map<string, string | null>;
+  medianIncomeByHouseholdSize: ReadonlyMap<number, number>;
+  regionParentByCode: ReadonlyMap<string, string | null>;
 }
 
 /** 매칭 엔진이 정책 엔터티 전체 대신 참조하는 최소 정책 정보다. */
