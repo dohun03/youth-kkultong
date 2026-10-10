@@ -303,3 +303,25 @@
 - `corepack pnpm --filter @kkultong/web exec playwright test --list` 성공: Chromium E2E 1건을 인식했다.
 - 실제 Playwright Chromium E2E가 성공했다: 1개 test 통과. 기존 개발 서버와 충돌하지 않도록 전용 포트 3101과 `.next-e2e` build 디렉터리를 사용하며, API Origin과 무관하게 browser route fixture를 가로채도록 보완했다.
 - 이 호스트는 sudo 권한이 없어 `libnspr4`, `libnss3`, `libasound2t64`를 시스템 전체에 설치할 수 없었다. 검증 시에는 공식 Debian 패키지를 `/tmp`에 임시로 풀고 `LD_LIBRARY_PATH`로 제공했다. 새 환경에서 E2E를 실행하려면 같은 시스템 라이브러리를 관리자 권한으로 설치해야 한다.
+
+### 추가 성능 분석 (최적화 미수행)
+
+- 1,000건 fixture에서 검색 경로를 100회씩 계측했다. 전체 조건 기준 공개 정책 DB 조회(정렬·TypeORM Entity 생성 포함)는 평균 24.47ms/p95 30.76ms, MatchContext 준비는 4.27ms/13.27ms, 1,000건 매칭은 0.67ms/0.77ms, MISMATCH filtering은 0.07ms/0.10ms, 카드 mapping은 0.05ms/0.08ms, pagination은 0.001ms/0.002ms였다. Context 조회와 정책 조회는 병렬이므로 전체 평균은 25.48ms/p95 31.71ms다.
+- SQL 실행 계획의 전체 실행 시간은 4.21ms였고 Sort node 자체 시간은 약 3.61ms였다. 애플리케이션 내부에는 별도 sorting이 없으며 DB 정렬 순서를 그대로 사용한다.
+- 20 RPS·30초 진단에서 목록 p95는 6.32ms, 조건 없음 검색은 34.45ms, 나이 29.15ms, 지역 30.73ms, 나이·지역·상태 29.48ms, 전체 조건 30.38ms였다. 조건 종류별 큰 차이는 없었다.
+- 전체 조건 50 RPS·5분 결과는 49.31 RPS, 평균 1,325.59ms, p95 2,035.68ms, 실패 0건, dropped iteration 112건이었다. 부하 구간 Node CPU 평균은 103.22%(p95 105.30%)였고 Event Loop 지연은 평균 61.27ms, 구간별 p99의 p95 125.37ms, 최대 219.28ms였다.
+- 결론: 매 요청의 1,000건 전체 Entity 조회·정렬·역직렬화가 단일 Node 프로세스를 포화시켜 대기열을 만든다. 순수 Matching 및 pagination/mapping은 주 병목이 아니다. Redis, cache, DB schema, 로직 최적화는 추가하지 않았다.
+
+### 서버 인메모리 캐시 성능 개선
+
+- 사용자 승인에 따라 Redis 없이 단일 서버 메모리 캐시를 추가했다. 서버 기동 시 공개·활성 출처 정책, 지역 부모 관계, 기준 중위소득을 병렬로 적재하며, 정책은 API 응답·매칭에 필요한 일반 객체로만 변환해 정렬 배열과 `policyById` Map에 보관한다. TypeORM Entity는 스냅샷에 보관하지 않는다.
+- 목록·검색·상세는 모두 현재 스냅샷만 읽는다. 마감일·검증일 기준은 요청 시점에 다시 적용해 캐시 주기 중 날짜 경계도 기존 공개 규칙대로 처리한다.
+- 5분마다 새 데이터를 모두 읽은 후 스냅샷 참조를 한 번에 교체한다. 이미 갱신 중이면 진행 중 Promise를 공유해 중복 갱신하지 않으며, 갱신 실패 시 오류 로그를 남기고 기존 스냅샷을 유지한다.
+- 동일한 1,000건 fixture와 기존 k6 검색 시나리오(나이·지역·상태, 50 RPS·5분)에서 15,001 요청, 50.00 RPS, 평균 2.12ms, p95 2.69ms, HTTP 실패율 0%, dropped iteration 0건을 기록했다. 기존 결과(14,583 요청, 48.29 RPS, 평균 1,763.93ms, p95 2,194.62ms, dropped iteration 418건) 대비 p95 목표 500ms를 충족했다.
+- 새 측정의 API 프로세스 CPU는 평균 10.45%(p95 12.30%)였고 Event Loop 지연은 평균 10.17ms, 구간별 p99의 p95 14.10ms, 최대 36.24ms였다. 기존 동일 시나리오에는 CPU·Event Loop 표본을 수집하지 않아 해당 두 항목의 엄밀한 전후 수치 비교는 제공할 수 없다.
+
+### 추가 검증
+
+- `corepack pnpm --filter @kkultong/server typecheck` 및 build 성공
+- `PolicySearchCacheService` 단위 테스트 성공: 초기 적재, 원자적 교체, 중복 갱신 방지, 갱신 실패 시 기존 스냅샷 유지 4건
+- PostgreSQL 통합 테스트 성공: 정책 목록·검색·상세 API 13건

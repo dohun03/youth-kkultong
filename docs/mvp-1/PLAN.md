@@ -1227,7 +1227,7 @@ Redis/cache는 자동 추가하지 않는다.
 
 - [x] integration
 - [x] E2E
-- [x] load (측정 완료, p95 목표 미달)
+- [x] load (서버 인메모리 캐시 적용 후 50 RPS·5분 p95 목표 달성)
 - [x] security baseline
 - [x] 성능 위험 보고
 
