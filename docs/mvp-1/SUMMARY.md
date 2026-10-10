@@ -347,3 +347,25 @@
 - 별도 임시 PostgreSQL 16 컨테이너에서 migration·seed 후 `policy:validate`를 실행했다. 실행 전 `policies`는 0건이었고, 322건 모두 `Would create`로 처리됐으며 update·unchanged·validation·region reference·transaction 오류는 없었다.
 - dry-run 뒤 같은 DB의 `policies` 행 수가 0건임을 확인했다. `regions` 284건, `median_income_table` 8건, `policy_sources` 1건의 기준 데이터는 유지됐고, 검증 컨테이너는 종료·삭제했다.
 - `git diff --check` 성공
+
+## Step 17. MVP1 최종 검증
+
+### 완료 내용
+
+- 비로그인 목록, 카테고리·나이·지역·상태·가구원·소득 조건 검색, 조건 초기화, 정책 상세 및 새 창 공식 공고 이동을 최종 확인했다.
+- 매칭은 `MISMATCH`만 제외하며, `UNKNOWN`, `NOT_PROVIDED`, 미해결 조건은 결과에 남기고 `MATCHED`/`PARTIAL`/`NEEDS_CHECK` 상태로 구분한다. 자격 확정 표현은 사용하지 않고, 추가 확인이 필요한 정책을 별도 표시한다.
+- 목록·검색·상세의 loading/error/empty 상태와 반응형 class, 키보드·기본 접근성 속성을 확인했다. Playwright 흐름은 나이·지역·상태 입력부터 결과 감소, 추가 확인, 상세, 공식 공고 링크까지 통과했다.
+- 월 가구소득은 검색 요청 body에만 담기며 URL query와 영구 저장소에는 넣지 않는다. HTTP body logger를 등록하지 않았고, CORS allowlist, 보안 헤더, 공개 API rate limit, Zod validation 및 내부 stack 비노출 경로를 유지한다.
+- `data/policies/policies.json`은 322건이며 `externalId`가 모두 고유하다. Step16의 schema 재평가 결과대로 학력·현 enum 밖 고용형태는 MVP1 schema에 추가하지 않았다.
+- Step15의 1,000건 fixture·50 RPS·5분 측정 결과(평균 2.12ms, p95 2.69ms, HTTP 실패 0%, dropped iteration 0건)를 재확인해 p95 500ms 목표를 충족했다.
+
+### 검증
+
+- `corepack pnpm --filter @kkultong/contracts exec jest --runInBand` 성공: 2개 suite, 35개 test
+- `corepack pnpm --filter @kkultong/contracts typecheck` 및 build 성공
+- `corepack pnpm --filter @kkultong/server exec jest --runInBand` 성공: 19개 suite, 86개 test. PostgreSQL 16 Testcontainers 통합 테스트를 포함한다.
+- `corepack pnpm --filter @kkultong/server typecheck` 및 build 성공
+- `corepack pnpm --filter @kkultong/web test` 성공: 3개 suite, 19개 test
+- `corepack pnpm --filter @kkultong/web typecheck` 및 build 성공
+- `LD_LIBRARY_PATH=/tmp/kkultong-playwright-libs/extracted/usr/lib/x86_64-linux-gnu corepack pnpm --filter @kkultong/web test:e2e` 성공: Playwright Chromium E2E 1건 통과. 이 호스트에는 Chromium 필수 라이브러리가 없어 `/tmp`에 임시 추출한 라이브러리를 사용했고 시스템 파일은 변경하지 않았다.
+- `git diff --check` 성공

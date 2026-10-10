@@ -1310,54 +1310,54 @@ Schema/migration은 임의 변경하지 않는다.
 
 ## 기능
 
-- [ ] 비로그인 정책 목록
-- [ ] 카테고리
-- [ ] 나이
-- [ ] 지역
-- [ ] 상태
-- [ ] 가구원
-- [ ] 소득
-- [ ] 조건 초기화
-- [ ] 정책 상세
-- [ ] 공식 공고
+- [x] 비로그인 정책 목록
+- [x] 카테고리
+- [x] 나이
+- [x] 지역
+- [x] 상태
+- [x] 가구원
+- [x] 소득
+- [x] 조건 초기화
+- [x] 정책 상세
+- [x] 공식 공고
 
 ## 매칭
 
-- [ ] MISMATCH만 제외
-- [ ] UNKNOWN 유지
-- [ ] NOT_PROVIDED 유지
-- [ ] unresolved 유지
-- [ ] MATCHED/PARTIAL/NEEDS_CHECK 동작
+- [x] MISMATCH만 제외
+- [x] UNKNOWN 유지
+- [x] NOT_PROVIDED 유지
+- [x] unresolved 유지
+- [x] MATCHED/PARTIAL/NEEDS_CHECK 동작
 
 ## UX
 
-- [ ] 자격 확정 표현 없음
-- [ ] 추가 확인 상태 별도 표시
-- [ ] mobile 사용 가능
-- [ ] empty/error/loading
+- [x] 자격 확정 표현 없음
+- [x] 추가 확인 상태 별도 표시
+- [x] mobile 사용 가능
+- [x] empty/error/loading
 
 ## 보안
 
-- [ ] income 저장 안 함
-- [ ] income URL 노출 없음
-- [ ] 민감 body log 없음
-- [ ] CORS
-- [ ] rate limit
-- [ ] validation
+- [x] income 저장 안 함
+- [x] income URL 노출 없음
+- [x] 민감 body log 없음
+- [x] CORS
+- [x] rate limit
+- [x] validation
 
 ## 테스트
 
-- [ ] contracts
-- [ ] server unit
-- [ ] server integration
-- [ ] web test
-- [ ] E2E
-- [ ] load
+- [x] contracts
+- [x] server unit
+- [x] server integration
+- [x] web test
+- [x] E2E
+- [x] load
 
 ## 데이터
 
-- [ ] 50건+ 확장 목표 검토
-- [ ] schema 재평가 보고
+- [x] 50건+ 확장 목표 검토
+- [x] schema 재평가 보고
 
 ---
 
