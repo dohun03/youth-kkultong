@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-16 (Asia/Seoul) · **Step 1~4 완료, Step 5~57 미착수**
+최종 확인일: 2026-10-16 (Asia/Seoul) · **Step 1~5 완료, Step 6~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -212,8 +212,58 @@ curl --fail http://localhost:3000/api/v1/health
 - **간단한 수정 가능 여부:** 공식 공지는 수정 버전 없음으로 안내하며, `npm view sprintf-js version versions --json`에서도 최신 버전이 취약 범위에 속하는 `1.1.3`임을 확인했다. 따라서 단순 버전 업데이트로는 해소되지 않는다. 현재 Jest·TypeScript의 호환성을 바꿀 수 있는 강제 다운그레이드나 임의 패치는 적용하지 않았다. 공식 수정 버전 또는 상위 도구의 의존성 개선이 나오면 다시 검토한다.
 - 이번 후속 확인에서는 앱 코드·의존성·Step 완료 상태를 바꾸지 않고 설명과 검증 근거만 보완했다.
 
-## 8. 다음 작업을 위한 상태
+## 8. Step 5 구현·검증 결과
 
-다음 요청 대상은 **Step 5: Docker Compose 기본 실행**이다. Step 5~57은 시작하지 않았다. Step 1의 인증키·API 호출·조사 자료 및 Step 3의 개발 의존성 후속 검토 사항은 그대로 남아 있다.
+### 구현과 실제 결정사항
 
-Step 4 구현·문서 커밋: `545753e` (`feat: Next.js 정책 목록 진입 경로 구성`).
+- `compose.yaml`에 `web`, `api`, `db`를 구성했다. 공식 `node:24.18.0-bookworm-slim`, `postgres:17.11-bookworm` 태그가 존재함을 확인하고 사용했다. 시간대는 `Asia/Seoul`이다.
+- 루트 `Dockerfile`은 잠금 파일로 의존성을 설치하고 웹·API를 각각 빌드한다. API 실행 이미지는 API 작업공간의 실행 의존성만 설치한다. 웹은 Next.js `standalone` 출력과 정적 파일만 복사한다. 두 실행 이미지는 일반 `node` 사용자로 실행한다.
+- `apps/web/next.config.ts`에 `standalone` 출력과 저장소 루트 기준 파일 추적을 추가했다. Compose 빌드 인수 `API_INTERNAL_URL=http://api:4000`으로 웹 요청이 같은 네트워크의 API에 전달되도록 했다. 별도 서비스나 외부 패키지는 추가하지 않았다.
+- `app` 네트워크는 웹·API를 연결한다. 외부와 격리된 `database` 네트워크에는 API·DB만 연결한다. DB의 `5432`는 호스트에 공개하지 않는다. API는 추후 외부 수집에도 사용할 수 있도록 `app` 네트워크를 통해 외부 통신이 가능한 구성을 유지한다.
+- DB의 `pg_isready`가 TCP 접속 준비를 확인한 뒤 API, API의 health 확인 뒤 웹을 기동한다. 각 서비스의 준비 상태는 Compose healthcheck로 확인한다. API health는 아직 프로세스 응답 검사이며 DB 연결 상태를 응답에 포함하지 않는다.
+- DB는 `db_data` 이름 있는 볼륨을 `/var/lib/postgresql/data`에 연결한다. DB 이름·사용자는 `youth_kkultong`이고 비밀번호는 `.env`의 `POSTGRES_PASSWORD`에서 받는다. API에는 이를 이용한 `DATABASE_URL`을 전달했다. DB 비밀번호는 URL에도 사용할 수 있는 영문·숫자 값으로 준비한다.
+- `.env.example`에 필요한 비밀번호 항목을 안내했다. 로컬 `.env`의 기존 조사용 API 키를 보존하고 임의 생성한 DB 비밀번호를 추가했다. 값은 출력·커밋하지 않았고 파일 권한은 소유자 읽기·쓰기로 설정했다. `.dockerignore`로 `.env`·Git·로컬 의존성·빌드 결과·조사 자료를 이미지 빌드 문맥에서 제외했다.
+- TypeORM·Migration·업무 테이블은 아직 없다. 이번에는 API 컨테이너에서 DB까지 TCP 연결과 DB 자체의 비밀번호 인증·SQL 응답을 확인했다. 애플리케이션의 실제 DB 연결은 Step 6에서 구현한다. API 계약·DB 스키마·제품 정책의 변경은 없다.
+
+구성 근거: [Docker 기동 순서](https://docs.docker.com/compose/how-tos/startup-order/), [Docker 네트워크](https://docs.docker.com/reference/compose-file/networks/), [Next.js standalone 출력](https://nextjs.org/docs/app/api-reference/config/next-config-js/output).
+
+### 개발 환경 실행 방법
+
+현재 로컬은 `.env` 설정과 이미지 빌드가 완료되어 있다. 새로 복제한 환경에서는 기존 `.env`를 보존하면서 `.env.example`의 `POSTGRES_PASSWORD` 항목에 고유한 값을 추가한다. Docker 엔진과 Compose가 실행 가능한 상태에서 저장소 루트에서 실행한다.
+
+```bash
+docker compose config --quiet
+docker compose up --build -d --wait
+docker compose ps
+curl --fail http://localhost:3000/api/v1/health
+```
+
+| 서비스 | 접속·확인 위치 |
+| --- | --- |
+| 웹 | `http://localhost:3000/` → `/policies` |
+| API | `http://localhost:4000/api/v1/health` |
+| 웹을 통한 API | `http://localhost:3000/api/v1/health` |
+| DB | 컨테이너 내부 `db:5432`, 호스트 포트 없음 |
+
+웹·API 호스트 포트는 로컬 `127.0.0.1`에만 연결했다. 로컬에서 직접 실행하던 웹·API와 같은 포트를 동시에 사용할 수 없으므로 컨테이너 기동 전에 해당 로컬 프로세스를 종료한다. 소스를 수정하면 `docker compose up --build -d --wait`로 다시 빌드·기동한다.
+
+로그는 `docker compose logs -f web api db`, 중지는 `docker compose down`으로 수행한다. `down`은 DB 볼륨을 유지한다. 기존 볼륨의 DB 비밀번호를 바꾸는 작업은 환경변수 변경만으로 완료되지 않으므로 별도 DB 변경 절차가 필요하다.
+
+### 실제 검증과 남은 문제
+
+- 환경: Docker Engine `29.7.2`, Compose `v5.4.0`. Docker 소켓은 기본 샌드박스에서 접근이 거부되어 Docker 검증은 허용된 실행 환경에서 수행했다.
+- `docker compose config --quiet`, `docker compose build`: **통과**. 호스트의 설치·빌드 결과를 복사하지 않고 이미지 내부 `npm ci`와 API·Next.js 빌드를 수행했다.
+- `docker compose up -d --wait --wait-timeout 120`, `docker compose ps`: **세 서비스 모두 healthy**.
+- 실제 컨테이너 HTTP 검사: `/` 이동, `/policies`의 빈 목록, 웹→API health 전달 및 API 직접 응답 확인, **통과**. 웹의 정적 CSS 제공도 확인했다.
+- API 컨테이너의 Node.js TCP 검사로 `DATABASE_URL`의 `db:5432` 연결 **통과**. DB 컨테이너의 TCP 비밀번호 인증과 SQL 응답에서 `PostgreSQL 17.11`·DB 이름 확인, **통과**.
+- `docker compose down` 후 `up -d --wait --wait-timeout 120`로 컨테이너와 네트워크를 재생성하고 DB 클러스터 식별자가 동일함을 확인했다. 재기동 뒤 웹→API 응답도 **통과**. 볼륨은 삭제하지 않았으며 사용자 업무 테이블을 만들거나 지우지 않았다.
+- 비밀번호 누락 시 Compose 설정 오류, DB 외부 포트 미공개·내부 네트워크, 컨테이너 로그의 비밀번호 미노출, 웹·API의 일반 사용자 실행 및 `.env`·Jest·ts-jest·sprintf-js 모듈 제외 검사 **통과**. 기존 개발 의존성 경고는 빌드 도구 쪽의 후속 검토 사항으로 남긴다.
+- `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`, `git diff --check`, 문서 완료 상태·변경 범위·Git 제외 검사: **통과**.
+- 기존 중지 컨테이너 `youth-kkultong-postgres-1`이 같은 Compose 프로젝트 이름으로 남아 있어 orphan 안내가 출력됐다. 기존 컨테이너와 데이터는 보존했고 제거 옵션은 사용하지 않았다. 이번 `db` 서비스는 별도 `db_data` 볼륨으로 검증했다.
+- 검증 후 `web`, `api`, `db`는 **실행 중**이다. 브라우저 시각 검수와 TypeORM 연결·스키마 검증은 이번에 완료한 것으로 표시하지 않는다.
+
+## 9. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 6: 환경변수 검증과 TypeORM 연결**이다. Step 6~57은 시작하지 않았다. Step 1의 인증키·API 호출·조사 자료 및 개발 도구의 후속 검토 사항은 그대로 남아 있다.
+
+Step 5 구현·문서 커밋 메시지: `chore: 웹 API PostgreSQL 개발 컨테이너 구성`.

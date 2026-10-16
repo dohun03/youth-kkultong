@@ -2,7 +2,7 @@
 
 > 저장 위치: `docs/mvp-1/PLAN.md`  
 > 기준: `docs/PRD.md`(PRD v0.8), `docs/ARCHITECTURE.md`(v0.3), `docs/mvp-1/SPEC.md`(v0.4), `docs/AGENT_RULES.md`  
-> 상태: **Step 1~4 완료 · Step 5~57 미착수** · 작성일: 2026-10-16
+> 상태: **Step 1~5 완료 · Step 6~57 미착수** · 작성일: 2026-10-16
 
 ## 목차
 
@@ -81,8 +81,8 @@
 
 ### Step 5. Docker Compose 기본 실행
 
-- [ ] `web`, `api`, `db(PostgreSQL 17)` 서비스와 DB 영속 볼륨·내부 네트워크를 설정한다.
-- [ ] 개발용 실행 방법과 포트·DB 준비 상태를 확인한다.
+- [x] `web`, `api`, `db(PostgreSQL 17)` 서비스와 DB 영속 볼륨·내부 네트워크를 설정한다.
+- [x] 개발용 실행 방법과 포트·DB 준비 상태를 확인한다.
 
 **검증/완료:** Compose로 세 서비스가 기동하고 웹→API→DB 연결의 기반이 준비된다. **커밋:** `chore: 웹 API PostgreSQL 개발 컨테이너 구성`.
 
