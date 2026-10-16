@@ -2,7 +2,7 @@
 
 > 저장 위치: `docs/mvp-1/PLAN.md`  
 > 기준: `docs/PRD.md`(PRD v0.8), `docs/ARCHITECTURE.md`(v0.3), `docs/mvp-1/SPEC.md`(v0.4), `docs/AGENT_RULES.md`  
-> 상태: **Step 1~3 완료 · Step 4~57 미착수** · 작성일: 2026-10-16
+> 상태: **Step 1~4 완료 · Step 5~57 미착수** · 작성일: 2026-10-16
 
 ## 목차
 
@@ -74,8 +74,8 @@
 
 ### Step 4. Next.js 웹 기본 경로
 
-- [ ] Next.js App Router를 구성하고 `/`에서 `/policies`로 이동시킨다.
-- [ ] `/policies`에 빈 정책 목록 화면을 만들고 `/api/v1/*` 전달 경로를 연결한다.
+- [x] Next.js App Router를 구성하고 `/`에서 `/policies`로 이동시킨다.
+- [x] `/policies`에 빈 정책 목록 화면을 만들고 `/api/v1/*` 전달 경로를 연결한다.
 
 **검증/완료:** `/` 이동과 `/policies` 접근이 정상이며 웹에서 API health를 호출할 수 있다. **커밋:** `feat: Next.js 정책 목록 진입 경로 구성`.
 

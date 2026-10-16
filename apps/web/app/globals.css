@@ -1,0 +1,150 @@
+:root {
+  color-scheme: light;
+  color: #29261f;
+  background: #fcfbf7;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+}
+
+a:focus-visible {
+  outline: 3px solid #926200;
+  outline-offset: 5px;
+}
+
+.container {
+  width: min(100% - 40px, 960px);
+  margin-inline: auto;
+}
+
+.skip-link {
+  position: absolute;
+  top: -80px;
+  left: 20px;
+  z-index: 1;
+  padding: 10px 16px;
+  background: #fff;
+}
+
+.skip-link:focus {
+  top: 12px;
+}
+
+.site-header {
+  border-bottom: 1px solid #e8e4da;
+  background: #fff;
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 80px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 23px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.brand-mark,
+.empty-mark {
+  display: block;
+  background: #f6c64b;
+  border-radius: 30%;
+}
+
+.brand-mark {
+  width: 25px;
+  height: 25px;
+  transform: rotate(-10deg);
+}
+
+.header-description,
+.page-description,
+.empty-state p {
+  color: #6b665b;
+}
+
+.header-description {
+  font-size: 14px;
+}
+
+.policies-page {
+  padding-block: 64px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: #846000;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(30px, 5vw, 40px);
+  letter-spacing: -0.04em;
+}
+
+.page-description {
+  margin: 12px 0 36px;
+}
+
+.empty-state {
+  padding: 64px 24px;
+  border: 1px solid #e8e4da;
+  border-radius: 16px;
+  background: #fff;
+  text-align: center;
+  word-break: keep-all;
+}
+
+.empty-mark {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 24px;
+  box-shadow: 8px 8px 0 #fff4d4;
+}
+
+.empty-state h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.empty-state p {
+  margin: 10px 0 0;
+  font-size: 15px;
+}
+
+@media (max-width: 480px) {
+  .header-content {
+    min-height: 68px;
+  }
+
+  .header-description {
+    max-width: 90px;
+    text-align: right;
+  }
+
+  .policies-page {
+    padding-block: 40px;
+  }
+}

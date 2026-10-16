@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-16 (Asia/Seoul) · **Step 1~3 완료, Step 4~57 미착수**
+최종 확인일: 2026-10-16 (Asia/Seoul) · **Step 1~4 완료, Step 5~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -156,8 +156,54 @@ curl --fail http://localhost:4000/api/v1/health
 - 네트워크를 이용한 `npm audit --omit=dev --json`: 실행 의존성 취약점 **0건**. 전체 `npm audit --json`에서는 Jest 계열의 `sprintf-js` 간접 의존성에 따른 **중간 등급 20건**이 보고되어 미해결로 남겼다. 제안된 Jest·ts-jest의 큰 버전 변경은 적용하지 않았다. 오프라인 설치가 출력한 audit 수치는 최신 보안 검사 근거로 사용하지 않는다.
 - DB 연결·공통 오류 응답·공개 API 보안 최종 점검은 각각 Step 6·11·54 범위로 아직 완료하지 않았다. 실제 정책 수집이나 웹 화면 구현도 진행하지 않았다.
 
-## 7. 다음 작업을 위한 상태
+## 7. Step 4 구현·검증 결과
 
-다음 요청 대상은 **Step 4: Next.js 웹 기본 경로**다. Step 4~57은 시작하지 않았다. Step 1에서 기록한 인증키·API 호출·조사 자료의 후속 확인 사항은 그대로 남아 있다.
+사용자 요청에 따라 Step 3의 편집기 타입 인식 오류를 수정하고 언어 서버·빌드·타입 검사·통합 테스트로 재검증했다. 수정 내용을 포함한 Step 3을 `79a7768` (`feat: NestJS API 서버 및 상태 확인 경로 구성`)로 커밋한 뒤 Step 4를 진행했다.
 
-추천 커밋: `feat: NestJS API 서버 및 상태 확인 경로 구성` (Step 3 변경은 아직 커밋하지 않음).
+### 구현과 실제 결정사항
+
+- Next.js `16.4.2`, React·React DOM `19.3.1` 및 필요한 Node·React 타입 선언을 웹 작업공간에 고정했다. 기존 검증용 `src/index.ts`는 제거했다.
+- `app/layout.tsx`에 한국어 문서·메타데이터·서비스 헤더·본문 건너뛰기 링크를 구성했다. `app/page.tsx`는 `/policies`로 이동하고, `app/policies/page.tsx`는 빈 정책 목록을 표시한다. 기본 CSS만 사용했으며 별도 UI 패키지·외부 폰트·이미지는 추가하지 않았다.
+- `next.config.ts`의 `rewrites`가 `/api/v1/:path*`를 NestJS의 같은 경로로 전달한다. 로컬 기본 주소는 `http://127.0.0.1:4000`이다. `API_INTERNAL_URL`은 Next.js가 설정을 읽을 때 사용하는 서버용 API 주소이며 브라우저의 환경변수로 노출하지 않는다. 다른 주소로 배포할 때는 **빌드 전에** 지정하고 다시 빌드한다. Compose의 내부 API 주소 설정은 Step 5에서 연결한다.
+- 웹 명령을 `next dev`·`next build`·`next start`로 바꿨다. 개발·실행 포트는 `3000`이고 루트에 `dev:web`, `start:web` 명령을 추가했다.
+- 웹 타입 검사는 `next typegen` 후 `tsc --noEmit`을 실행해 새 환경에서도 경로 타입을 먼저 생성한다. Next.js 타입 선언에 필요한 웹의 `lib`를 ES2024·DOM으로 구성하고 Node·React 전역 타입만 허용했다. 공통 strict 설정과 API의 Jest 타입 분리는 유지했다.
+- Next.js 자동 생성 파일인 `next-env.d.ts`는 공식 안내에 따라 Git 추적에서 제외했다. `.next`와 타입 검사 산출물도 기존 규칙으로 제외된다.
+- 실제 정책 API 연결·카드·조건 필터는 아직 구현하지 않았다. API 계약·DB 스키마·제품 판정 규칙·기술 스택의 변경 없이 Step 4의 기본 경로만 구성했다.
+
+설정은 [Next.js 설치 안내](https://nextjs.org/docs/app/getting-started/installation), [rewrites 안내](https://nextjs.org/docs/app/api-reference/config/next-config-js/rewrites), [TypeScript 안내](https://nextjs.org/docs/app/api-reference/config/typescript)를 참고했다.
+
+### 실행 방법
+
+루트에서 설치·빌드·타입 검사를 수행한다.
+
+```bash
+npm ci
+npm run build
+npm run typecheck
+npm test
+```
+
+터미널 하나에서 `npm run start:api`, 다른 터미널에서 `npm run dev:web`를 실행한다. 빌드한 웹을 실행하려면 `npm run start:web`를 사용한다. `http://localhost:3000/`는 `/policies`로 이동하며, 웹의 API 전달은 다음으로 확인한다.
+
+```bash
+curl --fail http://localhost:3000/api/v1/health
+```
+
+예상 응답: `{"status":"ok"}`.
+
+### 실제 검증과 남은 문제
+
+- `npm ci --offline --cache /tmp/youth-kkultong-npm-cache`: 잠금 파일 기반 재설치 **통과**.
+- `NEXT_TELEMETRY_DISABLED=1 npm run build`, `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`: 세 작업공간 모두 **통과**. 웹은 실제 Next.js 운영 빌드이며 루트·정책 목록 경로가 생성됐다. 초기 빌드의 TypeScript 하위 프로세스 실행 오류는 샌드박스의 `EPERM`이 원인이어서 샌드박스 밖에서 검증했다. 웹 타입 선언의 ES2024 요구도 설정에 반영했다. 타입 검사를 생략하지 않았다.
+- `npm test`: 재설치 후 기존 API 통합 테스트 **4개 통과**.
+- 실제 `start:api`·`start:web` 서버와 Python HTTP 검사: `/`의 `/policies` 이동, `/policies`의 한국어 빈 목록·본문·CSS 응답, 웹 `:3000/api/v1/health`를 통한 API `:4000`의 실제 JSON 응답, 미존재 API 경로의 `404` 전달 모두 **통과**. 검증용 웹·API 서버는 종료했고 두 포트 반환도 확인했다. 최초 HTTP 검사의 헤더 이름 대소문자 처리 오류는 검사 코드를 정정한 뒤 재확인했다.
+- TypeScript 언어 서버로 테스트 파일과 웹의 `layout.tsx`·두 `page.tsx`·`next.config.ts`를 직접 열어 자동 프로젝트 선택과 의미 오류 **0개**를 확인했다.
+- `git diff --check`, 패키지·잠금 파일 일치, 문서 완료 상태·Git 제외 검사: **통과**.
+- 최종 네트워크 `npm audit --json`에서는 기존 Jest 계열 개발 의존성의 중간 등급 **20건**이 계속 보고됐다. 새 웹 패키지에 대한 별도 취약점 항목은 보고되지 않았다. 기존 후속 검토 사항을 유지한다.
+- 브라우저 도구·실행 파일이 없어 실제 브라우저 렌더링·모바일 화면 검수는 **미실행**이다. HTTP 응답과 CSS 제공까지 확인했으며 시각 검수가 완료된 것으로 표시하지 않는다. Step 4의 경로·연결 완료 조건은 충족했다.
+
+## 8. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 5: Docker Compose 기본 실행**이다. Step 5~57은 시작하지 않았다. Step 1의 인증키·API 호출·조사 자료 및 Step 3의 개발 의존성 후속 검토 사항은 그대로 남아 있다.
+
+추천 커밋: `feat: Next.js 정책 목록 진입 경로 구성` (Step 4 변경은 아직 커밋하지 않음).

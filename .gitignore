@@ -5,3 +5,4 @@ node_modules/
 dist/
 .next/
 *.tsbuildinfo
+apps/web/next-env.d.ts
