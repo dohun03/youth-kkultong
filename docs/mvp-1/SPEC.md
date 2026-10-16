@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) SPEC — MVP1 v0.4
 
-기준: PRD v0.7 · ARCHITECTURE v0.3 · 수정일: 2026-10-16
+기준: PRD v0.8 · ARCHITECTURE v0.3 · 수정일: 2026-10-16
 
 ## 목차
 

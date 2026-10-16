@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) ARCHITECTURE v0.3
 
-기준: PRD v0.7 (2026-10-16) · 상태: 구현 전 구조 설계
+기준: PRD v0.8 (2026-10-16) · 상태: 구현 전 구조 설계
 
 ## 목차
 
@@ -144,7 +144,7 @@ flowchart LR
 
 ### 5.3 DB의 책임
 
-MVP1의 데이터는 `policies(정책)`와 `regions(공식 지역 코드)` 2개 테이블을 중심으로 관리한다. 정확한 컬럼·인덱스·제약조건은 `SPEC_MVP1.md`에 정의한다.
+MVP1의 데이터는 `policies(정책)`와 `regions(공식 지역 코드)` 2개 테이블을 중심으로 관리한다. 정확한 컬럼·인덱스·제약조건은 `docs/mvp-1/SPEC.md`에 정의한다.
 
 - 정책 유일성: `(source, external_id)` 복합 UNIQUE(중복 금지).
 - 공식 지역 코드는 현행·폐지 구분과 상위 지역 관계를 저장한다.
@@ -181,9 +181,13 @@ youth-kkultong/
 ├── packages/
 │   └── shared/              # API 계약·Zod 스키마·공용 타입
 ├── docs/
-│   ├── PRD_youth_kkultong_v0.7.md
+│   ├── AGENT_RULES.md
+│   ├── PRD.md
 │   ├── ARCHITECTURE.md
-│   └── SPEC_MVP1.md
+│   └── mvp-1/
+│       ├── PLAN.md
+│       ├── SPEC.md
+│       └── SUMMARY.md
 ├── compose.yaml
 ├── .env.example
 └── package.json
