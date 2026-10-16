@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-16 (Asia/Seoul) · **Step 1~5 완료, Step 6~57 미착수**
+최종 확인일: 2026-10-16 (Asia/Seoul) · **Step 1~6 완료, Step 7~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -262,8 +262,75 @@ curl --fail http://localhost:3000/api/v1/health
 - 기존 중지 컨테이너 `youth-kkultong-postgres-1`이 같은 Compose 프로젝트 이름으로 남아 있어 orphan 안내가 출력됐다. 기존 컨테이너와 데이터는 보존했고 제거 옵션은 사용하지 않았다. 이번 `db` 서비스는 별도 `db_data` 볼륨으로 검증했다.
 - 검증 후 `web`, `api`, `db`는 **실행 중**이다. 브라우저 시각 검수와 TypeORM 연결·스키마 검증은 이번에 완료한 것으로 표시하지 않는다.
 
-## 9. 다음 작업을 위한 상태
+## 9. Step 6 구현·검증 결과
 
-다음 요청 대상은 **Step 6: 환경변수 검증과 TypeORM 연결**이다. Step 6~57은 시작하지 않았다. Step 1의 인증키·API 호출·조사 자료 및 개발 도구의 후속 검토 사항은 그대로 남아 있다.
+### 구현과 실제 결정사항
 
-Step 5 구현·문서 커밋 메시지: `chore: 웹 API PostgreSQL 개발 컨테이너 구성`.
+- PLAN·SPEC·ARCHITECTURE의 설정 기준과 Step 5의 실제 실행 상태를 대조했다. 기존 세 서비스는 healthy였고 개발 DB에 업무 테이블은 없었다. 이번 범위는 환경변수 검증·DB 연결·Migration 실행 기반이며 정책·지역 엔티티와 테이블은 추가하지 않았다.
+- `config/environment.ts`에 Zod 검증을 작성했다. 루트 `.env`를 읽고 실행 환경의 값을 우선한다. `.env`가 없는 컨테이너는 실행 환경만 사용하고, 읽기 권한 등의 오류는 실패로 처리한다. 비밀값은 검증 오류에 포함하지 않는다. Node.js 기본 `parseEnv`를 사용해 별도 설정 패키지를 추가하지 않았다.
+- `DATABASE_URL`은 사용자·호스트·DB 이름이 있는 `postgres:` 또는 `postgresql:` URL을 필수로 받는다. `YOUTH_CENTER_PAGE_SIZE=50`, `YOUTH_CENTER_REQUEST_DELAY_MS=3000`, `YOUTH_CENTER_MAX_ATTEMPTS=3`, `POLICY_IMPORT_BATCH_SIZE=200`, `TZ=Asia/Seoul`을 기본값으로 적용한다. 숫자는 정수 문자열을 검증한 뒤 변환하며, 페이지 크기는 양의 안전한 정수, 요청 간격은 0~2,147,483,647ms, 시도 횟수는 1~3회, 저장 묶음은 1~200건으로 제한한다. 시간대는 한국 날짜 판정을 위해 `Asia/Seoul`만 허용한다. JavaScript 타이머 한도를 넘는 대기 시간도 거부한다.
+- `YOUTH_CENTER_API_KEY`는 빈 값·공백을 미설정으로 다루며 조회 서버와 Migration 실행에는 요구하지 않는다. 실제 수집 시 필수 검사·인증 검증은 수집 Step에서 구현한다. 조사용 `YOUTH_API_KEY`를 제품 키로 자동 대체하지 않는다. 기존 로컬 `.env`와 인증키는 변경하거나 출력하지 않았다.
+- TypeORM `1.1.2`, PostgreSQL 드라이버 `pg` `8.23.1`, Zod `4.6.7`을 API 실행 의존성에 고정했다. npm 공식 레지스트리에서 Node.js 호환 범위를 확인했다. NestJS 연동은 기본 비동기 provider(의존성 제공자)를 사용한다.
+- `database/data-source.ts`의 연결 설정을 API와 CLI가 공유한다. `synchronize=false`, `migrationsRun=false`, Migration 전체 트랜잭션, DB 접속 제한 5초를 적용했다. DB 연결 세션에도 `Asia/Seoul`을 설정한다. 엔티티는 각 모듈의 `*.entity.ts/js`, Migration은 `database/migrations/`에서 읽는다. 이번 Step에는 배포용 빈 Migration 파일을 남기지 않았다.
+- `DatabaseModule`은 설정 검증과 DB 초기화를 완료한 뒤 API 기동을 허용한다. 애플리케이션 종료·종료 신호에서는 연결 풀을 반환한다. DB 초기화 실패는 발생 단계와 확인된 오류 코드(`28P01`, `ECONNREFUSED` 등)만 기록해 접속 정보 노출을 피한다. health 응답 계약은 기존 `{ "status": "ok" }`를 유지하며 실행 중 DB 상태를 매번 검사하는 기능은 추가하지 않았다.
+- 루트와 API 작업공간에 `migration:run`, `migration:show` 명령을 추가했다. TypeScript를 빌드한 뒤 TypeORM CLI로 실행한다. 실행 이미지에도 같은 명령이 포함된다. Compose에는 제품용 수집 환경변수를 전달하고 `.env.example`에 기본값·한도·로컬 직접 실행의 DB 주소 설정 방법을 안내했다.
+- PLAN의 Step 6만 완료 표시하고 이 문서에 결과를 기록했다. API 계약·업무 DB 스키마·제품 판정 규칙의 설계 변경은 없어 PRD·ARCHITECTURE·SPEC은 수정하지 않았다.
+
+설정 근거: [Zod 기본 검증](https://zod.dev/basics), [TypeORM 연결 설정](https://typeorm.io/docs/data-source/data-source-options/), [Migration 설정](https://typeorm.io/docs/migrations/setup/), [빌드한 Migration 실행](https://typeorm.io/docs/migrations/executing/).
+
+### 실행 방법
+
+Compose에서는 기존 `.env`의 `POSTGRES_PASSWORD`를 사용해 내부 DB 주소를 구성한다. 저장소 루트에서 다음을 실행한다.
+
+```bash
+docker compose build api
+docker compose up -d --no-deps --wait --wait-timeout 60 api
+docker compose exec -T api npm run migration:run
+docker compose exec -T api npm run migration:show
+```
+
+위 명령은 Step 5의 DB·웹이 이미 기동한 환경 기준이다. 새 환경은 `docker compose up --build -d --wait`로 세 서비스를 먼저 기동한다. 현재 배포용 Migration은 없으므로 `migration:run`은 `No migrations are pending`으로 끝나고 `migration:show`에 나열할 항목은 없다. Step 7부터 실제 업무 스키마를 추가한다. Migration은 API 시작 시 자동 실행되지 않는다.
+
+호스트에서 직접 실행하려면 `.env` 또는 실행 환경에 **호스트에서 접근 가능한** `DATABASE_URL`을 별도로 설정한다. Compose DB는 호스트 포트를 공개하지 않는다. 빌드와 명령은 다음과 같다.
+
+```bash
+npm run build --workspace apps/api
+npm run migration:run
+npm run migration:show
+npm test
+npm run start:api
+```
+
+전체 테스트에는 실제 PostgreSQL이 필요하다. 기존 Docker DB를 이용하려면 아래 임시 덮어쓰기 설정으로 개발 의존성이 포함된 `api-build` 단계를 실행할 수 있다. 운영용 API 이미지는 개발 의존성을 계속 제외한다.
+
+```bash
+cat > /tmp/youth-kkultong-step6-test.compose.yaml <<'YAML'
+services:
+  api:
+    image: youth-kkultong-api-step6-test
+    build:
+      target: api-build
+YAML
+docker compose -f compose.yaml -f /tmp/youth-kkultong-step6-test.compose.yaml run --rm --build --no-deps api npm test
+```
+
+### 실제 검증과 남은 문제
+
+- `npm install --workspace apps/api --save-exact typeorm@1.1.2 pg@8.23.1 zod@4.6.7 ...`: **통과**. 잠금 파일 갱신 후 Docker 이미지 안의 `npm ci`로 재설치·빌드 재현도 확인했다. 최초 다운로드와 Docker 소켓 사용은 허용된 실행 환경에서 수행했다.
+- `npm run build --workspace apps/api`, `npm run typecheck --workspace apps/api`, `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`, `git diff --check`: **통과**. 초기 Zod 숫자 변환의 타입 연결 오류는 문자열 검증 → 숫자 변환 → 범위 검증으로 정정했다. TypeScript 검사를 생략하지 않았다.
+- 설정 검사 `environment.spec.ts`·`load-environment.spec.ts` **25개 통과**: 기본값, 정수 경계, 필수 DB 주소·허용 프로토콜, 재시도·묶음 한도, 시간대, 키 미설정, 비밀값 비노출, `.env` 우선순위·부재·읽기 실패를 확인했다.
+- 실제 PostgreSQL 연결·health 통합 검사를 포함한 전체 `npm test`: **4개 테스트 모음, 31개 통과**. Docker DB에 같은 네트워크에서 연결하고 임시 포트의 실제 API를 호출했다. DB 세션의 한국 시간대, 빈 Migration 적용 전/후 조회, 중복 재실행 방지, 애플리케이션 종료 후 연결 풀 반환을 확인했다. Migration 테스트는 자체 생성한 임시 스키마를 정리한다.
+- 호스트에서 Docker의 내부 DB IP에 직접 접근하려던 최초 통합 검사는 연결 제한으로 **실패**했다. 이 환경에서는 내부 DB 네트워크의 검증 컨테이너로 실행 위치를 변경해 전체 통과했다. Jest 제한 시간을 DB 접속 제한 5초보다 긴 15초로 설정해 연결 실패 원인도 확인할 수 있게 했다. 모의 DB나 요구사항 완화로 대체하지 않았다.
+- 실행 이미지에서 설정 오류 5종(DB 주소 누락·형식, 재시도 한도, 묶음 한도, 시간대)과 DB 인증 실패·연결 거부: **7개 모두 종료 코드 1, 오류 원인 표시, 비밀값 비노출 통과**. Migration CLI도 필수 DB 주소 오류 시 명확한 항목명과 종료 코드 1을 반환했다.
+- `docker compose config --quiet`, `docker compose build api`, API 재기동 및 실제 `migration:run`·`migration:show`: **통과**. 현재 DB의 업무 테이블은 없고 TypeORM의 빈 `public.migrations` 이력 테이블만 존재한다(적용 기록 0건). 임시 `step6_test_*` 스키마 잔여 **0개**를 확인했다.
+- 최종 세 서비스 **healthy**, API 직접 health·웹을 통한 health 전달 **통과**. 검증용 일회성 컨테이너는 `--rm`으로 제거했다. 기존 DB 볼륨과 orphan 컨테이너는 보존했고 `web`, 새 API, `db`는 실행 중이다.
+- 설치 과정의 실행 의존성 검사 **0건**, 기존 개발 의존성의 중간 등급 **20건** 경고는 유지됐다. 별도 보안 수정이나 강제 패키지 변경은 하지 않았다. Jest의 VM 모듈 경고도 계속 출력된다.
+- 실제 제품용 API 키의 준비·유효성 확인, 온통청년 호출, 업무 테이블·지역 시드·정책 수집은 이번 Step에서 실행하지 않았다. Step 6 완료를 막는 미해결 항목은 없다.
+
+핵심 코드 읽는 순서: `config/environment.ts` → `database/data-source.ts` → `database/database.module.ts` → `database/migration-data-source.ts` → `test/database.spec.ts`.
+
+## 10. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 7: policies 테이블·엔티티**다. Step 7~57은 시작하지 않았다. Step 1의 인증키·API 호출·조사 자료 및 개발 도구의 후속 검토 사항은 그대로 남아 있다.
+
+Step 6 구현·문서 커밋 메시지: `chore: 환경변수 검증과 TypeORM 마이그레이션 구성`. 커밋은 실행하지 않았다.

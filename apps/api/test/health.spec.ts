@@ -1,5 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { DataSource } from 'typeorm';
 import { createApplication } from '../src/main';
 
 describe('상태 확인 API', () => {
@@ -11,7 +12,15 @@ describe('상태 확인 API', () => {
   });
 
   afterAll(async () => {
-    if (app) await app.close();
+    if (app) {
+      const dataSource = app.get(DataSource);
+      await app.close();
+      expect(dataSource.isInitialized).toBe(false);
+    }
+  });
+
+  it('DB 연결을 완료한 애플리케이션에서 SQL을 실행할 수 있다', async () => {
+    expect(await app.get(DataSource).query('SELECT 1 AS connected')).toEqual([{ connected: 1 }]);
   });
 
   it('GET /api/v1/health는 정상 상태를 JSON으로 반환한다', async () => {

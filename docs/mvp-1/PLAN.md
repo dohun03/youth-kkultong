@@ -2,7 +2,7 @@
 
 > 저장 위치: `docs/mvp-1/PLAN.md`  
 > 기준: `docs/PRD.md`(PRD v0.8), `docs/ARCHITECTURE.md`(v0.3), `docs/mvp-1/SPEC.md`(v0.4), `docs/AGENT_RULES.md`  
-> 상태: **Step 1~5 완료 · Step 6~57 미착수** · 작성일: 2026-10-16
+> 상태: **Step 1~6 완료 · Step 7~57 미착수** · 작성일: 2026-10-16
 
 ## 목차
 
@@ -92,8 +92,8 @@
 
 ### Step 6. 환경변수 검증과 TypeORM 연결
 
-- [ ] `DATABASE_URL`, `YOUTH_CENTER_*`, `POLICY_IMPORT_BATCH_SIZE`, 시간대 등 설정의 기본값·검증 방식을 준비한다.
-- [ ] TypeORM DB 연결과 Migration(스키마 변경 파일) 실행 명령을 추가하고 `synchronize=false`를 설정한다.
+- [x] `DATABASE_URL`, `YOUTH_CENTER_*`, `POLICY_IMPORT_BATCH_SIZE`, 시간대 등 설정의 기본값·검증 방식을 준비한다.
+- [x] TypeORM DB 연결과 Migration(스키마 변경 파일) 실행 명령을 추가하고 `synchronize=false`를 설정한다.
 
 **검증/완료:** 개발 DB 연결 및 빈 마이그레이션 적용·조회가 가능하고 잘못된 필수 환경변수는 명확한 오류로 종료된다. **커밋:** `chore: 환경변수 검증과 TypeORM 마이그레이션 구성`.
 

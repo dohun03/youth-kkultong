@@ -30,6 +30,11 @@ services:
     environment:
       TZ: Asia/Seoul
       DATABASE_URL: "postgresql://youth_kkultong:${POSTGRES_PASSWORD:?로컬 .env에 POSTGRES_PASSWORD를 설정하세요}@db:5432/youth_kkultong"
+      YOUTH_CENTER_API_KEY: ${YOUTH_CENTER_API_KEY:-}
+      YOUTH_CENTER_PAGE_SIZE: ${YOUTH_CENTER_PAGE_SIZE:-50}
+      YOUTH_CENTER_REQUEST_DELAY_MS: ${YOUTH_CENTER_REQUEST_DELAY_MS:-3000}
+      YOUTH_CENTER_MAX_ATTEMPTS: ${YOUTH_CENTER_MAX_ATTEMPTS:-3}
+      POLICY_IMPORT_BATCH_SIZE: ${POLICY_IMPORT_BATCH_SIZE:-200}
     depends_on:
       db:
         condition: service_healthy
