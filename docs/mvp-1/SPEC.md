@@ -1,0 +1,459 @@
+# 청년꿀통(youth-kkultong) SPEC — MVP1 v0.4
+
+기준: PRD v0.7 · ARCHITECTURE v0.3 · 수정일: 2026-10-16
+
+## 목차
+
+1. [기능과 처리 순서](#1-기능과-처리-순서)
+2. [DB 스키마](#2-db-스키마)
+3. [공용 인터페이스·타입](#3-공용-인터페이스타입)
+4. [API 명세](#4-api-명세)
+5. [정책 수집 명세](#5-정책-수집-명세)
+6. [신청 상태 규칙](#6-신청-상태-규칙)
+7. [조건 판단·점수 규칙](#7-조건-판단점수-규칙)
+8. [목록 필터·정렬·화면](#8-목록-필터정렬화면)
+9. [검증 시나리오](#9-검증-시나리오)
+10. [구현 착수 전 준비 자료](#10-구현-착수-전-준비-자료)
+
+## 1. 기능과 처리 순서
+
+**MVP1 사용자 흐름:** 정책 목록 → 분야 및 나이·지역·취업·학력 입력 → 부적합 정책 제외 → 확인된 일치 점수로 정렬 → 상세 화면 → 신청·참고 링크.
+
+**검색 처리 순서(고정):** 후보 조회 → 신청 상태 계산 → 분야 및 마감 필터 → 보수적 제외 → 점수·태그 생성 → 전체 정렬 → 페이지네이션.
+
+**수집 처리 순서:** DB 잠금 → 페이지별 조회·검증 → 전체 검증 → 변환·해시 → 묶음 저장(단일 트랜잭션) → 결과 기록·잠금 해제. 실패·재시도 기준은 5장에 정의한다.
+
+사용자 입력은 브라우저 `sessionStorage`에 보관하며 검색 API 요청에만 사용한다. 정책 데이터는 PostgreSQL에 저장한다.
+
+## 2. DB 스키마
+
+### 2.1 `policies` — 정책
+
+| 컬럼 | PostgreSQL 타입 | 필수·기본값 | 설명(원본 필드) |
+| --- | --- | --- | --- |
+| `id` | `UUID` | PK, 자동 생성 | 서비스 내부 정책 ID |
+| `source` | `VARCHAR(32)` | NOT NULL | 출처. 온통청년은 `youthcenter` |
+| `external_id` | `VARCHAR(64)` | NOT NULL | 출처 정책 ID (`plcyNo`) |
+| `title` | `TEXT` | NOT NULL | 정책명 (`plcyNm`) |
+| `category` | `VARCHAR(100)` | NULL | 대분류 (`lclsfNm`) |
+| `subcategory` | `VARCHAR(100)` | NULL | 중분류 (`mclsfNm`) |
+| `description` | `TEXT` | NULL | 설명 (`plcyExplnCn`) |
+| `benefit_text` | `TEXT` | NULL | 지원 내용 (`plcySprtCn`) |
+| `apply_url` | `TEXT` | NULL | 신청 링크 (`aplyUrlAddr`) |
+| `reference_url_1` | `TEXT` | NULL | 참고 링크 (`refUrlAddr1`) |
+| `reference_url_2` | `TEXT` | NULL | 참고 링크 (`refUrlAddr2`) |
+| `view_count` | `INTEGER` | NULL | 온통청년 조회수 (`inqCnt`) |
+| `source_registered_at` | `TIMESTAMP` | NULL | 원본 등록일 (`frstRegDt`) |
+| `source_modified_at` | `TIMESTAMP` | NULL | 원본 수정일 (`lastMdfcnDt`) |
+| `application_period_code` | `VARCHAR(20)` | NULL | 신청기간 구분 (`aplyPrdSeCd`) |
+| `application_period_raw` | `TEXT` | NULL | 원본 신청기간 (`aplyYmd`) |
+| `application_start_date` | `DATE` | NULL | 명확히 해석한 시작일 |
+| `application_end_date` | `DATE` | NULL | 명확히 해석한 종료일 |
+| `age_min` | `INTEGER` | NULL | 최소 나이 (`sprtTrgtMinAge`) |
+| `age_max` | `INTEGER` | NULL | 최대 나이 (`sprtTrgtMaxAge`) |
+| `job_codes` | `TEXT[]` | NULL | 취업 요건 목록 (`jobCd`) |
+| `school_codes` | `TEXT[]` | NULL | 학력 요건 목록 (`schoolCd`) |
+| `region_codes` | `TEXT[]` | NULL | 정책 지역 코드 (`zipCd`) |
+| `extra_qualification` | `TEXT` | NULL | 추가 신청자격 (`addAplyQlfcCndCn`) |
+| `participation_restriction` | `TEXT` | NULL | 참여 제한 (`ptcpPrpTrgtCn`) |
+| `raw_json` | `JSONB` | NOT NULL | 정책별 원본 API 객체(필드·값 보관) |
+| `content_hash` | `CHAR(64)` | NOT NULL | 조회수 제외 원본의 SHA-256 해시 |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, 현재 시각 | 서비스 최초 저장일 |
+| `updated_at` | `TIMESTAMPTZ` | NOT NULL, 현재 시각 | 서비스 마지막 DB 반영일 |
+
+**제약·인덱스**
+
+- `UNIQUE (source, external_id)` — 재수집 시 동일 정책 중복 방지.
+- `INDEX (category)`, `INDEX (view_count DESC)`, `INDEX (source_registered_at DESC)` — 기본 탐색 및 정렬 보조.
+- `id`, `external_id`, `title`, `raw_json`, `content_hash` 유효성 검사. 빈 정책 ID·제목은 수집 검증에서 오류 처리한다.
+- JSONB에는 원본의 JSON 키와 값 의미를 보존한다. JSON 문자열의 키 순서·공백까지 동일한 바이트 형태를 보장하는 저장 형식은 아니다.
+- `source_registered_at`은 원본에 시간대 정보가 없어 **시간대 없는 시각**으로 보관한다. 내부 `created_at/updated_at`은 시간대 있는 시각을 사용한다.
+- `DATE` 파싱이 불확실하면 시작·종료 컬럼을 NULL로 두고 원문(`application_period_raw`)을 보관한다.
+
+### 2.2 `regions` — 공식 지역 코드
+
+| 컬럼 | 타입 | 설명 |
+| --- | --- | --- |
+| `code` | `VARCHAR(5)` PK | 공식 5자리 시·군·구 관련 코드 |
+| `name` | `VARCHAR(100)` NOT NULL | 공식 지역명 |
+| `province_name` | `VARCHAR(100)` NOT NULL | 화면의 시·도 그룹명 |
+| `parent_code` | `VARCHAR(5)` NULL | 직접 상위 **5자리 코드**(있을 때) |
+| `is_active` | `BOOLEAN` NOT NULL | 현행 코드 여부 |
+
+공식 코드표를 시드(초기 데이터)로 관리한다. 시·군·구 포함 관계는 **코드 문자열의 앞자리 추측이 아니라 확인된 `parent_code` 관계**로 비교한다. 폐지 코드는 역사 자료로 남기되 현행 사용자 선택 목록에서 제외한다.
+
+### 2.3 데이터 저장 원칙
+
+- 정책 엔티티·`PolicyRepository`는 `PoliciesModule`, 지역 엔티티·`RegionRepository`는 `MetaModule`에 둔다. `DatabaseModule`은 연결 설정·Migration·시드 실행을 담당한다.
+- 수집 서비스는 `PoliciesModule`의 정책 저장 서비스를 호출한다. DB 쓰기는 같은 트랜잭션에 속한 `EntityManager`(DB 작업 관리자)로 통일한다. 저장 처리 기준은 5장에 정의한다.
+- DB에는 신청기간 코드·시작일·종료일을 저장한다. 화면용 신청 상태는 **검색하는 날의 한국 날짜**와 비교해 계산한다(6장). 맞춤 점수도 검색 요청 시 계산한다.
+- API 전체 원본에만 있는 세부 정보는 `raw_json`에서 참조하되, 화면에는 검증·정제된 문자열만 전달한다.
+- 테이블 변경은 TypeORM Migration으로 적용한다. `synchronize=false`.
+
+## 3. 공용 인터페이스·타입
+
+파일 위치: `packages/shared/src/policies.ts`. 아래 인터페이스는 API 계약이며 DB 엔티티는 API 프로젝트 안에서 정의한다.
+
+```ts
+export type SortKey = 'recommended' | 'popular' | 'deadline' | 'newest';
+
+export type ApplicationStatus =
+  | 'ALWAYS_OPEN' | 'UPCOMING' | 'OPEN'
+  | 'CLOSING_SOON' | 'CLOSED' | 'UNKNOWN';
+
+export type MatchTag =
+  | 'AGE_MATCH' | 'JOB_MATCH' | 'SCHOOL_MATCH'
+  | 'REGION_RELATED' | 'EXTRA_REVIEW'
+  | 'AGE_REVIEW' | 'JOB_REVIEW' | 'SCHOOL_REVIEW'
+  | 'REGION_REVIEW';
+
+export interface UserConditions {
+  age?: number;            // 1~120 사이 정수, 만 나이
+  regionCode?: string;     // 현행 5자리 지역 코드
+  jobCode?: string;        // 검증된 취업 코드표의 값
+  schoolCode?: string;     // 검증된 학력 코드표의 값
+}
+
+export interface PolicySearchRequest {
+  page?: number;           // 기본 1
+  limit?: number;          // 기본 20, 최대 50
+  category?: string;       // 비우면 전체
+  includeClosed?: boolean; // 기본 false
+  sort?: SortKey;          // 생략 시 자동 정렬
+  conditions?: UserConditions;
+}
+
+export interface PolicyCard {
+  id: string;              // UUID
+  title: string;
+  category: string | null;
+  subcategory: string | null;
+  benefitPreview: string;
+  applicationStatus: ApplicationStatus;
+  applicationPeriodText: string | null;
+  applicationEndDate: string | null; // YYYY-MM-DD
+  viewCount: number | null;
+  score: number;           // 0, 0.5, 1, ... 3.5
+  tags: MatchTag[];
+}
+
+export interface PolicySearchResponse {
+  items: PolicyCard[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+  appliedSort: SortKey;
+}
+
+export interface PolicyDetail extends PolicyCard {
+  source: string;
+  externalId: string;
+  description: string | null;
+  benefitText: string | null;
+  ageRangeText: string | null;
+  jobConditionText: string | null;
+  schoolConditionText: string | null;
+  regionText: string | null;
+  extraQualification: string | null;
+  participationRestriction: string | null;
+  links: { label: '신청' | '참고'; url: string }[];
+}
+```
+
+- 요청은 Zod(자료형·형식 검증 도구)로 검사하며 잘못된 값은 HTTP `400`으로 응답한다.
+- `jobCode`·`schoolCode`는 승인된 코드표의 선택지만 허용한다. 코드표에 없는 값은 `400`이다.
+- 코드값과 화면용 한국어 문구를 분리한다. 예: `CLOSING_SOON → 마감 임박`, `AGE_MATCH → 나이 기준 부합`.
+- `MetaModule`은 취업·학력 코드와 한국어 표시명을 제공한다. 공용 타입에는 응답 형식만 정의한다.
+- 요청에서 `sort`가 생략되면 유효한 사용자 조건이 1개 이상일 때 `recommended`(맞춤순), 없으면 `popular`(인기순)를 적용한다. 조건 없이 `sort=recommended`를 명시해도 `popular`로 전환하고 응답 `appliedSort`에 실제 적용값을 반환한다. 분야만 선택한 경우도 조건 없음으로 처리한다.
+
+## 4. API 명세
+
+웹 진입 경로는 `/policies`이며, `/` 요청은 `/policies`로 리다이렉트한다. 상세 웹 경로는 `/policies/[id]`다. 아래는 별도의 **NestJS API 경로**다.
+
+경로 접두사: `/api/v1` · JSON 요청/응답 · 시간 기준: `Asia/Seoul`
+
+| 방식·경로 | 요청 | 응답 |
+| --- | --- | --- |
+| `POST /policies/search` | 분야·조건·정렬·페이지 | `PolicySearchResponse` |
+| `GET /policies/:id` | 정책 UUID | `PolicyDetail` |
+| `GET /meta/categories` | 없음 | 실제 대분류 문자열 배열 |
+| `GET /meta/regions` | 없음 | 현행 지역 코드·이름·부모 관계 목록 |
+| `GET /meta/eligibility-codes` | 없음 | 검증된 취업·학력 옵션 목록 |
+| `GET /health` | 없음 | 서비스 상태 |
+
+### 4.1 정책 검색
+
+```http
+POST /api/v1/policies/search
+Content-Type: application/json
+```
+
+```json
+{
+  "page": 1,
+  "limit": 20,
+  "category": "주거",
+  "includeClosed": false,
+  "conditions": { "age": 28, "regionCode": "11680" }
+}
+```
+
+- 사용자 조건이 있으므로 기본 정렬은 `recommended`(맞춤순)다.
+- 전체 판정 후 `page=1`이면 정렬된 첫 20건을 반환한다.
+- 결과 0건이면 `items=[]`, `pagination.total=0`, `totalPages=0`.
+- 마지막 페이지를 초과한 요청은 `200`과 빈 배열을 반환한다.
+- 카드에 포함하는 점수·태그는 표시용 결과이며 최종 자격 인정 표시가 아니다.
+
+### 4.2 상세와 메타 데이터
+
+- `GET /policies/:id`: UUID가 올바르지 않으면 `400`, 없는 정책이면 `404`.
+- 상세의 긴 설명과 자격 안내는 API 원본에서 매핑된 값을 표시한다. 필요한 추가 필드는 원본 객체를 이용할 수 있다.
+- 링크가 비어 있거나 유효한 HTTP(S) URL이 아니면 목록에서 제거하고, 모든 링크가 없으면 화면에 **‘링크 없음’**을 표시한다.
+- 카테고리는 실제 `policies.category`의 고유값에서 제공한다.
+- 지역은 `MetaModule`의 `RegionRepository`를 통해 `regions` 테이블에서 현행 코드·지역명·상위 관계를 조회한다.
+- 취업·학력은 검증된 **서버 코드표**에서 코드·표시명을 읽어 제공한다. 메타 응답의 형태는 공용 타입으로 관리한다.
+
+**공통 오류:** `400` 요청값 오류, `404` 정책 없음, `500` 내부 오류, `503` DB 연결 불가. 오류 응답은 `{ "code": "...", "message": "..." }` 형식으로 통일한다.
+
+## 5. 정책 수집 명세
+
+### 5.1 실행·호출·중복 방지
+
+- 실행: `npm run import:policies` (API 작업공간). 실행 시 NestJS 애플리케이션 컨텍스트만 열어 `IngestionService`를 호출하는 **독립 CLI 프로세스**를 사용한다. 웹 요청 처리 API와 같은 코드·이미지를 재사용한다.
+- 호출: `GET https://www.youthcenter.go.kr/go/ythip/getPlcy`.
+- 인증: `YOUTH_CENTER_API_KEY`를 `apiKeyNm` 파라미터로 전달.
+- 요청 설정: `pageType=1`, `rtnType=json`, `pageNum=1...N`, `pageSize=YOUTH_CENTER_PAGE_SIZE`(기본 50).
+- 요청 간 대기: `YOUTH_CENTER_REQUEST_DELAY_MS`(기본 3000ms). 순차 호출.
+- 수집 시작 시 PostgreSQL의 `pg_try_advisory_lock`으로 **세션 Advisory Lock** 획득을 시도한다. 잠금 키는 온통청년 수집 작업마다 고정한다. 이미 잠긴 경우 추가 실행을 시작하지 않고 중복 실행 사실만 로그로 남긴다.
+- `QueryRunner`(전용 DB 연결·트랜잭션 관리 객체)로 잠금을 수집 종료까지 유지한다. HTTP 호출 중에는 트랜잭션을 시작하지 않는다. 오류 시 잠금 해제와 로그 보장 기준은 5.4절을 따른다.
+- 호출 재시도: 일시적인 연결 실패·타임아웃·HTTP `429`(요청 과다)·`5xx`(서버 오류)는 **페이지 요청당 최대 3회 시도(첫 요청 포함)**. 재시도 전 1초 → 2초 대기하며 `Retry-After` 응답이 있으면 그 대기 시간을 우선한다. 정상 페이지는 다시 요청하지 않는다.
+- 인증 실패·요청값 오류(`400/401/403`), 구조 검증 실패, 미확인 오류 `e003`은 자동 반복 요청 없이 원인을 기록한다. `e003`이 일시 오류라는 근거가 확보되면 재시도 대상으로 재검토한다.
+
+### 5.2 페이지별 검증 및 전체 수집 검증
+
+1. 첫 페이지에서 응답 성공 여부·`result.youthPolicyList`(배열)·`result.pagging.totCount`(총 건수)를 확인한다. 실제 조사 결과의 **`pagging`** 철자를 기준으로 한다.
+2. `totCount`와 페이지 크기로 총 페이지 수를 계산하고 끝 페이지까지 순서대로 수집한다.
+3. **페이지별 Zod(자료형·형식) 검증:** 응답 객체·필수 키와 기본 타입, 정책 배열 구조, `plcyNo`와 `plcyNm`의 필수 문자열 여부를 확인한다. 누락·형식 오류가 발견되면 해당 페이지에서 중단한다.
+4. **페이지별 일반 로직 검증:** 요청한 페이지 번호와 응답의 페이지 번호·페이지 크기의 일관성, 페이지당 최대 건수, 현재까지 정책 ID 중복을 확인한다. 이때 응답 필드가 없거나 일치 여부를 검증할 수 없다면 조사 결과 기준으로 대응하되 불일치 데이터를 정상으로 간주하지 않는다.
+5. 각 페이지 원본 정책 객체를 메모리에 모은 뒤, **전체 수집 건수와 `totCount`의 일치 및 정책 ID 중복 여부**를 마지막에 확인한다. 검증 완료 전 정책 DB에 쓰지 않는다.
+6. 유효하지 않은 응답·건수 불일치·중복 정책번호는 단계와 정책 식별자를 기록하고 공통 실패 처리(5.4절)로 넘긴다.
+
+조사 당시 3,255건은 참고값이다. 전체 건수는 해당 수집 응답 기준으로 확인한다. **일시적인 페이지 호출 실패는 그 페이지만 재시도**하고, 최종 실패로 종료한 작업을 다시 실행할 때는 처음부터 수집한다.
+
+### 5.3 변환·갱신
+
+- `source='youthcenter'`, `external_id=plcyNo`.
+- 쉼표 구분 코드는 앞뒤 공백을 제거하고 배열로 변환한다. 코드 원문은 `raw_json`에 유지한다.
+- 빈 문자열·공백·누락 필드는 NULL로 정규화한다. 숫자 문자열 `'0'`은 숫자 0으로 변환한다.
+- 신청기간의 단일 명확한 범위만 DATE로 파싱하고, 복수 기간·형식 오류는 원문만 유지한다.
+- 등록·수정 시각은 `YYYY-MM-DD HH:mm:ss` 형태를 검증해 시간대 없는 시각으로 저장한다.
+- `view_count`는 0 이상의 정수 문자열일 때 숫자로 보관한다. 해석 불가하면 NULL이다.
+- SHA-256 생성 전 원본 객체에서 최상위 `inqCnt`를 제외하고 **키 정렬 기반의 일정한 직렬화(표준화 JSON)** 를 적용한다. 배열 원소 순서는 유지한다.
+
+| 판정 | DB 처리 | 결과 건수 |
+| --- | --- | --- |
+| `NEW` | 정책 INSERT | 신규 +1 |
+| `CHANGED` | 정규화 컬럼·해시·원본·조회수 UPDATE | 변경 +1 |
+| `UNCHANGED` | 원본 JSON·조회수 최신화 | 동일 +1 |
+
+**저장 방식**
+
+1. 전체 페이지 검증과 변환·해시 계산을 마친 뒤 `IngestionService`가 `PoliciesWriteService`에 정책 배열을 전달한다.
+2. 잠금을 유지한 **같은 QueryRunner**에서 트랜잭션(모두 반영하거나 전부 취소하는 DB 작업 묶음)을 시작한다. 정책 저장 서비스는 `PolicyRepository`를 통해 기존 해시를 조회하고 `NEW(신규) / CHANGED(변경) / UNCHANGED(동일)`를 판정한다.
+3. 최대 **200건씩 벌크 INSERT/UPDATE(묶음 추가·갱신)** 한다. `source + external_id` 중복은 DB의 `UNIQUE` 제약으로 보호하며, 존재하는 정책은 갱신한다(`upsert`: 있으면 갱신·없으면 추가). 정책 하나당 1회씩 개별 INSERT하는 방식보다 묶음 쿼리를 우선한다.
+4. 모든 묶음이 성공해야 `COMMIT`(확정 저장)한다. 200건짜리 여러 쿼리를 실행해도 **트랜잭션은 전체 정책에 하나**다. 어느 묶음에서 오류가 발생해도 `ROLLBACK`(전체 취소)해 기존 정책을 유지한다.
+5. 트랜잭션 내부의 조회·저장·갱신은 `queryRunner.manager`로 접근한다. 이는 해당 트랜잭션의 **EntityManager(같은 DB 작업 범위를 공유하는 관리자)** 이므로, 일반 연결을 따로 사용해 일부만 저장되는 일을 방지한다.
+
+### 5.4 오류·재시도·종료 처리
+
+| 발생 단계 | 대응 | 재시도 |
+| --- | --- | --- |
+| API 호출 | 타임아웃·연결 끊김·429·5xx는 현재 페이지 재요청. 시도 횟수 초과 시 실패 기록 | 페이지당 최대 3회(최초 포함) |
+| 페이지/전체 검증, 변환, 해시 계산 | 정책/필드·오류 단계 기록 후 수집 종료 | 없음(입력 데이터가 같으면 결과도 같음) |
+| DB 저장 중 트랜잭션 충돌(`40P01` 교착, `40001` 직렬화 실패) | 현재 트랜잭션 롤백 후 같은 잠금·연결에서 저장 트랜잭션만 다시 실행 | 최대 2회(최초 포함) |
+| 다른 DB 오류·연결 끊김 | 가능하면 롤백하고 수집 종료. 잠금 연결이 끊겼다면 새 연결에서 자동 재시도하지 않음 | 없음 |
+| 파일 로그 기록 실패 | NestJS Logger(기본 로그)로 대체 기록 시도 | 없음 |
+
+- **공통 종료 절차:** `try/catch/finally`로 오류를 잡고, 최종 결과(성공/실패, 단계, 페이지, 원인, 시도 횟수, NEW/CHANGED/UNCHANGED 수)를 기록한 뒤 `finally`에서 **잠금 해제 → DB 연결 반환**을 시도한다. 잠금이 처음부터 획득되지 않았다면 해제하지 않는다. 로그 기록이 실패해도 자원 정리를 계속한다.
+- 잠금 연결이 끊기거나 프로세스가 강제 종료되면 PostgreSQL은 세션 잠금을 자동 해제한다. 강제 종료 시 파일 로그는 보장할 수 없으므로 가능한 범위에서 종료 로그를 남긴다. 전체 수집을 마치기 전에는 정책 DB를 변경하지 않는다.
+- 한 수집에서 조회되지 않은 기존 정책은 삭제하지 않는다. 인증키와 사용자 입력 원문은 기록하지 않는다.
+
+## 6. 신청 상태 규칙
+
+DB에는 `application_period_code`, `application_start_date`, `application_end_date` 등 **원본 신청기간 정보**를 저장한다. 화면에 보여줄 **현재 신청 상태는 검색 시점의 한국 날짜(`Asia/Seoul`)로 계산**하며 DB에 상태값을 별도로 저장하지 않는다. 예를 들어 10월 22일 마감 정책은 10월 10일에 '신청 가능', 10월 16일에 '마감 임박', 10월 23일에 '마감'으로 표시된다.
+
+| 단계 | 조건 | 상태 |
+| --- | --- | --- |
+| 1 | 기간 코드가 명시적 마감 `0057003` | `CLOSED`(마감) |
+| 2 | 기간 코드가 상시 `0057002`이며 명확하게 모순되는 날짜가 없음 | `ALWAYS_OPEN`(상시) |
+| 3 | 특정기간 `0057001` 또는 날짜 기반 판정 가능, 단일 유효한 시작·종료일 | 아래 날짜 비교 |
+| 4 | 그 외 | `UNKNOWN`(확인 필요) |
+
+**날짜 비교:** 시작일 `S`, 종료일 `E`, 오늘 `T`, 남은 일수 `D = E - T`(달력 날짜 차이).
+
+- `T < S` → `UPCOMING`(접수 예정).
+- `S <= T <= E`이며 `D >= 8` → `OPEN`(신청 가능).
+- `S <= T <= E`이며 `0 <= D <= 7` → `CLOSING_SOON`(마감 임박).
+- `T > E` → `CLOSED`(마감).
+- 시작일/종료일 누락, 날짜 역전(`S > E`), 복수 기간·형식 오류 → `UNKNOWN`.
+
+기간 코드와 날짜가 명백히 모순되는 자료는 예외 사례로 기록해 `UNKNOWN`으로 둔다. 단, 소스에 **명시적 마감**이 확인된 경우에는 마감을 우선한다. 화면에 원문 기간이 있다면 함께 보여준다.
+
+**기본 노출:** `CLOSED`를 제외한 상태 전체. `includeClosed=true`면 `CLOSED`도 포함한다.
+
+## 7. 조건 판단·점수 규칙
+
+### 7.1 항목 판정
+
+| 항목 | 일치(+점수) | 확실한 불일치 | 확인 필요 |
+| --- | --- | --- | --- |
+| 나이 | 사용자 나이가 유효한 `age_min~age_max` 범위 안(+1) | 유효 범위 밖 | `0~0`, NULL, 역전, 과도한 상한 등 |
+| 취업 | 제공된 코드 중 선택 코드가 존재(+1) | 유효한 허용 코드 목록이 모두 불일치 | 누락·미확인·불명확한 코드 |
+| 학력 | 제공된 코드 중 선택 코드가 존재(+1) | 유효한 허용 코드 목록이 모두 불일치 | 누락·미확인·불명확한 코드 |
+| 지역 | 사용자 코드 또는 확인된 상위 시 코드가 목록에 존재(+0.5) | — | 폐지 코드만 존재하거나 코드 의미를 특정할 수 없음 |
+
+- 나이 유효 범위: 정수 `1 <= min <= max <= 120`. 비정상 범위는 `UNKNOWN`.
+- 취업 `0013010`, 학력 `0049010`은 **제한 없음**으로 처리한다. 제한 없음은 점수·일치 태그를 생성하지 않는다.
+- 취업·학력 코드 여러 개는 **OR(하나라도 일치)** 로 계산하고, 다른 자격 항목 사이에서는 **AND(하나라도 확실히 불일치하면 제외)** 를 적용한다.
+- 하나의 코드 목록에 미확인 코드가 있더라도 확인된 코드가 사용자와 일치하면 해당 항목을 통과할 수 있다. 전부 불일치인 경우에는 **모든 코드가 유효한 허용 코드**로 확인됐을 때만 제외 후보가 된다.
+- 추가 자격·참여 제한 설명(`extra_qualification`, `participation_restriction`)이 존재하면 `EXTRA_REVIEW` 태그를 표시하고, 다른 구조화 항목의 불일치도 **제외 대신 확인 필요**로 처리한다.
+- 사용자 입력이 없는 항목에는 일치 점수를 주지 않는다. 정보가 없는 정책 조건은 제한 없음으로 추정하지 않는다.
+- 지역은 참고 및 순위 가점 항목이다. 지역 코드가 불일치해도 정책을 노출한다. 상위 시 관계는 공식 코드표의 부모 관계만 사용한다.
+
+### 7.2 정책 전체 처리 의사코드
+
+```ts
+function evaluate(policy, input) {
+  const hasExtraText = hasText(policy.extraQualification)
+    || hasText(policy.participationRestriction);
+  const results = checkAgeJobSchool(policy, input);
+
+  // 입력값이 있는 조건만 점수화. '제한 없음'은 중립.
+  const tags = matchedTags(results);
+  if (hasExtraText) tags.push('EXTRA_REVIEW');
+  const uncertain = reviewTags(results);
+  tags.push(...uncertain);
+
+  const hasReliableMismatch = results.some((r) => r === 'EXCLUDED');
+  const excluded = hasReliableMismatch && !hasExtraText;
+
+  const score = matchedCount(results) * 1
+    + (isVerifiedRegionRelated(policy, input.regionCode) ? 0.5 : 0);
+  if (isRegionUnclear(policy, input.regionCode)) tags.push('REGION_REVIEW');
+
+  return { excluded, score, tags };
+}
+```
+
+- `matchedCount`는 입력된 나이·취업·학력 중 **명확히 부합한 제한 조건** 개수다. 제한 없음은 세지 않는다.
+- `UNKNOWN` 항목은 0점이며 감점은 없다. 사용자 조건이 전혀 없으면 `score=0`, `tags=[]`로 응답한다.
+- 점수 범위는 **0~3.5점**, 지역만 선택했다면 최대 0.5점이다.
+- 제외된 정책은 목록 결과에 포함되지 않는다. 상세 URL로 접근한 경우에는 원문을 그대로 보여준다.
+
+### 7.3 화면용 태그
+
+| 실제 확인 사항 | 화면 예시 |
+| --- | --- |
+| 나이 부합 | 나이 기준 부합 |
+| 취업 부합 | 취업 상태 부합 |
+| 학력 부합 | 학력 기준 부합 |
+| 지역 연관성 | 지역 관련 |
+| 추가 자격·제한 설명 | 추가 조건 확인 |
+| 조건 판정 불가 | 나이/취업/학력 확인 필요 |
+| 폐지 코드 등 지역 정보 불명확 | 지역 확인 필요 |
+
+## 8. 목록 필터·정렬·화면
+
+### 8.1 기본값과 페이지 동작
+
+| 항목 | 규칙 |
+| --- | --- |
+| 분야 | 기본 '전체', 실제 대분류(`category`)와 정확 일치 |
+| 사용자 조건 | 선택 입력: 나이·거주지역·취업·학력 |
+| 마감 포함 | 기본 `false` |
+| 정렬 미지정 | 사용자 조건 없음 → 인기순, 1개 이상 → 맞춤순 |
+| 조건 없이 맞춤순 선택 | 프런트에서 선택 비활성화, 서버는 `popular` 적용 후 `appliedSort='popular'` 응답 |
+| 페이지네이션 | 기본 20개/페이지, 최대 50개, 페이지는 1부터 시작 |
+| 필터 변경 | 페이지를 1로 이동. 조건을 모두 지웠을 때 맞춤순을 사용 중이었다면 인기순으로 전환하고, 다른 수동 정렬은 유지 |
+
+### 8.2 정렬 규칙
+
+| 정렬 | 우선순위 (앞일수록 먼저) |
+| --- | --- |
+| `recommended` 맞춤순 | 점수 DESC → 마감 임박 우선 → 조회수 DESC |
+| `popular` 인기순 | 조회수 DESC |
+| `deadline` 마감순 | 접수 중(`OPEN`, `CLOSING_SOON`) 종료일 ASC → 접수 예정 시작일 ASC → 상시 → 확인 필요 → 마감 |
+| `newest` 최신순 | 원본 최초 등록일 DESC |
+
+- 모든 정렬의 마지막 동점 기준: 원본 등록일 DESC → 정책 `external_id` ASC → 내부 `id` ASC.
+- 날짜에 영향을 받는 마감 임박 여부와 신청기간 정렬은 **검색 시점**의 상태를 사용한다.
+- `view_count`나 등록일이 NULL이면 해당 정렬에서 뒤로 보낸다.
+- `deadline`의 '접수 중' 그룹에서는 마감 임박과 신청 가능을 구분하지 않고 종료일이 가까운 정책을 우선한다.
+
+### 8.3 목록·상세 표시
+
+**목록 카드**: 분야(필요하면 중분류), 정책명, 지원 혜택 요약, 신청 상태, 확인 가능한 신청기간, 조회수. 사용자 조건이 있으면 일치 태그와 확인 항목을 추가한다.
+
+- 지원 내용은 `benefit_text`를 공백 정리·텍스트 정제 후 최대 120자 내외로 잘라 표시한다. 금액·지원 기간의 구조가 명확하지 않으면 **원문 축약**을 우선한다.
+- 날짜를 확정하기 어렵다면 '확인 필요' 상태와 API 기간 원문을 함께 표시한다.
+- 정책 제목을 클릭하면 `/policies/[id]` 상세로 이동한다.
+
+**상세**: 지원 내용, 정책 설명, 자격 정보, 추가 자격·참여 제한, 신청기간, 신청·참고 링크를 구분해 표시한다. 링크는 실제 제공된 URL만 노출한다.
+
+**문구:** 카드와 상세에 `최종 신청 자격 및 접수 여부는 공식 신청처에서 확인하세요.` 안내를 한 번씩 적절한 위치에 표시한다.
+
+## 9. 검증 시나리오
+
+| ID | 테스트 입력·상황 | 기대 결과 |
+| --- | --- | --- |
+| T-01 | 사용자 조건 없이 목록 조회 | 마감 제외, 조회수 내림차순, 일치 점수 강조 없음 |
+| T-01a | 조건 없이 `sort=recommended` 요청 | 인기순 적용, `appliedSort=popular` |
+| T-01b | 맞춤순 선택 후 입력 조건 전부 삭제 | 화면에서 인기순으로 전환, 맞춤순 비활성화 |
+| T-02 | 28세 입력, 정책 나이 19~34세 | 나이 부합 +1점 |
+| T-03 | 28세 입력, 정책 나이 35~39세, 추가 설명 없음 | 목록 제외 |
+| T-04 | T-03 정책에 추가 자격 설명 존재 | 목록 유지, 추가 조건 확인 표시 |
+| T-05 | 나이 `0~0` 또는 `999` 상한 | 나이 확인 필요, 제외 판단 보류 |
+| T-06 | 학력 코드가 '제한 없음' | 제한 없음 처리, 학력 가점 0 |
+| T-07 | 복수 취업 코드 중 하나 일치 | 취업 부합 +1점 |
+| T-08 | 복수 취업 코드에 미해석 코드 존재, 나머지 불일치 | 확인 필요, 제외 보류 |
+| T-09 | 사용자 지역과 정책 코드 불일치 | 지역 가점 0, 정책 유지 |
+| T-10 | 지역 코드가 해당 구의 상위 시 코드 | 지역 관련 +0.5점 |
+| T-11 | 폐지 코드만 있는 정책 | 지역 확인 필요, 정책 유지 |
+| T-12 | 신청 종료일까지 정확히 7일·0일 | 마감 임박 |
+| T-13 | 어제 마감된 정책 | 기본 목록 숨김, 마감 포함 시 표시 |
+| T-14 | 접수 시작이 내일 | 접수 예정, 기본 목록 노출 |
+| T-15 | 신청기간이 복수 구간·역전 | 확인 필요, 기본 목록 노출 |
+| T-16 | 같은 점수 정책 2개, 하나만 마감 임박 | 맞춤순에서 마감 임박 우선 |
+| T-17 | 점수·마감 임박 여부가 같고 조회수 다름 | 조회수 높은 정책 우선 |
+| T-18 | 중간 페이지 호출이 1회 타임아웃 후 성공 | 해당 페이지만 재시도 후 수집 계속 |
+| T-18a | `e003` 오류 또는 429·5xx 재시도 한도 초과 | 단계·페이지·횟수 로그, DB 이전 상태 유지 |
+| T-19 | 전체 페이지에 중복된 `plcyNo` 발견 | 전체 수집 검증 실패, 정책 DB 유지 |
+| T-20 | 원본 변경 없이 `inqCnt`만 증가 | UNCHANGED, DB 조회수 최신화 |
+| T-21 | 같은 정책 재수집 | `(source, external_id)` 중복 0건 |
+| T-22 | 모든 필터와 점수 계산 후 페이지 2 조회 | 전체 정렬 결과의 21~40번째 반환 |
+| T-23 | 신청·참고 링크가 모두 비어 있음 | 상세 화면에 링크 없음 표시 |
+| T-24 | API 요청 본문에 나이·지역 포함 | DB·파일 로그에 사용자 조건 원문 저장되지 않음 |
+| T-25 | 수집 CLI 두 개를 같은 DB에서 동시에 실행 | 하나만 PostgreSQL 잠금 획득, 나머지는 중복 실행으로 종료·기록 |
+| T-26 | 수집 중 오류 또는 프로세스 종료 후 재실행 | 잠금 해제 확인, 다음 수집 정상 시작 |
+| T-27 | 묶음 저장 중 2,000번째 정책에서 DB 제약 오류 | 모든 묶음 롤백, 기존 데이터 유지 |
+| T-27a | DB 교착 상태(40P01)가 첫 저장 시도에 발생 | 트랜잭션만 다시 시도해 성공 시 전체 반영 |
+| T-27b | 원본 변환 또는 해시 계산 중 오류 | 실패 로그, DB 변경 없음, 잠금 해제 |
+| T-27c | 파일 로그 출력 실패 | 기본 로그 기록 시도, 잠금 반환 진행 |
+| T-27d | 저장 중 DB 연결 끊김 | DB 트랜잭션 확정 전이면 롤백, 연결 종료로 잠금 해제 |
+| T-28 | `/`로 웹 접근 | `/policies`로 이동하고 정상 목록 표시 |
+| T-29 | 정책 지역/카테고리/취업·학력 메타 조회 | 지역·카테고리는 DB 조회, 취업·학력은 서버 코드표 값·표시명 제공 |
+| T-30 | CLI 실행 중 검색 API 호출 | 기존 정책 정상 조회 및 응답 유지 |
+
+## 10. 구현 착수 전 준비 자료
+
+| 자료 | 용도 | 확인 방식 |
+| --- | --- | --- |
+| `RESULT.md` 및 원본 샘플 | 실제 응답 필드명·기간 형태·코드 목록 점검 | 수집 구현 전 샘플 대조 |
+| 현행·폐지 공식 지역 코드표 | `regions` 초기 데이터·상위 시 관계·선택 UI | 코드 출처와 적용일 기록 |
+| 취업·학력 코드표 | 입력 옵션, '제한 없음'과 다중 코드 해석 | 코드-한국어 명칭 연결 검증 |
+| 온통청년 인증키 | 수동 정책 수집 | 로컬/운영 환경변수 설정 |
+
+확인되지 않은 지역 자격 의미, 연령 `0~0`의 의미, API 오류 `e003`의 원인은 지금 정의된 **보수적 판정 및 안전한 수집 실패 처리**로 대응한다. 새로운 공식 근거가 확보되면 해당 규칙만 재검토한다.
