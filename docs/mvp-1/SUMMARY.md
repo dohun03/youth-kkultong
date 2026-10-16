@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-16 (Asia/Seoul) · **Step 1~2 완료, Step 3~57 미착수**
+최종 확인일: 2026-10-16 (Asia/Seoul) · **Step 1~3 완료, Step 4~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -107,8 +107,57 @@ npm run typecheck --workspace packages/shared
 - `git diff --check`, 문서 완료 상태·잠금 파일·Git 제외 검사: **통과**.
 - 서버 기동·웹 화면·DB 연결·제품 단위/통합 테스트: **미실행**. 해당 구현은 Step 3 이후 범위다.
 
-## 6. 다음 작업을 위한 상태
+## 6. Step 3 구현·검증 결과
 
-다음 요청 대상은 **Step 3: NestJS API 최소 실행**이다. Step 3~57은 시작하지 않았다. Step 1에서 기록한 인증키·API 호출·조사 자료의 후속 확인 사항은 그대로 남아 있다.
+사용자 요청에 따라 Step 2 변경을 `6a41346` (`chore: npm 작업공간과 타입 검사 환경 구성`)으로 커밋한 뒤 Step 3을 진행했다.
 
-추천 커밋: `chore: npm 작업공간과 타입 검사 환경 구성` (Step 2 변경은 아직 커밋하지 않음).
+### 구현과 실제 결정사항
+
+- API의 검증용 빈 `src/index.ts`를 제거하고 `src/main.ts`, `app.module.ts`, `health.controller.ts`를 작성했다. NestJS 기본 Express 어댑터를 사용하며 서비스 계층은 별도로 추가하지 않았다.
+- `main.ts`는 공통 접두사 `/api/v1`을 적용한 애플리케이션을 생성하고 직접 실행할 때 `0.0.0.0:4000`에서 대기한다. 종료 신호에 연결을 정리하며 기동 오류는 기록 후 실패 종료한다. 테스트에서 가져올 때는 4000 포트를 자동으로 열지 않는다.
+- `GET /api/v1/health`는 HTTP `200`, JSON `{ "status": "ok" }`를 반환한다. SPEC의 기본 서비스 상태 응답을 구체화한 것으로, 현재 API 프로세스의 응답 여부만 확인한다. DB 준비 상태 검사는 아직 구현하지 않았다.
+- NestJS `12.1.3`, `reflect-metadata` `0.2.2`, `rxjs` `7.8.2`를 실행 의존성으로, Jest `30.5.2`, Supertest `7.3.1`, TypeScript 지원용 `ts-jest` `29.4.15`와 필요한 타입 선언을 개발 의존성으로 고정했다.
+- API에는 데코레이터·메타데이터 컴파일 설정을 적용했다. 공통 TypeScript 설정은 자동 전역 타입을 비우고 API에서 Node 타입, 테스트 설정에서 Node·Jest 타입만 명시해 웹·공용 패키지에 테스트 전역 타입이 섞이지 않게 했다. API의 `typecheck`에는 테스트 소스도 포함한다.
+- API는 CommonJS 출력과 Node.js의 ESM 불러오기 지원을 사용한다. NestJS 12의 ESM 의존성을 Jest에서도 읽도록 공식 문서의 `--experimental-vm-modules` 옵션을 테스트 명령에 반영했다. Jest의 동기 ESM 로딩에 필요한 Node.js `>=24.9.0 <25`를 API 패키지에 명시했다. 기존 `.nvmrc`의 `24.18.0`은 해당 범위를 충족한다.
+- `test/health.spec.ts`에서 실제 애플리케이션을 로컬 임시 포트로 실행하고 Supertest로 요청한 뒤 연결을 닫는다. 단순 반환값을 반복 확인하는 별도 단위 테스트는 추가하지 않았다.
+- 사용자 검수에서 편집기의 Jest 전역 이름 오류 7개가 발견됐다. `tsconfig.test.json`은 명령줄에서만 명시적으로 선택되고 편집기의 자동 탐색 대상이 아니어서 테스트 파일이 설정 없는 프로젝트로 열리는 문제였다. `test/tsconfig.json`이 기존 테스트 설정을 상속하도록 추가해 편집기에도 Node·Jest 타입과 strict 설정을 연결했다. 패키지를 다시 설치하거나 API 소스에 Jest 전역 타입을 추가하지 않았다.
+- 기존 API 접두사·포트·DB 설계는 변경하지 않았다. PRD·ARCHITECTURE·SPEC의 수정은 없다. PLAN과 이 문서에 실제 완료 상태를 반영했다.
+
+실행·접두사·테스트 구성은 [NestJS 시작 안내](https://docs.nestjs.com/first-steps), [NestJS 테스트 안내](https://docs.nestjs.com/fundamentals/testing), [Jest ESM 안내](https://jestjs.io/docs/ecmascript-modules)를 참고했다.
+
+### 실행 방법
+
+루트에서 실행한다. `start:api`는 이미 빌드된 파일을 실행하므로 소스를 바꾸면 먼저 빌드한다.
+
+```bash
+npm ci
+npm run build
+npm run typecheck
+npm test
+npm run start:api
+```
+
+서버를 실행한 상태에서 다른 터미널에서 확인한다.
+
+```bash
+curl --fail http://localhost:4000/api/v1/health
+```
+
+예상 응답: `{"status":"ok"}`. API 작업공간만 선택할 때는 `npm run build --workspace apps/api`, `npm run start --workspace apps/api`, `npm run test --workspace apps/api`를 사용한다.
+
+### 실제 검증과 남은 문제
+
+- 잠금 파일을 갱신한 뒤 `npm ci --offline --cache /tmp/youth-kkultong-npm-cache`로 재설치: **통과**. 최초 의존성 다운로드에는 네트워크 허용 환경을 사용했다.
+- `npm run build`, `npm run typecheck`: 웹·공용 패키지를 포함한 모든 작업공간 **통과**.
+- `npm test`: 통합 테스트 **4개 통과**. 정상 JSON 응답, `/health`·`/api/health`의 `404`, `POST /api/v1/health`의 `404`를 확인했다. 최초 실행의 ESM 로딩 오류는 테스트 실행 옵션을 수정한 뒤 해소했다. VM 모듈 실험 기능 경고는 출력된다.
+- 편집기 설정 수정 후 TypeScript 언어 서버(`tsserver`)로 `health.spec.ts`의 프로젝트 자동 선택과 의미 오류를 다시 확인: `test/tsconfig.json` 선택, 오류 **0개**. 명령줄 검사만으로 편집기 오류까지 없다고 판단했던 검증 누락을 보완했다. API 빌드·타입 검사·통합 테스트도 수정 후 다시 통과했다.
+- `npm run start:api`를 실행한 뒤 Python 표준 라이브러리로 실제 `:4000`의 health 응답을 확인: **통과**. 같은 포트에 두 번째 프로세스를 시작하면 `EADDRINUSE` 기록과 실패 종료를 확인했다. 첫 프로세스의 `SIGTERM` 종료 및 포트 반환도 **통과**. 검증용 서버는 모두 종료했다. 로컬 포트 실행 검증은 샌드박스 밖에서 수행했다.
+- `npm ls --workspace apps/api --depth=0`, `git diff --check`, 잠금 파일·완료 상태·전역 타입 범위·Git 제외 검사: **통과**.
+- 네트워크를 이용한 `npm audit --omit=dev --json`: 실행 의존성 취약점 **0건**. 전체 `npm audit --json`에서는 Jest 계열의 `sprintf-js` 간접 의존성에 따른 **중간 등급 20건**이 보고되어 미해결로 남겼다. 제안된 Jest·ts-jest의 큰 버전 변경은 적용하지 않았다. 오프라인 설치가 출력한 audit 수치는 최신 보안 검사 근거로 사용하지 않는다.
+- DB 연결·공통 오류 응답·공개 API 보안 최종 점검은 각각 Step 6·11·54 범위로 아직 완료하지 않았다. 실제 정책 수집이나 웹 화면 구현도 진행하지 않았다.
+
+## 7. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 4: Next.js 웹 기본 경로**다. Step 4~57은 시작하지 않았다. Step 1에서 기록한 인증키·API 호출·조사 자료의 후속 확인 사항은 그대로 남아 있다.
+
+추천 커밋: `feat: NestJS API 서버 및 상태 확인 경로 구성` (Step 3 변경은 아직 커밋하지 않음).

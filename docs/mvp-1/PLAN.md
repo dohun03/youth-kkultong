@@ -2,7 +2,7 @@
 
 > 저장 위치: `docs/mvp-1/PLAN.md`  
 > 기준: `docs/PRD.md`(PRD v0.8), `docs/ARCHITECTURE.md`(v0.3), `docs/mvp-1/SPEC.md`(v0.4), `docs/AGENT_RULES.md`  
-> 상태: **Step 1~2 완료 · Step 3~57 미착수** · 작성일: 2026-10-16
+> 상태: **Step 1~3 완료 · Step 4~57 미착수** · 작성일: 2026-10-16
 
 ## 목차
 
@@ -67,8 +67,8 @@
 
 ### Step 3. NestJS API 최소 실행
 
-- [ ] NestJS 서버를 `:4000`, 공통 API 접두사 `/api/v1`로 실행한다.
-- [ ] `GET /api/v1/health`가 기본 정상 응답을 반환하도록 한다.
+- [x] NestJS 서버를 `:4000`, 공통 API 접두사 `/api/v1`로 실행한다.
+- [x] `GET /api/v1/health`가 기본 정상 응답을 반환하도록 한다.
 
 **검증/완료:** 서버 시작 및 health 호출 성공, 빌드·기본 테스트 통과. **커밋:** `feat: NestJS API 서버 및 상태 확인 경로 구성`.
 
