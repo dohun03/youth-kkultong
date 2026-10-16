@@ -2,7 +2,7 @@
 
 > 저장 위치: `docs/mvp-1/PLAN.md`  
 > 기준: `docs/PRD.md`(PRD v0.8), `docs/ARCHITECTURE.md`(v0.3), `docs/mvp-1/SPEC.md`(v0.4), `docs/AGENT_RULES.md`  
-> 상태: **Step 1 완료 · Step 2~57 미착수** · 작성일: 2026-10-16
+> 상태: **Step 1~2 완료 · Step 3~57 미착수** · 작성일: 2026-10-16
 
 ## 목차
 
@@ -60,8 +60,8 @@
 
 ### Step 2. npm 작업공간과 TypeScript 기본 설정
 
-- [ ] 루트에 `npm workspaces`로 `apps/api`, `apps/web`, `packages/shared`를 연결한다.
-- [ ] 각 작업공간의 설치·빌드·타입 검사 명령과 TypeScript strict 설정을 준비한다.
+- [x] 루트에 `npm workspaces`로 `apps/api`, `apps/web`, `packages/shared`를 연결한다.
+- [x] 각 작업공간의 설치·빌드·타입 검사 명령과 TypeScript strict 설정을 준비한다.
 
 **검증/완료:** 루트 의존성 설치가 재현되고 세 작업공간을 구분해 명령을 실행할 수 있다. **커밋:** `chore: npm 작업공간과 타입 검사 환경 구성`.
 
