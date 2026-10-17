@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { loadEnvironment } from '../src/config/environment';
+import { loadEnvironment } from '../src/common/environment';
 
 describe('실행 환경과 루트 .env 설정 읽기', () => {
   beforeEach(() => {

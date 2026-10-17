@@ -1,8 +1,8 @@
 import { Inject, Module } from '@nestjs/common';
 import type { OnApplicationShutdown } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { ENVIRONMENT, loadEnvironment } from '../config/environment';
-import type { Environment } from '../config/environment';
+import { ENVIRONMENT, loadEnvironment } from '../common/environment';
+import type { Environment } from '../common/environment';
 import { createDataSource } from './data-source';
 
 @Module({

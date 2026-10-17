@@ -2,7 +2,7 @@
 
 > 저장 위치: `docs/mvp-1/PLAN.md`  
 > 기준: `docs/PRD.md`(PRD v0.8), `docs/ARCHITECTURE.md`(v0.3), `docs/mvp-1/SPEC.md`(v0.4), `docs/AGENT_RULES.md`  
-> 상태: **Step 1~6 완료 · Step 7~57 미착수** · 작성일: 2026-10-16
+> 상태: **Step 1~7 완료 · Step 8~57 미착수** · 작성일: 2026-10-16
 
 ## 목차
 
@@ -99,8 +99,8 @@
 
 ### Step 7. `policies` 테이블·엔티티
 
-- [ ] SPEC 2.1의 정책 컬럼을 `PoliciesModule` 소속 엔티티와 단일 Migration으로 구현한다.
-- [ ] `(source, external_id)` UNIQUE 및 명세에 정의된 조회용 인덱스를 생성한다.
+- [x] SPEC 2.1의 정책 컬럼을 `PoliciesModule` 소속 엔티티와 단일 Migration으로 구현한다.
+- [x] `(source, external_id)` UNIQUE 및 명세에 정의된 조회용 인덱스를 생성한다.
 
 **검증/완료:** 마이그레이션 후 실제 스키마·제약조건과 Entity 정의가 일치하며 동일 출처·외부 ID 중복이 거부된다. **커밋:** `feat: 정책 저장 테이블과 고유 제약조건 생성`.
 

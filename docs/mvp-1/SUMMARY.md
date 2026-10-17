@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-16 (Asia/Seoul) · **Step 1~6 완료, Step 7~57 미착수**
+최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~7 완료, Step 8~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -267,7 +267,7 @@ curl --fail http://localhost:3000/api/v1/health
 ### 구현과 실제 결정사항
 
 - PLAN·SPEC·ARCHITECTURE의 설정 기준과 Step 5의 실제 실행 상태를 대조했다. 기존 세 서비스는 healthy였고 개발 DB에 업무 테이블은 없었다. 이번 범위는 환경변수 검증·DB 연결·Migration 실행 기반이며 정책·지역 엔티티와 테이블은 추가하지 않았다.
-- `config/environment.ts`에 Zod 검증을 작성했다. 루트 `.env`를 읽고 실행 환경의 값을 우선한다. `.env`가 없는 컨테이너는 실행 환경만 사용하고, 읽기 권한 등의 오류는 실패로 처리한다. 비밀값은 검증 오류에 포함하지 않는다. Node.js 기본 `parseEnv`를 사용해 별도 설정 패키지를 추가하지 않았다.
+- `common/environment.ts`에 Zod 검증을 작성했다. 루트 `.env`를 읽고 실행 환경의 값을 우선한다. `.env`가 없는 컨테이너는 실행 환경만 사용하고, 읽기 권한 등의 오류는 실패로 처리한다. 비밀값은 검증 오류에 포함하지 않는다. Node.js 기본 `parseEnv`를 사용해 별도 설정 패키지를 추가하지 않았다.
 - `DATABASE_URL`은 사용자·호스트·DB 이름이 있는 `postgres:` 또는 `postgresql:` URL을 필수로 받는다. `YOUTH_CENTER_PAGE_SIZE=50`, `YOUTH_CENTER_REQUEST_DELAY_MS=3000`, `YOUTH_CENTER_MAX_ATTEMPTS=3`, `POLICY_IMPORT_BATCH_SIZE=200`, `TZ=Asia/Seoul`을 기본값으로 적용한다. 숫자는 정수 문자열을 검증한 뒤 변환하며, 페이지 크기는 양의 안전한 정수, 요청 간격은 0~2,147,483,647ms, 시도 횟수는 1~3회, 저장 묶음은 1~200건으로 제한한다. 시간대는 한국 날짜 판정을 위해 `Asia/Seoul`만 허용한다. JavaScript 타이머 한도를 넘는 대기 시간도 거부한다.
 - `YOUTH_CENTER_API_KEY`는 빈 값·공백을 미설정으로 다루며 조회 서버와 Migration 실행에는 요구하지 않는다. 실제 수집 시 필수 검사·인증 검증은 수집 Step에서 구현한다. 조사용 `YOUTH_API_KEY`를 제품 키로 자동 대체하지 않는다. 기존 로컬 `.env`와 인증키는 변경하거나 출력하지 않았다.
 - TypeORM `1.1.2`, PostgreSQL 드라이버 `pg` `8.23.1`, Zod `4.6.7`을 API 실행 의존성에 고정했다. npm 공식 레지스트리에서 Node.js 호환 범위를 확인했다. NestJS 연동은 기본 비동기 provider(의존성 제공자)를 사용한다.
@@ -289,7 +289,7 @@ docker compose exec -T api npm run migration:run
 docker compose exec -T api npm run migration:show
 ```
 
-위 명령은 Step 5의 DB·웹이 이미 기동한 환경 기준이다. 새 환경은 `docker compose up --build -d --wait`로 세 서비스를 먼저 기동한다. 현재 배포용 Migration은 없으므로 `migration:run`은 `No migrations are pending`으로 끝나고 `migration:show`에 나열할 항목은 없다. Step 7부터 실제 업무 스키마를 추가한다. Migration은 API 시작 시 자동 실행되지 않는다.
+위 명령은 Step 5의 DB·웹이 이미 기동한 환경 기준이다. 새 환경은 `docker compose up --build -d --wait`로 세 서비스를 먼저 기동한다. Step 6 완료 당시에는 배포용 Migration이 없어 `migration:run`이 `No migrations are pending`으로 끝나고 `migration:show`에 나열할 항목도 없었다. Step 7 이후의 적용 상태는 아래 해당 Step 결과를 따른다. Migration은 API 시작 시 자동 실행되지 않는다.
 
 호스트에서 직접 실행하려면 `.env` 또는 실행 환경에 **호스트에서 접근 가능한** `DATABASE_URL`을 별도로 설정한다. Compose DB는 호스트 포트를 공개하지 않는다. 빌드와 명령은 다음과 같다.
 
@@ -327,10 +327,56 @@ docker compose -f compose.yaml -f /tmp/youth-kkultong-step6-test.compose.yaml ru
 - 설치 과정의 실행 의존성 검사 **0건**, 기존 개발 의존성의 중간 등급 **20건** 경고는 유지됐다. 별도 보안 수정이나 강제 패키지 변경은 하지 않았다. Jest의 VM 모듈 경고도 계속 출력된다.
 - 실제 제품용 API 키의 준비·유효성 확인, 온통청년 호출, 업무 테이블·지역 시드·정책 수집은 이번 Step에서 실행하지 않았다. Step 6 완료를 막는 미해결 항목은 없다.
 
-핵심 코드 읽는 순서: `config/environment.ts` → `database/data-source.ts` → `database/database.module.ts` → `database/migration-data-source.ts` → `test/database.spec.ts`.
+핵심 코드 읽는 순서: `common/environment.ts` → `database/data-source.ts` → `database/database.module.ts` → `database/migration-data-source.ts` → `test/database.spec.ts`.
 
-## 10. 다음 작업을 위한 상태
+## 10. Step 7 구현·검증 결과
 
-다음 요청 대상은 **Step 7: policies 테이블·엔티티**다. Step 7~57은 시작하지 않았다. Step 1의 인증키·API 호출·조사 자료 및 개발 도구의 후속 검토 사항은 그대로 남아 있다.
+사용자 요청으로 Step 6을 `3c62f80` (`chore: 환경변수 검증과 TypeORM 마이그레이션 구성`)으로 커밋한 뒤 Step 7을 진행했다. 착수 시 작업 트리는 깨끗했고, 개발 DB에는 적용 기록이 없는 `migrations` 테이블만 있었다.
 
-Step 6 구현·문서 커밋 메시지: `chore: 환경변수 검증과 TypeORM 마이그레이션 구성`. 커밋은 실행하지 않았다.
+### 구현과 실제 결정사항
+
+- `modules/policies/entities/policy.entity.ts`에 SPEC 2.1의 29개 컬럼을 정의했다. TypeScript 식별자는 camelCase, DB 컬럼은 명세의 snake_case를 사용한다. `PoliciesModule`을 만들고 `AppModule`에 연결했다. 조회·저장 서비스나 Repository는 아직 추가하지 않았다.
+- 단일 Migration `database/migrations/1792162800000-create-policies.ts`에서 정책 테이블, UUID 기본키, `(source, external_id)` 복합 고유 제약, 분야·조회수 내림차순·원본 등록일 내림차순 인덱스를 생성한다. 테이블과 인덱스는 Migration 전체 트랜잭션 안에서 적용된다. `down`은 해당 정책 테이블과 소속 인덱스·제약을 제거한다.
+- TypeORM의 인덱스 데코레이터는 PostgreSQL의 DESC 방향을 표현하지 못하므로 두 내림차순 인덱스는 SQL로 생성한다. 엔티티에는 같은 이름을 `synchronize: false`로 표시하고, 실제 방향은 DB 통합 검사로 확인한다. 공통 `synchronize=false`와 `migrationsRun=false`도 유지한다.
+- UUID는 PostgreSQL 17 내장 `gen_random_uuid()`로 자동 생성한다. TypeORM 설정에 `uuidExtension: 'pgcrypto'`로 같은 함수 선택을 지정하고 `installExtensions: false`로 확장 자동 설치를 끈다. 이름과 달리 별도의 pgcrypto 확장을 설치하거나 사용할 필요는 없다. 실제 DB에 `pgcrypto`·`uuid-ossp`가 없고 UUID가 정상 생성되는 것을 확인했다.
+- 원본 등록·수정 시각은 `timestamp`, 내부 생성·갱신일은 `timestamptz`와 자동 시각 컬럼으로 구분한다. 신청 시작·종료일은 `date` 컬럼과 `YYYY-MM-DD` 문자열로 다룬다. 코드 목록은 `text[]`, 원본 객체는 `jsonb`, 해시는 `char(64)`로 저장한다. 명세의 선택 항목은 NULL을 허용하며 숫자 0·빈 배열·코드의 앞자리 0을 보존한다.
+- DB 단계에서는 명세의 NOT NULL·타입·길이·고유 제약을 적용한다. 빈 정책 ID·제목 검증과 내용 해시 생성 등은 예정된 수집 Step에서 구현한다. 나이·지역 코드의 의미를 추정한 추가 DB 제약은 만들지 않았다.
+- Step 6의 DB 연결 테스트는 애플리케이션 Migration의 추가 여부에 의존하지 않도록 해당 테스트의 엔티티·Migration 목록을 명시했다. Step 7 테스트는 매번 별도 임시 스키마에서 실제 Migration 파일을 실행하고 종료 시 제거한다. 개발 DB의 기존 테이블이나 데이터를 초기화하지 않는다.
+- 사용자 검수에서 ARCHITECTURE의 디렉터리 구성을 따르지 않은 점이 확인돼 정책 모듈을 `src/modules/policies/`, 엔티티를 그 아래 `entities/`, 공통 설정을 `src/common/environment.ts`로 이동하고 모든 import를 맞췄다. 파일 이동 뒤 예전 엔티티 산출물이 중복 로딩되지 않도록 API 빌드 시작 시 생성물인 `dist`를 정리한다.
+- API 계약·제품 규칙·계획의 설계 변경과 외부 패키지 추가는 없다. PRD·ARCHITECTURE·SPEC은 유지하고 PLAN·이 문서에 실제 결과만 반영했다.
+
+참고: [PostgreSQL 17 내장 UUID 함수](https://www.postgresql.org/docs/17/functions-uuid.html), [TypeORM PostgreSQL 연결 옵션](https://typeorm.io/docs/drivers/postgres/).
+
+### 실행 방법
+
+Step 6의 DB·웹이 실행 중인 환경에서 다음 순서로 적용한다. 이미 적용된 Migration은 재실행하지 않는다.
+
+```bash
+docker compose build api
+docker compose run --rm --no-deps api npm run migration:run
+docker compose run --rm --no-deps api npm run migration:show
+docker compose up -d --no-deps --wait --wait-timeout 60 api
+```
+
+현재 `migration:show`에는 `[X] 1 CreatePolicies1792162800000`이 표시된다. 로컬 직접 실행은 앞 절의 DB 주소 설정 후 `npm run build --workspace apps/api` → `npm run migration:run` 순서다. 통합 테스트는 앞 절의 `api-build` 임시 Compose 설정에서 `npm test`를 실행하면 현재 소스 기준으로 재현된다.
+
+### 실제 검증과 남은 문제
+
+- `npm run build --workspace apps/api`, `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`, 최종 `npm run typecheck --workspace apps/api`, `git diff --check`: **통과**. API 실행 이미지 빌드도 **통과**.
+- 실제 PostgreSQL을 사용하는 전체 `npm test`: **5개 테스트 모음, 49개 통과**. Step 7 검사 18개에서 29개 컬럼의 타입·길이·NULL 여부, 엔티티와 DB 사이 변경 SQL 0건, 기본키·복합 고유 제약·3개 조회 인덱스, UUID·저장일 생성, NULL·길이 초과 거부, 원본 JSON·배열·날짜 보존, 갱신일 처리를 확인했다.
+- 디렉터리 정정 후 API 빌드·전체 타입 검사·설정 테스트 25개와 실제 PostgreSQL 17 전체 테스트 49개를 다시 통과했다. 예전 `dist/policies`·`dist/config`가 제거되고 새 경로의 산출물만 생성되는 것도 확인했다. 중지됐던 Docker Desktop을 다시 기동했으며 사용자 인증 설정은 보존했다.
+- 최초 중복 검사에서는 TypeORM이 INSERT 입력 객체에 생성 ID를 추가해 다음 INSERT가 기본키 중복을 일으켰다. 각 호출에 새 객체를 전달하도록 테스트 자료를 수정했고, 최종 검사는 단순 `23505` 코드뿐 아니라 `UQ_policies_source_external_id` 제약 이름까지 확인한다. 출처가 다르면 같은 외부 ID를 저장할 수 있다.
+- 실제 Migration의 적용 전/후 조회, 재실행 무변경, 되돌리기·재적용 **통과**. 되돌리기는 자체 생성한 테스트 스키마에서만 수행했다. 기존 Step 6 검사도 모두 통과했다.
+- 운영용 API 이미지의 CLI로 개발 DB에서 미적용 표시 → Migration 적용 → 재실행 시 `No migrations are pending` → 적용 표시를 확인했다. 최종 DB에는 `public.policies` **0건**, 해당 Migration 적용 이력 **1건**이 있다. 실제 개발 DB와 엔티티 사이 변경 SQL도 **0건**이다.
+- 임시 `step6_test_*`·`step7_test_*` 스키마 잔여 **0개**, UUID 확장 설치 **0개**를 확인했다. 검증용 일회성 컨테이너는 제거됐고 기존 볼륨·orphan 컨테이너는 보존했다.
+- 새 API 재기동 후 세 서비스 **healthy**, API 직접·웹 경유 health 응답 **통과**. `web`, `api`, `db`는 실행 중이다.
+- 스키마 차이 검사 중 `pg`의 동시 쿼리 사용 중단 예고 경고가 출력된다. 추적 결과 TypeORM 내부의 `RdbmsSchemaBuilder.log` → 배열 타입 조회에서 발생했으며 테스트·Migration·서비스 기동은 통과했다. 외부 패키지 내부 수정은 하지 않고 호환성 후속 검토로 남긴다. 기존 Jest VM 모듈·개발 의존성 경고도 유지한다.
+- Step 7 완료를 막는 미해결 사항은 없다. 지역 테이블·시드, 정책 수집·조회 API는 아직 구현하지 않았다.
+
+핵심 코드 읽는 순서: `modules/policies/entities/policy.entity.ts` → `database/migrations/1792162800000-create-policies.ts` → `test/policy-schema.spec.ts` → `database/data-source.ts`.
+
+## 11. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 8: regions 테이블·엔티티**다. Step 8~57은 시작하지 않았다. Step 1의 인증키·API 호출·조사 자료 및 개발 도구의 후속 검토 사항은 그대로 남아 있다.
+
+Step 7 권장 커밋 메시지: `feat: 정책 저장 테이블과 고유 제약조건 생성`. Step 7은 아직 커밋하지 않았다.

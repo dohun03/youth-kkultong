@@ -1,4 +1,4 @@
-import { parseEnvironment } from '../src/config/environment';
+import { parseEnvironment } from '../src/common/environment';
 
 const databaseUrl = 'postgresql://tester:unit-secret@localhost:5432/example';
 
