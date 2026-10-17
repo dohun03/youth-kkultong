@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~11 완료, Step 12~57 미착수**
+최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~12 완료, Step 13~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -41,8 +41,8 @@
 
 | 확인 사항 | 현재 상태와 후속 작업 |
 | --- | --- |
-| 인증키 환경변수 | 로컬 `.env`에는 조사용 `YOUTH_API_KEY`가 있고 제품용 `YOUTH_CENTER_API_KEY`는 없다. 키 값·유효성은 보고하지 않았다. Step 6·12에서 제품 설정을 준비하고 확인해야 함 |
-| 목록 `pageType=1` | SPEC의 요청값이지만 보관된 조사 목록 요청에서는 생략됨. Step 12에서 실제 호출로 확인할 항목이며 지금은 검증 완료로 간주하지 않음 |
+| 인증키 환경변수 | 로컬 `.env`의 제품용 `YOUTH_CENTER_API_KEY`는 미설정이다. Step 12 수동 검증에서만 기존 조사용 `YOUTH_API_KEY`를 프로세스 내부에 주입해 실제 호출에 성공했다. 제품 코드에 별칭 처리는 없으며 수집 운영 전 제품용 환경변수 설정 필요 |
+| 목록 `pageType=1` | Step 12에서 명세대로 실제 1페이지·50건을 요청해 HTTP 200·`resultCode=200`과 반환 50건을 확인 |
 | 지역 시드·코드표 | 공식 원본은 로컬에 확보되어 있으나 제품 시드·코드표와 검증은 아직 없음. Step 9·29에서 구현·검증 |
 | 공식 API 의미 | 호출 한도, `e003` 원인, 지역 코드와 실제 거주 자격의 대응, `0~0` 연령 의미 등은 조사상 미확인. SPEC의 보수적 판정·실패 처리를 유지 |
 | 조사 자료의 전달 | Git 추적 제외로 다른 환경에 원본이 없을 수 있음. 관련 Step 착수 시 자료 존재를 확인하고 없으면 해당 Step을 보류·보고 |
@@ -567,8 +567,49 @@ docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tm
 
 핵심 코드 읽는 순서: `packages/shared/src/policy-search.schema.ts` → `apps/api/src/common/zod-validation.pipe.ts` → `apps/api/src/common/api-exception.filter.ts` → `apps/api/src/main.ts` → `apps/api/test/request-validation.spec.ts`.
 
-## 15. 다음 작업을 위한 상태
+## 15. Step 12 구현·검증 결과
 
-다음 요청 대상은 **Step 12: 온통청년 목록 API 단일 페이지 호출**이다. Step 12~57은 시작하지 않았다. Step 1의 제품 API 키·실제 온통청년 호출, 개발 도구의 후속 검토 사항은 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+Step 11의 실제 커밋 `55ad49f` (`feat: API 요청 검증과 공통 오류 응답 적용`)과 깨끗한 작업 트리를 확인한 뒤 진행했다.
 
-Step 11 커밋 메시지: `feat: API 요청 검증과 공통 오류 응답 적용`.
+### 구현과 실제 결정사항
+
+- `IngestionModule`에 `YouthCenterClient`를 등록·내보내고 `AppModule`에 연결했다. 기존 `DatabaseModule`에서 검증한 환경변수를 주입받는다. 클라이언트 생성 시 인증키를 강제하지 않아 키 없는 조회 서버는 계속 실행할 수 있고, `fetchPage(pageNum)` 호출 시에만 필수 키를 검사한다.
+- SPEC 5.1의 엔드포인트에 `GET`으로 `apiKeyNm`, `pageType=1`, `rtnType=json`, 지정한 `pageNum`, 설정한 `pageSize`를 전송한다. 페이지는 1 이상의 안전한 정수만 허용한다. Node.js 내장 `fetch`를 사용해 외부 패키지를 추가하지 않았다.
+- 응답은 `httpStatus`, `httpOk`, `apiSuccess`, `body`, `retryAfter`로 구분한다. `apiSuccess`는 본문의 숫자형 `resultCode === 200`만 판단하며 HTTP 성공 여부와 독립적이다. 호출자는 두 성공 값을 함께 확인해야 한다. HTTP 400·401·403·429·5xx도 받은 본문을 그대로 반환하고, JSON이 아닌 HTML·깨진 JSON·빈 본문은 문자열로 보존한다. 성공 값만으로 정책 배열·페이지 구조가 유효하다고 간주하지 않으며 상세 구조 검증은 Step 14에서 진행한다.
+- 요청과 본문 읽기 전체에 30초 제한을 적용했다. 연결·본문 읽기 실패는 `NETWORK`, 시간 초과는 `TIMEOUT`으로 구분하는 `YouthCenterRequestError`를 전달한다. 오류에는 페이지·실패 종류만 담고 URL·인증키·원본 오류·`cause`는 포함하지 않는다. 키가 포함된 URL의 리다이렉트를 따르지 않으며 클라이언트는 로그를 출력하지 않는다.
+- 지정한 페이지를 한 번만 요청한다. `Retry-After`는 후속 처리를 위해 보존하며 재시도·대기·전체 페이지 순회·Zod 구조 검증·DB 저장·CLI는 이번 Step에 추가하지 않았다.
+- API 계약·DB·Migration·설계 의미의 변경은 없다. PLAN 완료 표시와 실제 검증 결과만 문서에 반영했다.
+
+### 실행 방법
+
+DB 없이 단일 페이지 모의 호출을 검증한다.
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/youth-center.client.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+```
+
+전체 회귀 테스트는 Step 11의 기존 테스트 이미지에 현재 API 소스·테스트를 읽기 전용으로 연결해 실행했다. 의존성과 공용 패키지는 Step 11 이후 변경하지 않았다. 테스트의 임시 스키마를 사용하며 실행 중인 서비스는 교체하지 않는다.
+
+```bash
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tmp/youth-kkultong-step11-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" api npm test
+```
+
+### 실제 검증과 남은 문제
+
+- 신규 모의 호출 테스트 **30개 통과**: 지정 페이지·기본/변경 크기·특수문자 키 인코딩, HTTP 오류와 API 오류의 구분, 숫자형 성공 코드, 원문 보존, 잘못된 페이지·키 누락의 호출 전 거부, 연결·본문 읽기 실패, 실제 AbortSignal 취소 경로와 민감값 비노출을 확인했다. 오류 시에도 재시도하지 않는 것을 확인했다.
+- 전체 회귀 테스트 **11개 테스트 모음·219개 통과**. 실제 PostgreSQL 스키마·시드·기존 HTTP 테스트를 포함하며 새 `IngestionModule`의 의존성 주입과 키 없는 서버 기동도 통과했다.
+- `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`: **공용·API·웹 통과**. `npm run build --workspace apps/api`: **공용 선행 빌드·API 빌드 통과**. 웹 소스 변경이 없어 Next.js 배포 빌드는 재실행하지 않았다.
+- `/tmp/youth-kkultong-step12-check.cjs`로 보관된 `docs/api-research/samples/initial-page-0001-size-5.json`을 클라이언트에 전달해 HTTP/API 성공과 본문 보존을 확인했다. 이 조사 자료와 임시 검증 스크립트는 Git 추적 대상이 아니며 자동 테스트는 독립적인 모의 응답을 사용한다.
+- **2026-10-17 실제 호출 성공:** 명세의 `pageType=1`, `rtnType=json`, `pageNum=1`, `pageSize=50` 요청에서 HTTP **200**, `resultCode=200`, 응답 페이지 **1**, 크기 **50**, 반환 **50건**, 당시 `totCount=3264`를 확인했다. 전체 건수는 관측값이며 고정 기준으로 사용하지 않는다.
+- 제품용 키는 미설정이므로 수동 검증 프로세스에서만 기존 조사용 키를 제품 설정에 주입했다. `.env`와 제품 코드에는 별칭·자동 대체를 추가하지 않았고 키·요청 URL·실제 응답 원문을 출력·저장하지 않았다. 첫 수동 검증은 로컬 `.env`에 `DATABASE_URL`이 없어 호출 전에 종료됐으며, DB를 사용하지 않는 검증용 주소를 전달해 수정했다. 샌드박스의 외부 네트워크·Docker 접근 제한은 샌드박스 밖에서 동일 검증을 실행해 해결했다. 클라이언트 자체의 자동 재시도는 없다.
+- `git diff --check`: **통과**. Step 12 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
+
+핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center.client.ts` → `apps/api/src/modules/ingestion/ingestion.module.ts` → `apps/api/src/app.module.ts` → `apps/api/test/youth-center.client.spec.ts`.
+
+## 16. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 13: 외부 API 일시 오류 재시도**다. Step 13~57은 시작하지 않았다. 실제 단일 페이지 호출은 Step 12에서 확인했으며, 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+
+Step 12 추천 커밋 메시지: `feat: 온통청년 정책 한 페이지 조회 구현`.
