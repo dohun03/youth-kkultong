@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~8 완료, Step 9~57 미착수**
+최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~9 완료, Step 10~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -417,8 +417,80 @@ docker compose -f compose.yaml -f /tmp/youth-kkultong-step7-test.compose.yaml ru
 
 핵심 코드 읽는 순서: `modules/meta/entities/region.entity.ts` → `database/migrations/1792162801000-create-regions.ts` → `test/region-schema.spec.ts`.
 
-## 12. 다음 작업을 위한 상태
+## 12. Step 9 구현·검증 결과
 
-다음 요청 대상은 **Step 9: 공식 지역 코드 초기 데이터**다. Step 9~57은 시작하지 않았다. Step 1의 인증키·API 호출·조사 자료 및 개발 도구의 후속 검토 사항은 그대로 남아 있다.
+사용자 요청으로 Step 8을 `b4262d5` (`feat: 공식 지역 코드 테이블 생성`)로 커밋한 뒤 Step 9를 진행했다. 착수 시 작업 트리는 깨끗했고, 실제 개발 DB의 지역 테이블은 0건이었다.
 
-Step 8 권장 커밋 메시지: `feat: 공식 지역 코드 테이블 생성`. Step 8은 아직 커밋하지 않았다.
+### 공식 자료와 범위 결정
+
+- [행정표준코드관리시스템 전체자료](https://www.code.go.kr/stdcode/regCodeL.do?menuNo=101010100010)의 법정동코드·공식 명칭·폐지 여부를 기준으로 삼았다. 10자리 코드 중 하위 5자리가 `00000`인 행만 5자리로 표현해 시도·시군구·일반구의 상위 시를 모두 포함했다. 전체 원본 53,403행에서 시드 **537개(현행 284, 폐지 253)**를 추출했다. 조사에서 관측한 261개 코드에 한정한 목록이 아니며, 해당 261종도 전부 포함됨을 별도로 확인했다.
+- [행정안전부 2026.7.1. 시행 공지](https://www.mois.go.kr/frt/bbs/type001/commonSelectBoardArticle.do?bbsId=BBSMSTR_000000000052&nttId=127039)(게시 2026-06-19)의 말소 포함 법정동 XLSX로 시도명·생성/말소일을 대조했다. 537개 모두 해당 자료에 있고 폐지 상태도 일치했다. 전체자료 자체에는 별도 버전 날짜가 없어 **2026-10-17 다운로드 검증일**과 **행정안전부 기준 시행일 2026-07-01**을 구분해 기록했다.
+- 로컬 보관 원본 17개의 해시를 먼저 확인하고, 시드의 근거인 공식 전체자료 ZIP과 행정안전부 말소 포함 ZIP을 다시 내려받아 보관본과 SHA-256이 같음을 확인했다. 출처·다운로드 방식·원본 해시·시드 해시·자료 범위는 `database/seeds/regions.json`의 `source` 한곳에 보관한다.
+- 부모는 코드 앞자리로 만들지 않았다. 공식 시군구 전체 명칭의 직접 상위 명칭을 정확히 조회하고 생성/말소 기간이 자식의 존속 기간을 포함하는 단일 코드를 선택했다. 같은 이름의 창원시·마산시 과거 코드도 이 기준으로 구분했다. `code.go`의 상위지역코드 필드는 일반구를 시도로 직접 연결하기도 하므로 SPEC에서 요구한 상위 시 관계에는 그대로 복사하지 않았다. 예: 수원시 장안구의 부모는 공식 명칭에 확인되는 수원시 `41110`이다.
+- 행정안전부 자료에만 있는 출장소·일부 시도 표현 등 27개 코드는 공식 전체 법정동 자료의 5자리 범위에 없어 새로 보태지 않았다. 예를 들어 세종은 실제 존재하는 `36110`을 사용하며 `36000`을 가정해 만들지 않는다. 제외된 참조 코드 목록도 스냅샷의 `source.referenceOnlyCodes`에 남겼다.
+- 과거 코드 `47012`의 명칭은 전체자료·공식 개별 조회가 `경상북도 대구시 중구`, 행정안전부 7월 XLSX가 `경상북도 대구시 동구`로 달랐다. 2026-10-17 공식 개별 조회까지 일치하는 전체자료 명칭을 저장하고, 원본 간 차이와 선택 근거를 `source.nameDifferences`·`nameDecision`에 명시했다. 코드는 폐지 상태로 보존하며 다른 코드로 치환하지 않는다.
+
+### 구현과 실제 결정사항
+
+- `database/seeds/prepare-regions.py`는 Python 표준 라이브러리만으로 검증된 공식 ZIP·XLSX를 읽고 스냅샷을 결정적으로 재생성한다. 고정한 원본 해시·건수·날짜·미검토 명칭 차이·부모 관계가 맞지 않으면 실패한다. 네트워크·환경변수를 읽지 않고 DB에도 연결하지 않는다.
+- 생성한 `regions.json`은 Git 추적 대상에 포함된다. 조사 폴더가 없는 새 환경이나 API 실행 이미지에서도 저장된 스냅샷만으로 시드를 실행할 수 있다. 원본에서 재생성할 때만 공식 원본 파일이 필요하며, 원본의 출처와 해시는 JSON에 포함돼 있다.
+- `database/seeds/regions.seed.ts`는 Zod로 5자리 코드·이름·시도명·부모 코드·현행 여부를 검증하고, 중복 코드·현행 이름 중복·없는 부모·자기 참조·잘못된 직접 상위 명칭/시도를 거부한다. 공식 역사 자료에는 같은 이름의 다른 코드가 있으므로 폐지 명칭 중복을 임의로 제거하지 않는다.
+- 한 트랜잭션의 묶음 upsert로 537개를 입력·갱신한다. 코드 기본키로 중복을 막고 내용이 같으면 불필요한 갱신을 건너뛴다. 이번 자료에 없는 기존 행은 삭제하지 않으며 DB 오류가 발생하면 전체 작업을 취소한다.
+- 루트와 API 작업공간에 `seed:regions` 명령을 추가했다. CLI는 스냅샷 해시·설정을 검사한 뒤 DB에 연결하고 결과 건수·자료 기준일을 기록한다. 실패 단계와 오류를 구분하며 모든 종료 경로에서 연결 정리를 시도한다. DB 접속 URL·비밀값은 출력하지 않는다.
+- API `tsconfig.json`에 `resolveJsonModule`을 적용해 TypeScript 빌드가 JSON을 실행 산출물에 함께 복사한다. 실행 이미지에는 Python이나 조사 원본이 필요 없다. 외부 패키지·DB 스키마·Migration·API 계약·제품 판정 규칙은 변경하지 않았다. PLAN과 이 문서에 완료 상태를 반영했다.
+
+### 실행 방법
+
+기존 DB와 Migration이 준비된 Compose 환경에서 실행한다. 이미 빌드·적용된 현재 환경에서는 `seed:regions`만 다시 실행해도 된다.
+
+```bash
+docker compose build api
+docker compose up -d --no-deps --wait --wait-timeout 60 api
+docker compose exec -T api npm run seed:regions
+```
+
+앞 Step의 Docker 자격 증명 도우미 오류가 있는 이 세션에서는 기존 임시 설정으로 `docker --config /tmp/youth-kkultong-docker-config compose build api`를 사용했다. 사용자 Docker 인증 설정은 변경하지 않았다.
+
+호스트에서 직접 실행하려면 접근 가능한 `DATABASE_URL`을 설정한 뒤 실행한다. 새 DB는 먼저 Migration을 적용한다.
+
+```bash
+npm run build --workspace apps/api
+npm run migration:run
+npm run seed:regions
+```
+
+공식 원본이 있는 경우에만 스냅샷을 재생성한다. 기본 입력은 Git 제외된 조사 원본 경로이며 `--source-dir`로 다른 보관 디렉터리를 지정할 수 있다.
+
+```bash
+python3 apps/api/src/database/seeds/prepare-regions.py
+python3 apps/api/src/database/seeds/prepare-regions.py --output /tmp/youth-regions-reproduced.json
+cmp apps/api/src/database/seeds/regions.json /tmp/youth-regions-reproduced.json
+```
+
+전체 테스트는 앞 Step의 검증용 Compose 설정에서 `npm test`로 수행한다. 이번에는 기존 이미지에 소스·테스트와 최신 JSON 설정을 함께 연결했다.
+
+```bash
+docker compose -f compose.yaml -f /tmp/youth-kkultong-step7-test.compose.yaml run --rm --pull never --no-deps \
+  --volume "$PWD/apps/api/src:/app/apps/api/src:ro" \
+  --volume "$PWD/apps/api/test:/app/apps/api/test:ro" \
+  --volume "$PWD/apps/api/tsconfig.json:/app/apps/api/tsconfig.json:ro" api npm test
+```
+
+### 실제 검증과 남은 문제
+
+- 공식 원본 17개 보관 해시, 시드 근거 원본 2개의 재다운로드 해시, 스냅샷 재생성 후 `cmp`: **통과**. 공식 공지의 게시일·시행일과 `47012` 개별 조회도 확인했다. 정규화된 시드는 원본의 명칭·상태를 보존하고 코드 앞자리로 부모를 추측하지 않는다.
+- `npm run build --workspace apps/api`, `npm run typecheck --workspace apps/api`, `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`, `git diff --check`: **통과**. Docker 안의 잠금 파일 기반 `npm ci`와 API 빌드도 **통과**했고 실행 이미지에 시드 JS·JSON이 포함됨을 확인했다.
+- 전체 `npm test`: **8개 테스트 모음, 93개 통과**. 기존 71개에 자료 검증 17개·실제 DB 시드 검사 5개를 추가했다. 537개 전체와 현행/폐지 건수·해시, 주요 현행/과거 코드와 부모, 잘못된 자료 거부를 확인했다.
+- 실제 PostgreSQL 17에서 자식부터 나열한 전체 입력, 같은 자료 반복 입력, 공식 값 갱신, 자료에 없는 기존 행 보존, 검증 실패 시 무변경, 저장 중 DB 제약 오류 시 기존 값·신규 입력 롤백 **통과**. 테스트는 자체 생성 스키마에서만 수행하고 정리했다.
+- 실행용 API 이미지의 `npm run seed:regions`를 실제 개발 DB에서 **2회 성공**했다. 최종 지역은 **537개(현행 284, 폐지 253)**이며 수원시–장안구, 창원시–의창구, 폐지된 마산시–합포구와 인천 중구·세종의 관계를 실제 SQL로 확인했다.
+- 실행 이미지에서 잘못된 필수 설정에 종료 코드 1·항목명 표시·접속 URL 비노출 **통과**. 최종 검증 스키마 잔여 **0개**, 정책 **0건**, 기존 Migration 이력 **2건**을 확인했다.
+- 새 API 기동 및 직접·웹 경유 health 응답 **통과**, `web`·`api`·`db` 모두 **healthy**로 실행 중이다. 기존 볼륨·orphan 컨테이너는 보존했다. 기존 TypeORM·Jest·개발 의존성 경고는 유지하며 이번에 강제 수정하지 않았다.
+- Step 9 완료를 막는 자료 누락·코드/DB 불일치는 없다. 스냅샷은 검증한 기준의 자료이며 향후 공식 개편 시 원본과 해시·명칭/기간 차이를 다시 검토해 갱신한다. 실제 정책 수집이나 지역 메타 API는 이번 범위가 아니다.
+
+핵심 코드 읽는 순서: `database/seeds/regions.seed.ts` → `database/seeds/regions.json`의 `source` → `database/seeds/prepare-regions.py` → `test/region-seed.integration.spec.ts`.
+
+## 13. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 10: 프런트·백엔드 공용 API 타입**이다. Step 10~57은 시작하지 않았다. Step 1의 제품 API 키·실제 온통청년 호출, 개발 도구의 후속 검토 사항은 남아 있다. 지역 시드는 이번 Step에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+
+Step 9 권장 커밋 메시지: `feat: 공식 지역 코드 초기 데이터 구성`. Step 9는 아직 커밋하지 않았다.

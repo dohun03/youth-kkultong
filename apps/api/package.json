@@ -12,7 +12,8 @@
     "start": "node dist/main.js",
     "test": "node --experimental-vm-modules ../../node_modules/jest/bin/jest.js --runInBand",
     "migration:run": "node ../../node_modules/typeorm/cli.js migration:run -d dist/database/migration-data-source.js",
-    "migration:show": "node ../../node_modules/typeorm/cli.js migration:show -d dist/database/migration-data-source.js"
+    "migration:show": "node ../../node_modules/typeorm/cli.js migration:show -d dist/database/migration-data-source.js",
+    "seed:regions": "node dist/database/seeds/regions.seed.js"
   },
   "dependencies": {
     "@nestjs/common": "12.1.3",
