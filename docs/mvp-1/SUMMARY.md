@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~14 완료, Step 15~57 미착수**
+최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~15 완료, Step 16~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -686,8 +686,46 @@ docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tm
 
 핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center-response.schema.ts` → `apps/api/src/modules/ingestion/youth-center.client.ts`의 성공 응답 검증 → `apps/api/test/youth-center-response.spec.ts` → `apps/api/test/fixtures/youth-center-list.json`.
 
-## 18. 다음 작업을 위한 상태
+## 18. Step 15 구현·검증 결과
 
-다음 요청 대상은 **Step 15: 페이지 메타데이터·중복 식별 검증**이다. Step 15~57은 시작하지 않았다. 실제 단일 페이지 호출은 Step 12, 일시 오류 재시도·페이지 간 대기는 Step 13, 응답 구조 검증은 Step 14에서 확인했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+사용자의 명시적 요청에 따라 Step 14 변경사항 7개 파일을 `0845cb8` (`feat: 온통청년 목록 응답 구조 검증 추가`)로 커밋하고, 깨끗한 작업 트리를 확인한 뒤 Step 15만 진행했다.
 
-Step 14 추천 커밋 메시지: `feat: 온통청년 목록 응답 구조 검증 추가`.
+### 구현과 실제 결정사항
+
+- `youth-center-page.validation.ts`의 `validateYouthCenterPage`는 구조 검증을 통과한 본문의 페이지 번호·크기를 요청값과 비교한다. 정책 배열이 요청 크기를 초과하면 중단하며, 해당 응답의 `totCount`로 계산한 예상 건수 `min(pageSize, max(0, totCount - (pageNum - 1) × pageSize))`와 실제 반환 건수도 비교한다. 마지막 페이지의 일부 건수·총 0건·마지막 이후 빈 페이지를 구분해 처리한다.
+- 같은 페이지의 ID 집합과 수집 작업의 기존 ID 집합을 `Set`으로 비교해 `plcyNo` 중복을 검출한다. 페이지 전체 검증에 성공한 뒤에만 기존 집합을 갱신하므로, 중간에 중복이 발견되어도 해당 페이지의 새 ID가 일부만 반영되지 않는다. 원본 응답은 변경하지 않는다.
+- 실패는 `YouthCenterPageValidationError`로 전달한다. `PAGE_NUMBER_MISMATCH`, `PAGE_SIZE_MISMATCH`, `PAGE_SIZE_EXCEEDED`, `PAGE_COUNT_MISMATCH`, `DUPLICATE_POLICY_ID`를 구분하고, 단계 `PAGE_VALIDATION`·요청 페이지·실제 시도 횟수·필드 경로를 포함한다. `details`에는 비교한 예상/실제 숫자 또는 중복된 정책 ID만 담는다. 응답 본문·정책 제목·원본 통신 오류는 포함하지 않는다.
+- `fetchPageWithRetry(pageNum, seenIds)`에 선택적인 수집 작업별 ID 집합을 연결했다. 구조 검증 직후 페이지·중복 검증을 실행하며, 실패하면 자동 재시도 없이 전달한다. 인수를 생략한 단일 페이지 호출은 매번 새 집합을 사용해 독립적인 조회·수집 간 ID가 섞이지 않는다. Step 16의 전체 순회에서는 한 작업의 동일 집합을 모든 페이지에 전달해야 한다.
+- 기존 재시도 테스트는 샘플과 같은 크기 5건을 사용하고, 모의 응답에 요청 페이지 번호를 반영하도록 보강했다. 구조 검증 테스트의 정상 후속 페이지도 실제 요청값에 맞췄다. 필수 필드가 잘못된 응답에 대한 기존 거부 기준은 유지했다.
+- 함수·오류·테스트 자료의 역할과 페이지 비교·건수 계산·중복 검사·ID 집합 반영 구간에 간결한 한국어 주석을 작성했다. 공개 API·DB·Migration·새 외부 패키지·설계 의미는 변경하지 않았고 SPEC은 수정하지 않았다. 전체 페이지 순회·최종 총합/누락 검증은 Step 16에 남겼다.
+
+### 실행 방법
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/youth-center.client.spec.ts test/youth-center-retry.spec.ts test/youth-center-response.spec.ts test/youth-center-page-validation.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+```
+
+전체 회귀 테스트는 기존 테스트 이미지에 현재 소스·테스트를 읽기 전용으로 연결했다.
+
+```bash
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tmp/youth-kkultong-step11-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" api npm test
+```
+
+### 실제 검증과 남은 문제
+
+- 수집 관련 테스트 **4개 모음·194개 통과**(기존 164개 + 신규 30개). 정상/마지막/0건/범위 밖 빈 페이지, 번호·크기 불일치, 크기 초과·반환 건수 오류, 같은 페이지·이전 페이지 ID 중복, 실패 시 ID 집합 보존, 수집별 독립성, 원문 보존, 재시도 뒤 검증 실패 횟수, 검증 오류의 즉시 중단을 확인했다.
+- 최초 타입 검사에서 JSON 파일의 `resultCode`가 리터럴 `200`이 아닌 일반 `number`로 추론되어 테스트 2곳에서 오류가 발생했다. 테스트 기준 샘플도 기존 구조 검증 함수를 통과시켜 타입을 확보하도록 수정한 뒤 전체 타입 검사에 통과했다. 타입 단언으로 우회하지 않았다.
+- 실제 PostgreSQL·기존 HTTP 테스트를 포함한 전체 회귀 테스트 **14개 모음·383개 통과**. 실행 중인 API·웹·DB 서비스를 교체하지 않았다.
+- `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`: **공용·API·웹 통과**. `npm run build --workspace apps/api`: **공용 선행 빌드·API 빌드 통과**. 웹 소스 변경이 없어 Next.js 배포 빌드는 재실행하지 않았다.
+- 빌드한 검증 함수로 보관된 **정상 목록 응답 36개 전체 통과**. 각 응답을 보관된 `.meta.json`의 요청 페이지 번호·크기와 대조했으며, 서로 겹치는 조사 샘플도 있어 각 샘플은 독립적인 ID 집합으로 검사했다. 별도로 `full/page-0001.json`·`full/page-0002.json`은 하나의 ID 집합으로 검증해 고유 정책 ID **200개**를 확인했다. 실제 네트워크 요청·DB 저장은 하지 않았다.
+- `git diff --check`: **통과**. Step 15 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
+
+핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center-page.validation.ts` → `apps/api/src/modules/ingestion/youth-center.client.ts`의 구조 검증 이후 처리 → `apps/api/test/youth-center-page-validation.spec.ts`.
+
+## 19. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 16: 전체 페이지 순차 수집**이다. Step 16~57은 시작하지 않았다. 실제 단일 페이지 호출은 Step 12, 일시 오류 재시도·페이지 간 대기는 Step 13, 응답 구조 검증은 Step 14, 페이지 메타데이터·중복 ID 검증은 Step 15에서 확인했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+
+Step 15 추천 커밋 메시지: `feat: 수집 페이지 번호와 중복 정책 검증`.

@@ -10,8 +10,17 @@ function createClient(values: Record<string, string | undefined> = {}): YouthCen
   return new YouthCenterClient(parseEnvironment({
     DATABASE_URL: 'postgresql://tester:unit-secret@localhost:5432/example',
     YOUTH_CENTER_API_KEY: apiKey,
+    YOUTH_CENTER_PAGE_SIZE: '5',
     ...values,
   }));
+}
+
+/** 요청한 페이지 번호를 반영한 정상 목록 응답을 만든다. */
+async function respondWithPage(input: Parameters<typeof fetch>[0]): Promise<Response> {
+  const pageNum = Number(new URL(String(input)).searchParams.get('pageNum'));
+  return Response.json({ ...validPage, result: {
+    ...validPage.result, pagging: { ...validPage.result.pagging, pageNum },
+  } });
 }
 
 /** 실제 단일 호출 함수와 모의 fetch를 연결해 재시도·중단·호출 간격을 검증한다. */
@@ -32,7 +41,7 @@ describe('온통청년 페이지의 일시 오류 재시도', () => {
   });
 
   it('첫 성공은 대기 없이 한 번만 반환한다', async () => {
-    fetchMock.mockResolvedValue(Response.json(validPage));
+    fetchMock.mockImplementation(respondWithPage);
     await expect(client.fetchPageWithRetry(1)).resolves.toMatchObject({ attempts: 1, httpStatus: 200 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(jest.getTimerCount()).toBe(0);
@@ -41,7 +50,7 @@ describe('온통청년 페이지의 일시 오류 재시도', () => {
   it.each([429, 500, 502, 503, 599])('HTTP %i 이후 1초·2초 대기로 같은 페이지를 최대 세 번 요청한다', async (status) => {
     fetchMock.mockResolvedValueOnce(Response.json({ resultCode: status }, { status }))
       .mockResolvedValueOnce(Response.json({ resultCode: status }, { status }))
-      .mockResolvedValueOnce(Response.json(validPage));
+      .mockImplementationOnce(respondWithPage);
     const pending = client.fetchPageWithRetry(7);
     await jest.advanceTimersByTimeAsync(999);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -62,7 +71,7 @@ describe('온통청년 페이지의 일시 오류 재시도', () => {
     '일시 연결·시간 초과 오류 %s 이후 같은 페이지만 재시도한다', async (code) => {
       const cause = Object.assign(new Error(`비공개 원본 ${apiKey}`), { code });
       fetchMock.mockRejectedValueOnce(new TypeError('fetch failed', { cause }))
-        .mockResolvedValueOnce(Response.json(validPage));
+        .mockImplementationOnce(respondWithPage);
       const pending = client.fetchPageWithRetry(2);
       await jest.advanceTimersByTimeAsync(1000);
       await expect(pending).resolves.toMatchObject({ attempts: 2 });
@@ -72,7 +81,7 @@ describe('온통청년 페이지의 일시 오류 재시도', () => {
 
   it('AbortSignal 시간 초과도 재시도한다', async () => {
     fetchMock.mockRejectedValueOnce(new DOMException('모의 시간 초과', 'TimeoutError'))
-      .mockResolvedValueOnce(Response.json(validPage));
+      .mockImplementationOnce(respondWithPage);
     const pending = client.fetchPageWithRetry(1);
     await jest.advanceTimersByTimeAsync(1000);
     await expect(pending).resolves.toMatchObject({ attempts: 2 });
@@ -81,7 +90,7 @@ describe('온통청년 페이지의 일시 오류 재시도', () => {
   it('응답 본문을 읽던 소켓 연결이 끊겨도 재시도한다', async () => {
     const response = Response.json(validPage);
     jest.spyOn(response, 'text').mockRejectedValue(Object.assign(new Error(apiKey), { code: 'EPIPE' }));
-    fetchMock.mockResolvedValueOnce(response).mockResolvedValueOnce(Response.json(validPage));
+    fetchMock.mockResolvedValueOnce(response).mockImplementationOnce(respondWithPage);
     const pending = client.fetchPageWithRetry(1);
     await jest.advanceTimersByTimeAsync(1000);
     await expect(pending).resolves.toMatchObject({ attempts: 2 });
@@ -132,7 +141,7 @@ describe('온통청년 페이지의 일시 오류 재시도', () => {
 
   it('서버 5xx의 HTML 본문은 HTTP 일시 오류로 재시도한다', async () => {
     fetchMock.mockResolvedValueOnce(new Response('<html>일시 오류</html>', { status: 502 }))
-      .mockResolvedValueOnce(Response.json(validPage));
+      .mockImplementationOnce(respondWithPage);
     const pending = client.fetchPageWithRetry(1);
     await jest.advanceTimersByTimeAsync(1000);
     await expect(pending).resolves.toMatchObject({ attempts: 2 });
@@ -150,7 +159,7 @@ describe('온통청년 페이지의 일시 오류 재시도', () => {
 
   it.each(['7', ' 7 ', '0007'])('Retry-After 정수 초 %s를 기본 재시도 대기보다 우선한다', async (retryAfter) => {
     fetchMock.mockResolvedValueOnce(Response.json({}, { status: 429, headers: { 'Retry-After': retryAfter } }))
-      .mockResolvedValueOnce(Response.json(validPage));
+      .mockImplementationOnce(respondWithPage);
     const pending = client.fetchPageWithRetry(1);
     await jest.advanceTimersByTimeAsync(6999);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -161,7 +170,7 @@ describe('온통청년 페이지의 일시 오류 재시도', () => {
   it('Retry-After가 두 번째 실패에서 바뀌면 새 값을 사용한다', async () => {
     fetchMock.mockResolvedValueOnce(Response.json({}, { status: 429, headers: { 'Retry-After': '1' } }))
       .mockResolvedValueOnce(Response.json({}, { status: 503, headers: { 'Retry-After': '5' } }))
-      .mockResolvedValueOnce(Response.json(validPage));
+      .mockImplementationOnce(respondWithPage);
     const pending = client.fetchPageWithRetry(1);
     await jest.advanceTimersByTimeAsync(5999);
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -172,7 +181,7 @@ describe('온통청년 페이지의 일시 오류 재시도', () => {
   it.each(['Sat, 17 Oct 2026 00:00:05 GMT', 'Saturday, 17-Oct-26 00:00:05 GMT', 'Sat Oct 17 00:00:05 2026'])(
     'Retry-After HTTP 날짜까지 기다린다: %s', async (retryAfter) => {
       fetchMock.mockResolvedValueOnce(Response.json({}, { status: 503, headers: { 'Retry-After': retryAfter } }))
-        .mockResolvedValueOnce(Response.json(validPage));
+        .mockImplementationOnce(respondWithPage);
       const pending = client.fetchPageWithRetry(1);
       await jest.advanceTimersByTimeAsync(4999);
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -183,7 +192,7 @@ describe('온통청년 페이지의 일시 오류 재시도', () => {
 
   it.each(['0', 'Fri, 16 Oct 2026 23:59:00 GMT'])('Retry-After가 %s이면 추가 대기 없이 재시도한다', async (retryAfter) => {
     fetchMock.mockResolvedValueOnce(Response.json({}, { status: 503, headers: { 'Retry-After': retryAfter } }))
-      .mockResolvedValueOnce(Response.json(validPage));
+      .mockImplementationOnce(respondWithPage);
     await expect(client.fetchPageWithRetry(1)).resolves.toMatchObject({ attempts: 2 });
     expect(jest.getTimerCount()).toBe(0);
   });
@@ -191,7 +200,7 @@ describe('온통청년 페이지의 일시 오류 재시도', () => {
   it.each(['', 'invalid', '-1', '1.5', '+1', 'Infinity', '999999999999999999999999999999', 'Sat invalid GMT'])(
     '잘못된 Retry-After %s는 기본 1초 대기를 사용한다', async (retryAfter) => {
       fetchMock.mockResolvedValueOnce(Response.json({}, { status: 503, headers: { 'Retry-After': retryAfter } }))
-        .mockResolvedValueOnce(Response.json(validPage));
+        .mockImplementationOnce(respondWithPage);
       const pending = client.fetchPageWithRetry(1);
       await jest.advanceTimersByTimeAsync(999);
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -202,7 +211,7 @@ describe('온통청년 페이지의 일시 오류 재시도', () => {
 
   it('타이머 상한보다 긴 Retry-After도 짧게 잘리지 않는다', async () => {
     fetchMock.mockResolvedValueOnce(Response.json({}, { status: 503, headers: { 'Retry-After': '2147484' } }))
-      .mockResolvedValueOnce(Response.json(validPage));
+      .mockImplementationOnce(respondWithPage);
     const pending = client.fetchPageWithRetry(1);
     await jest.advanceTimersByTimeAsync(2_147_483_999);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -214,7 +223,7 @@ describe('온통청년 페이지의 일시 오류 재시도', () => {
     fetchMock.mockImplementationOnce(async () => {
       await new Promise<void>((resolve) => setTimeout(resolve, 500));
       return Response.json(validPage);
-    }).mockImplementation(async () => Response.json(validPage));
+    }).mockImplementation(respondWithPage);
     const first = client.fetchPageWithRetry(1);
     await jest.advanceTimersByTimeAsync(500);
     await first;
@@ -227,7 +236,7 @@ describe('온통청년 페이지의 일시 오류 재시도', () => {
   });
 
   it('페이지 호출 전 이미 지난 시간은 페이지 간 대기에서 뺀다', async () => {
-    fetchMock.mockImplementation(async () => Response.json(validPage));
+    fetchMock.mockImplementation(respondWithPage);
     await client.fetchPageWithRetry(1);
     await jest.advanceTimersByTimeAsync(1000);
     const second = client.fetchPageWithRetry(2);
@@ -242,7 +251,7 @@ describe('온통청년 페이지의 일시 오류 재시도', () => {
 
   it.each(['0', '5000'])('페이지 간 간격 %sms 설정을 적용한다', async (delay) => {
     client = createClient({ YOUTH_CENTER_REQUEST_DELAY_MS: delay });
-    fetchMock.mockImplementation(async () => Response.json(validPage));
+    fetchMock.mockImplementation(respondWithPage);
     await client.fetchPageWithRetry(1);
     const second = client.fetchPageWithRetry(2);
     if (Number(delay) > 0) {
@@ -257,7 +266,7 @@ describe('온통청년 페이지의 일시 오류 재시도', () => {
   it('실패한 작업 뒤 새 페이지 요청도 간격을 지키고 시도 횟수는 새로 센다', async () => {
     fetchMock.mockResolvedValueOnce(Response.json({}, { status: 401 }))
       .mockResolvedValueOnce(Response.json({}, { status: 503 }))
-      .mockResolvedValueOnce(Response.json(validPage));
+      .mockImplementationOnce(respondWithPage);
     await expect(client.fetchPageWithRetry(1)).rejects.toMatchObject({ attempts: 1 });
     const next = client.fetchPageWithRetry(2);
     await jest.advanceTimersByTimeAsync(2999);

@@ -152,6 +152,7 @@ describe('온통청년 호출 이후 구조 검증', () => {
     client = new YouthCenterClient(parseEnvironment({
       DATABASE_URL: 'postgresql://tester:unit-secret@localhost:5432/example',
       YOUTH_CENTER_API_KEY: 'response-unit-secret',
+      YOUTH_CENTER_PAGE_SIZE: '5',
     }));
     fetchMock = jest.spyOn(globalThis, 'fetch');
   });
@@ -191,7 +192,9 @@ describe('온통청년 호출 이후 구조 검증', () => {
 
   it('구조 검증 실패 뒤에도 다음 페이지 요청은 기본 간격을 유지한다', async () => {
     fetchMock.mockResolvedValueOnce(Response.json({ ...validPage, result: {} }))
-      .mockResolvedValueOnce(Response.json(validPage));
+      .mockResolvedValueOnce(Response.json({ ...validPage, result: {
+        ...validPage.result, pagging: { ...validPage.result.pagging, pageNum: 2 },
+      } }));
     await expect(client.fetchPageWithRetry(1)).rejects.toBeInstanceOf(YouthCenterResponseValidationError);
     const next = client.fetchPageWithRetry(2);
     await jest.advanceTimersByTimeAsync(2999);

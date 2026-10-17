@@ -3,6 +3,7 @@ import { ENVIRONMENT } from '../../common/environment';
 import type { Environment } from '../../common/environment';
 import { parseYouthCenterPageResponse } from './youth-center-response.schema';
 import type { YouthCenterListResponse } from './youth-center-response.schema';
+import { validateYouthCenterPage } from './youth-center-page.validation';
 
 /** HTTP 상태와 온통청년의 성공 여부를 분리한 단일 페이지 응답 */
 export interface YouthCenterPageResponse {
@@ -13,7 +14,7 @@ export interface YouthCenterPageResponse {
   retryAfter: string | null;
 }
 
-/** 재시도와 구조 검증을 통과한 페이지 응답과 실제 시도 횟수다. */
+/** 구조·페이지·중복 검증을 통과한 페이지 응답과 실제 시도 횟수다. */
 export interface YouthCenterValidatedPageResponse extends YouthCenterPageResponse {
   body: YouthCenterListResponse;
   attempts: number;
@@ -52,8 +53,8 @@ export class YouthCenterClient {
 
   constructor(@Inject(ENVIRONMENT) private readonly environment: Environment) {}
 
-  /** 현재 페이지의 일시 오류를 재시도하고 성공 응답의 구조를 검증한다. */
-  async fetchPageWithRetry(pageNum: number): Promise<YouthCenterValidatedPageResponse> {
+  /** 현재 페이지를 재시도·검증한다. 전체 수집에서는 작업별 ID 집합을 전달한다. */
+  async fetchPageWithRetry(pageNum: number, seenIds = new Set<string>()): Promise<YouthCenterValidatedPageResponse> {
     // 이전 페이지 종료 후 요청 간격 유지
     if (this.lastPageFinishedAt !== undefined) {
       const elapsed = performance.now() - this.lastPageFinishedAt;
@@ -83,6 +84,8 @@ export class YouthCenterClient {
         if (response?.httpOk && response.apiSuccess && !isE003) {
           // 성공 응답의 구조 검증. 실패하면 재시도 없이 호출자에게 전달한다.
           const validatedBody = parseYouthCenterPageResponse(response.body, pageNum, attempt);
+          // 요청·응답 일치 여부와 수집한 정책 ID 중복 검증
+          validateYouthCenterPage(validatedBody, pageNum, this.environment.YOUTH_CENTER_PAGE_SIZE, seenIds, attempt);
           return { ...response, body: validatedBody, attempts: attempt };
         }
 
