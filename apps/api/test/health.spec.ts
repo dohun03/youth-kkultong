@@ -44,6 +44,7 @@ describe('상태 확인 API', () => {
   );
 
   it('POST /api/v1/health는 제공하지 않는다', async () => {
-    await request(app.getHttpServer()).post('/api/v1/health').expect(404);
+    await request(app.getHttpServer()).post('/api/v1/health').expect(404)
+      .expect({ code: 'NOT_FOUND', message: '요청한 대상을 찾을 수 없습니다.' });
   });
 });

@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~10 완료, Step 11~57 미착수**
+최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~11 완료, Step 12~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -520,8 +520,55 @@ import type { PolicyDetail } from '@youth-kkultong/shared/policies';
 
 핵심 코드 읽는 순서: `packages/shared/src/policies.ts` → `packages/shared/src/index.ts` → `packages/shared/package.json` → `Dockerfile`.
 
-## 14. 다음 작업을 위한 상태
+## 14. Step 11 구현·검증 결과
 
-다음 요청 대상은 **Step 11: API 요청값·오류 응답 검증**이다. Step 11~57은 시작하지 않았다. Step 1의 제품 API 키·실제 온통청년 호출, 개발 도구의 후속 검토 사항은 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+Step 10의 실제 커밋 `f102143` (`feat: 정책 조회 공용 타입 정의`)과 깨끗한 작업 트리를 확인한 뒤 진행했다.
 
-Step 10 권장 커밋 메시지: `feat: 정책 조회 공용 타입 정의`. Step 10은 아직 커밋하지 않았다.
+### 구현과 실제 결정사항
+
+- `packages/shared/src/policy-search.schema.ts`의 `createPolicySearchSchema`에 요청 검증을 정의했다. 페이지는 1 이상의 정수, 크기는 1~50의 정수, 나이는 1~120의 정수이며 숫자·불리언 문자열을 자동 변환하지 않는다. 기본값은 `page=1`, `limit=20`, `includeClosed=false`다. 분야는 빈 문자열을 허용하고 정확 일치 비교를 위해 원문을 보존한다.
+- 정렬은 명세의 4개 값만 허용한다. 조건에 따른 기본 정렬과 조건 없는 맞춤순의 인기순 전환은 Step 40의 검색 처리에 남겨두고 검증에서는 요청한 정렬을 보존한다.
+- 지역·취업·학력은 호출자가 전달한 허용 코드 집합에 포함된 값만 허용한다. 지역은 5자리 형식도 검사한다. 지역 집합에는 DB의 현행 코드만, 취업·학력 집합에는 검증된 서버 코드표만 전달해야 한다. 목록이 비었을 때 임의 코드를 통과시키는 대체 동작은 없다.
+- 실제 지역 조회는 Step 30, 취업·학력 전체 코드표는 Step 29의 범위이므로 선행 구현하지 않았다. 테스트는 Step 9의 실제 현행·폐지 지역 스냅샷과 SPEC에 명시된 제한 없음 취업·학력 코드의 부분 목록을 사용한다. 이를 제품용 전체 코드표로 등록하지 않았다. Step 41에서 준비된 메타 자료를 스키마에 전달하고 검색 API에 연결한다.
+- `apps/api/src/common/zod-validation.pipe.ts`는 임의의 Zod 스키마를 `@Body`·`@Param`에 연결할 수 있는 재사용 파이프다. 검증 실패는 `BadRequestException`으로 처리하고 입력값을 포함할 수 있는 Zod 오류 원문을 응답·로그에 내보내지 않는다. 검증 전용 Nest 컨트롤러에서 검색 본문과 UUID 경로값에 실제 연결해 HTTP 동작을 확인했다.
+- `common/api-exception.filter.ts`를 `main.ts`의 공통 애플리케이션 설정에 전역 등록했다. API 오류는 `{ code, message }`만 반환한다. 주요 코드는 `BAD_REQUEST`(400), `NOT_FOUND`(404), `INTERNAL_SERVER_ERROR`(500), `SERVICE_UNAVAILABLE`(503)다. HTTP 예외의 상태 코드는 유지하고, 예상하지 못한 오류·SQL 문법/제약 오류는 500으로 처리한다.
+- PostgreSQL·네트워크 연결 오류 코드, 연결되지 않은 TypeORM DataSource, `pg`·`pg-pool`의 코드 없는 연결 종료·연결 대기 시간 초과 오류는 503으로 구분한다. 코드 없는 오류의 문구는 설치된 드라이버 소스와 대조했다. 5xx는 공개 오류 코드·상태만 기록하고 SQL·접속 정보·사용자 본문·예외 원문을 노출하지 않는다.
+- 공용 패키지에 기존에 사용하는 Zod `4.6.7` 의존성과 루트·하위 경로의 실행 파일 내보내기를 추가했다. 타입 경로와 기존 타입 계약은 유지한다. Zod의 URL 타입 선언을 읽기 위해 공용 tsconfig에 DOM 타입을 추가했다. API는 공용 패키지를 운영 의존성으로 옮기고 `prebuild`·`pretest`에서 먼저 빌드한다. Dockerfile에도 공용 tsconfig와 운영 이미지의 공용 빌드 결과를 포함했다. 새로운 외부 패키지·DB 스키마·Migration·제품 엔드포인트는 추가하지 않았다.
+- API 계약과 설계의 의미를 바꾸지 않아 SPEC·SPEC_SUMMARY·PRD·ARCHITECTURE는 수정하지 않았다. PLAN 완료 표시와 실제 결과를 이 문서에 반영했다.
+- 후속 주석 검수에서 스키마·인터페이스·검증 파이프·오류 필터·서버 시작 함수와 테스트용 컨트롤러의 역할을 간결한 한국어로 명시했다. 실행 코드는 변경하지 않았다.
+
+### 실행 방법
+
+DB 없이 이번 요청 검증만 확인하려면 다음을 실행한다. 공용 패키지 빌드는 `pretest`에서 자동 수행한다.
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/policy-search-validation.spec.ts test/request-validation.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+NEXT_TELEMETRY_DISABLED=1 npm run build
+```
+
+전체 DB 테스트는 실행 중인 Compose DB와 같은 네트워크의 테스트 이미지에서 수행했다. `/tmp/youth-kkultong-step11-test.compose.yaml`은 `api`의 `image: youth-kkultong-api-step11-test`, `build.target: api-build`만 덮어쓰는 임시 설정이다.
+
+```bash
+docker --config /tmp/youth-kkultong-docker-config compose build api web
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tmp/youth-kkultong-step11-test.compose.yaml build api
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tmp/youth-kkultong-step11-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/test:/app/apps/api/test:ro" api npm test
+```
+
+### 실제 검증과 남은 문제
+
+- `npm install --package-lock-only --ignore-scripts --offline --no-audit --no-fund`: **통과**. 새 의존성 버전은 도입하지 않고 공용 런타임 연결을 잠금 파일에 반영했다.
+- 전체 테스트: **10개 테스트 모음, 189개 통과**. 기존 93개와 신규 단위 60개·HTTP 통합 36개를 포함한다. 페이지·크기·나이 경계, 자료형·null·비정상 정렬, 폐지/알 수 없는 지역 및 허용 목록 밖 취업·학력 코드 거부, 기본값, UUID 파이프 재사용, JSON 구문 오류, 400/404/500/503 및 429 상태 보존, 민감값 비노출을 확인했다. 기존 PostgreSQL 스키마·Migration·시드 검증도 함께 통과했다.
+- 최초 단독 HTTP 테스트는 샌드박스의 로컬 포트 사용 제한(`listen EPERM`)으로 실패했고, 같은 테스트를 샌드박스 밖에서 실행해 통과했다. 첫 전체 실행에서는 API 접두사 밖 `/health`·`/api/health`에도 JSON 오류 본문을 기대한 테스트 2개가 실패했다. 설치된 NestJS 12 어댑터가 접두사 밖 404를 기본 처리함을 확인하고, API 계약 대상이 아닌 두 경로는 기존의 404 상태 검사로 정정했다. `/api/v1`의 없는 경로와 잘못된 메서드는 공통 JSON 오류 형식까지 검증하며 전체 재실행에 통과했다.
+- `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`: **공용·API·웹 통과**. `NEXT_TELEMETRY_DISABLED=1 npm run build`: **공용·API·웹 통과**. 빌드의 첫 샌드박스 실행은 Step 10과 같은 Next.js 자식 프로세스 출력 해석 문제로 실패했고, 동일 명령을 샌드박스 밖에서 재실행해 통과했다.
+- Docker 잠금 파일 기반 `npm ci`, API·웹 빌드와 최종 운영 이미지 생성: **통과**. 최종 API 이미지의 임시 컨테이너에서 공용 스키마 로딩·기본값·잘못된 페이지 거부·실제 DB 연결·health 200·공통 JSON 404 응답·앱 종료를 확인했다. 실행 중인 API·웹·DB는 교체하지 않았다.
+- `git diff --check`: **통과**. 전체 테스트 종료 후 검증 스키마 잔여 **0개**, 기존 정책 **0건**·지역 **537개**·Migration **2건**을 읽기 전용 SQL로 확인했다.
+- Step 11 완료를 막는 불일치는 없다. 코드 목록의 실제 조회·검색 API 연결은 예정된 후속 Step의 작업이다. 기존 개발 의존성의 경고와 `pg`·Jest 경고는 이번 범위에서 변경하지 않았다.
+
+핵심 코드 읽는 순서: `packages/shared/src/policy-search.schema.ts` → `apps/api/src/common/zod-validation.pipe.ts` → `apps/api/src/common/api-exception.filter.ts` → `apps/api/src/main.ts` → `apps/api/test/request-validation.spec.ts`.
+
+## 15. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 12: 온통청년 목록 API 단일 페이지 호출**이다. Step 12~57은 시작하지 않았다. Step 1의 제품 API 키·실제 온통청년 호출, 개발 도구의 후속 검토 사항은 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+
+Step 11 커밋 메시지: `feat: API 요청 검증과 공통 오류 응답 적용`.

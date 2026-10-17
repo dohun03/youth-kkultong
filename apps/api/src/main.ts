@@ -3,15 +3,23 @@ import { Logger } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { ApiExceptionFilter } from './common/api-exception.filter';
 
-/** 실제 서버와 통합 테스트가 같은 API 접두사·종료 설정을 사용한다. */
+/** API 경로 접두사·공통 오류 필터·종료 신호 처리를 설정한다. */
+export function configureApplication(app: INestApplication): void {
+  app.setGlobalPrefix('api/v1');
+  app.useGlobalFilters(new ApiExceptionFilter());
+  app.enableShutdownHooks();
+}
+
+/** DB 연결을 포함한 NestJS 앱을 생성하고 API 공통 설정을 적용한다. */
 export async function createApplication(): Promise<INestApplication> {
   const app = await NestFactory.create(AppModule, { abortOnError: false });
-  app.setGlobalPrefix('api/v1');
-  app.enableShutdownHooks();
+  configureApplication(app);
   return app;
 }
 
+/** API 서버를 4000번 포트로 시작하고, 시작 실패 시 앱 자원을 정리한다. */
 async function bootstrap(): Promise<void> {
   const app = await createApplication();
   try {
@@ -22,7 +30,7 @@ async function bootstrap(): Promise<void> {
   }
 }
 
-// 테스트에서 애플리케이션을 가져올 때는 서버를 자동으로 시작하지 않는다.
+// 이 파일을 직접 실행할 때만 API 서버를 시작한다.
 if (require.main === module) {
   void bootstrap().catch((error: unknown) => {
     Logger.error(
