@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~12 완료, Step 13~57 미착수**
+최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~13 완료, Step 14~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -608,8 +608,48 @@ docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tm
 
 핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center.client.ts` → `apps/api/src/modules/ingestion/ingestion.module.ts` → `apps/api/src/app.module.ts` → `apps/api/test/youth-center.client.spec.ts`.
 
-## 16. 다음 작업을 위한 상태
+## 16. Step 13 구현·검증 결과
 
-다음 요청 대상은 **Step 13: 외부 API 일시 오류 재시도**다. Step 13~57은 시작하지 않았다. 실제 단일 페이지 호출은 Step 12에서 확인했으며, 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+사용자의 명시적 커밋 요청에 따라 Step 12 변경사항 6개 파일을 `baa6f45` (`feat: 온통청년 정책 한 페이지 조회 구현`)로 커밋했다. 깨끗한 작업 트리를 확인한 뒤 Step 13만 진행했다.
 
-Step 12 추천 커밋 메시지: `feat: 온통청년 정책 한 페이지 조회 구현`.
+### 구현과 실제 결정사항
+
+- `YouthCenterClient.fetchPageWithRetry(pageNum)`를 추가했다. Step 12의 `fetchPage`는 한 번만 호출하는 저수준 함수로 유지하며, 새 함수가 동일 페이지의 재시도와 순차 수집 시 페이지 간 대기를 담당한다. 성공 응답에는 실제 `attempts`를 추가한다.
+- 연결 실패·시간 초과·HTTP 429·500~599만 재시도한다. `YOUTH_CENTER_MAX_ATTEMPTS`를 적용해 기본 최대 3회이며 **첫 시도도 포함**한다. 기본 대기는 첫 실패 후 1초, 두 번째 실패 후 2초다. 성공한 페이지를 자동으로 다시 호출하지 않으며 최대 횟수에 도달하면 추가 대기 없이 종료한다.
+- HTTP `400/401/403` 등 비재시도 상태, HTTP 200의 JSON/성공 값 오류는 즉시 실패한다. 본문의 `errorCode` 또는 `resultCode`가 `e003`이면 HTTP 429·5xx나 성공 값과 충돌해도 재시도하지 않는다. 5xx의 HTML 본문은 HTTP 일시 오류로 분류한다. 정책 배열·페이지·필수 필드의 상세 구조 검증은 Step 14에 남겼다.
+- 단일 호출의 통신 오류를 세분화했다. Node.js·내장 HTTP 클라이언트의 확인된 연결 오류 코드는 `NETWORK`, AbortSignal 및 연결·헤더·본문 시간 초과는 `TIMEOUT`으로 분류한다. 인증서·요청 설정·응답 해석 등 그 밖의 통신 예외는 `REQUEST`로 안전하게 변환해 반복하지 않는다. 원본 `cause`를 포함한 오류나 URL·키를 외부로 전달하지 않는다.
+- `Retry-After`가 유효하면 기본 대기보다 우선한다. 0 이상의 정수 초와 HTTP 날짜를 지원하며 날짜는 GMT 기준이다. 0초·이미 지난 날짜는 추가 대기하지 않고, 잘못된 값은 기본 대기로 돌아간다. 구형 asctime 날짜의 시간대가 서버의 한국 시간대로 해석되지 않도록 보정했다. Node.js 타이머 상한을 넘는 유효 대기는 여러 구간으로 나눠 기다린다. 기준: [RFC 9110의 Retry-After](https://www.rfc-editor.org/rfc/rfc9110.html#name-retry-after), [Node.js 타이머 상한](https://nodejs.org/api/timers.html#settimeoutcallback-delay-args).
+- 순차 호출의 다음 페이지는 이전 페이지 작업의 최종 응답·실패 이후 `YOUTH_CENTER_REQUEST_DELAY_MS`(기본 3000ms)가 지난 뒤 시작한다. 이미 지난 시간은 빼며, 첫 페이지는 바로 시작한다. 같은 페이지의 재시도에는 3초를 중복 적용하지 않는다. 호출 간격 측정에는 시스템 날짜 변경의 영향을 받지 않는 `performance.now()`를 사용한다.
+- 최종 실패는 `YouthCenterPageError`로 전달한다. `pageNum`, 실제 `attempts`, `reason`(`RETRY_EXHAUSTED`/`NON_RETRYABLE`), `failure`, 확인 가능한 `httpStatus`만 포함한다. 원문·인증키·URL은 담지 않으며 파일 로그 연결은 Step 24에서 진행한다.
+- 기존 단일 호출 테스트 2곳은 실제 소켓 오류 코드가 있는 모의 예외로 보강했고, 새 재시도 테스트를 별도 파일에 추가했다. 새 외부 패키지·모듈·공개 API·DB·Migration 변경은 없다. 설계 의미가 같아 SPEC은 변경하지 않았다.
+
+### 실행 방법
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/youth-center.client.spec.ts test/youth-center-retry.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+```
+
+전체 회귀 테스트는 Step 12와 동일하게 기존 테스트 이미지에 현재 소스·테스트를 읽기 전용으로 연결했다.
+
+```bash
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tmp/youth-kkultong-step11-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" api npm test
+```
+
+### 실제 검증과 남은 문제
+
+- 단일 호출·재시도 테스트 **2개 모음·104개 통과**(기존 30개 + 신규 74개). Jest 가상 시간으로 정확한 호출 시점과 횟수를 확인했다. 연결·본문 읽기·시간 초과 후 성공, HTTP 429·5xx, 최대 1/2/3회 설정, e003·인증·형식·인증서·미분류 오류의 즉시 중단, 동일 페이지 재요청, 성공 페이지 유지, Retry-After 초·세 가지 HTTP 날짜 형식·오류 값·타이머 상한, 페이지 간 기본/변경 간격, 실패 후 새 요청, 민감값 비노출을 검증했다.
+- 최초 실행에서 **2개 실패**: 실행 문맥에 따라 `DOMException`이 `Error`의 인스턴스로 판별되지 않는 문제와 asctime HTTP 날짜가 한국 시간대로 해석되는 문제였다. 오류의 `name`을 구조적으로 확인하고 구형 HTTP 날짜를 GMT로 해석하도록 수정한 뒤 104개 모두 통과했다.
+- 실제 PostgreSQL·HTTP 경로를 포함한 전체 회귀 테스트 **12개 모음·293개 통과**. 실행 중인 API·웹·DB 서비스를 교체하지 않았다.
+- `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`: **공용·API·웹 통과**. `npm run build --workspace apps/api`: **공용 선행 빌드·API 빌드 통과**. 웹 소스 변경이 없어 Next.js 배포 빌드는 재실행하지 않았다.
+- `git diff --check`: **통과**. 실제 온통청년 API의 오류를 유발하는 호출은 하지 않았고, 일시 오류는 모의 응답으로 검증했다. 실제 정상 단일 페이지 호출 근거는 Step 12 기록을 따른다.
+- Step 13 완료를 막는 불일치는 없다. 전체 페이지 순회는 Step 16에서 새 재시도 함수를 순차 호출하도록 연결해야 한다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
+
+핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center.client.ts`의 `fetchPageWithRetry` → `fetchPage`의 통신 오류 분류 → `retryDelay`·`wait` → `apps/api/test/youth-center-retry.spec.ts`.
+
+## 17. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 14: 목록 응답 Zod 구조 검증**이다. Step 14~57은 시작하지 않았다. 실제 단일 페이지 호출은 Step 12, 일시 오류 재시도·페이지 간 대기는 Step 13에서 확인했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+
+Step 13 추천 커밋 메시지: `feat: 온통청년 API 일시 오류 재시도 처리`.

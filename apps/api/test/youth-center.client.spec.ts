@@ -97,6 +97,7 @@ describe('온통청년 단일 페이지 호출', () => {
   it.each(['NETWORK', 'TIMEOUT'] as const)('통신 오류 %s의 페이지와 종류만 전달하고 URL·키·원본 오류를 숨긴다', async (kind) => {
     const original = new Error(`https://example.com/?apiKeyNm=${apiKey}`);
     original.name = kind === 'TIMEOUT' ? 'TimeoutError' : 'TypeError';
+    original.cause = Object.assign(new Error('모의 소켓 연결 종료'), { code: 'ECONNRESET' });
     fetchMock.mockRejectedValue(original);
     let caught: unknown;
     try {
@@ -114,7 +115,7 @@ describe('온통청년 단일 페이지 호출', () => {
 
   it('응답 본문을 읽다 연결이 끊겨도 안전한 통신 오류로 처리한다', async () => {
     const response = Response.json({ resultCode: 200 });
-    jest.spyOn(response, 'text').mockRejectedValue(new Error(`연결 종료: ${apiKey}`));
+    jest.spyOn(response, 'text').mockRejectedValue(Object.assign(new Error(`연결 종료: ${apiKey}`), { code: 'EPIPE' }));
     fetchMock.mockResolvedValue(response);
     await expect(client.fetchPage(2)).rejects.toMatchObject({ pageNum: 2, kind: 'NETWORK' });
     expect(fetchMock).toHaveBeenCalledTimes(1);

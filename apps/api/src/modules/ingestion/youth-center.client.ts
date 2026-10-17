@@ -11,21 +11,86 @@ export interface YouthCenterPageResponse {
   retryAfter: string | null;
 }
 
-/** 페이지와 통신 실패 종류만 전달 */
+/** 일시적 에러: 페이지와 통신 실패 종류만 전달 */
 export class YouthCenterRequestError extends Error {
   constructor(
     readonly pageNum: number,
-    readonly kind: 'NETWORK' | 'TIMEOUT',
+    readonly kind: 'NETWORK' | 'TIMEOUT' | 'REQUEST',
   ) {
     super(`온통청년 ${pageNum}페이지 ${kind === 'TIMEOUT' ? '요청 시간이 초과되었습니다.' : '통신에 실패했습니다.'}`);
     this.name = 'YouthCenterRequestError';
   }
 }
 
+/** 최종 실패 에러: 재시도 종료 사유와 실제 시도 횟수만 전달하고 응답 원문은 오류에 담지 않는다. */
+export class YouthCenterPageError extends Error {
+  constructor(
+    readonly pageNum: number,
+    readonly attempts: number,
+    readonly reason: 'RETRY_EXHAUSTED' | 'NON_RETRYABLE',
+    readonly failure: 'NETWORK' | 'TIMEOUT' | 'REQUEST' | 'HTTP' | 'API' | 'E003',
+    readonly httpStatus?: number,
+  ) {
+    super(`온통청년 ${pageNum}페이지 ${attempts}회 시도 후 실패했습니다 (${reason}, ${failure}).`);
+    this.name = 'YouthCenterPageError';
+  }
+}
+
 /** 온통청년 목록 API의 지정한 한 페이지만 호출 */
 @Injectable()
 export class YouthCenterClient {
+  // 마지막 페이지 수집 시간 기록
+  private lastPageFinishedAt?: number;
+
   constructor(@Inject(ENVIRONMENT) private readonly environment: Environment) {}
+
+  /** 현재 페이지의 일시 오류만 재시도 */
+  async fetchPageWithRetry(pageNum: number): Promise<YouthCenterPageResponse & { attempts: number }> {
+    if (this.lastPageFinishedAt !== undefined) {
+      const elapsed = performance.now() - this.lastPageFinishedAt;
+      await this.wait(this.environment.YOUTH_CENTER_REQUEST_DELAY_MS - elapsed);
+    }
+
+    try {
+      for (let attempt = 1; ; attempt += 1) {
+        let response: YouthCenterPageResponse | undefined;
+        let requestError: YouthCenterRequestError | undefined;
+        try {
+          response = await this.fetchPage(pageNum);
+        } catch (error) {
+          // 일시 오류가 아니면 반복하지 않는다.
+          if (!(error instanceof YouthCenterRequestError)) throw error;
+          requestError = error;
+        }
+
+        const body = response?.body;
+
+        // E003 에러 확인
+        const isE003 = typeof body === 'object' && body !== null
+          && (('errorCode' in body && body.errorCode === 'e003')
+            || ('resultCode' in body && body.resultCode === 'e003'));
+
+        if (response?.httpOk && response.apiSuccess && !isE003) {
+          return { ...response, attempts: attempt };
+        }
+
+        const status = response?.httpStatus;
+        const retryable = !isE003 && (requestError
+          ? requestError.kind !== 'REQUEST'
+          : status === 429 || (status !== undefined && status >= 500 && status <= 599));
+        const failure = isE003 ? 'E003'
+          : requestError ? requestError.kind : response?.httpOk ? 'API' : 'HTTP';
+        if (!retryable || attempt >= this.environment.YOUTH_CENTER_MAX_ATTEMPTS) {
+          throw new YouthCenterPageError(
+            pageNum, attempt, retryable ? 'RETRY_EXHAUSTED' : 'NON_RETRYABLE', failure, status,
+          );
+        }
+        await this.wait(this.retryDelay(response?.retryAfter ?? null, attempt));
+      }
+    } finally {
+      this.lastPageFinishedAt = performance.now();
+    }
+  }
 
   /** HTTP 오류도 응답으로 반환, 통신 오류만 안전한 예외로 전달한다. */
   async fetchPage(pageNum: number): Promise<YouthCenterPageResponse> {
@@ -60,8 +125,17 @@ export class YouthCenterClient {
       });
       text = await response.text();
     } catch (error) {
-      const timedOut = signal.aborted || (error instanceof Error && error.name === 'TimeoutError');
-      throw new YouthCenterRequestError(pageNum, timedOut ? 'TIMEOUT' : 'NETWORK');
+      // 원본 오류에는 URL이 섞일 수 있어 확인된 일시 연결 오류의 종류만 전달한다.
+      const cause = typeof error === 'object' && error !== null && 'cause' in error ? error.cause : error;
+      const code = typeof cause === 'object' && cause !== null && 'code' in cause ? cause.code : undefined;
+      const timedOut = signal.aborted
+        || (typeof error === 'object' && error !== null && 'name' in error && error.name === 'TimeoutError')
+        || ['ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT'].includes(String(code));
+      const networkFailure = [
+        'ECONNREFUSED', 'ECONNRESET', 'ECONNABORTED', 'ENOTFOUND', 'EAI_AGAIN',
+        'EPIPE', 'ENETUNREACH', 'EHOSTUNREACH', 'UND_ERR_SOCKET',
+      ].includes(String(code));
+      throw new YouthCenterRequestError(pageNum, timedOut ? 'TIMEOUT' : networkFailure ? 'NETWORK' : 'REQUEST');
     }
 
     // HTML·빈 본문·깨진 JSON도 정상 JSON으로 바꾸지 않고 원문으로 반환한다.
@@ -79,5 +153,29 @@ export class YouthCenterClient {
       body,
       retryAfter: response.headers.get('retry-after'),
     };
+  }
+
+  /** 재시도 딜레이 로직: Retry-After의 값을 우선하고, 해석할 수 없으면 1초·2초를 적용 */
+  private retryDelay(retryAfter: string | null, attempt: number): number {
+    const value = retryAfter?.trim() ?? '';
+    if (/^\d+$/.test(value)) {
+      const milliseconds = Number(value) * 1000;
+      if (Number.isSafeInteger(milliseconds)) return milliseconds;
+    } else if (/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)/.test(value)) {
+      // 시간대 표기가 없는 구형 HTTP 날짜(asctime)도 GMT로 해석한다.
+      const date = Date.parse(value.endsWith('GMT') ? value : `${value} GMT`);
+      if (Number.isFinite(date)) return Math.max(0, date - Date.now());
+    }
+    return attempt * 1000;
+  }
+
+  /** Node.js 타이머 상한을 넘는 대기도 잘라 기다려 즉시 재요청되는 것을 막는다. */
+  private async wait(milliseconds: number): Promise<void> {
+    let remaining = Math.ceil(milliseconds);
+    while (remaining > 0) {
+      const delay = Math.min(remaining, 2_147_483_647);
+      await new Promise<void>((resolve) => setTimeout(resolve, delay));
+      remaining -= delay;
+    }
   }
 }
