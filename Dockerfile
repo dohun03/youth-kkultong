@@ -11,11 +11,13 @@ RUN npm ci
 
 FROM dependencies AS api-build
 COPY tsconfig.base.json ./
+COPY packages/shared/src packages/shared/src
 COPY apps/api apps/api
 RUN npm run build --workspace apps/api
 
 FROM dependencies AS web-build
 COPY tsconfig.base.json ./
+COPY packages/shared/src packages/shared/src
 COPY apps/web apps/web
 ARG API_INTERNAL_URL=http://api:4000
 ENV API_INTERNAL_URL=${API_INTERNAL_URL}

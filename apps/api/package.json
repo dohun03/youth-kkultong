@@ -26,6 +26,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@youth-kkultong/shared": "0.1.0",
     "@types/jest": "30.0.0",
     "@types/node": "24.19.2",
     "@types/supertest": "7.2.1",

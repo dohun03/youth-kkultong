@@ -2,6 +2,15 @@
   "name": "@youth-kkultong/shared",
   "version": "0.1.0",
   "private": true,
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts"
+    },
+    "./policies": {
+      "types": "./src/policies.ts"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"

@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~9 완료, Step 10~57 미착수**
+최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~10 완료, Step 11~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -489,8 +489,39 @@ docker compose -f compose.yaml -f /tmp/youth-kkultong-step7-test.compose.yaml ru
 
 핵심 코드 읽는 순서: `database/seeds/regions.seed.ts` → `database/seeds/regions.json`의 `source` → `database/seeds/prepare-regions.py` → `test/region-seed.integration.spec.ts`.
 
-## 13. 다음 작업을 위한 상태
+## 13. Step 10 구현·검증 결과
 
-다음 요청 대상은 **Step 10: 프런트·백엔드 공용 API 타입**이다. Step 10~57은 시작하지 않았다. Step 1의 제품 API 키·실제 온통청년 호출, 개발 도구의 후속 검토 사항은 남아 있다. 지역 시드는 이번 Step에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+사용자 요청으로 Step 9를 `018eab9` (`feat: 공식 지역 코드 초기 데이터 구성`)로 커밋한 뒤 Step 10을 진행했다. 커밋 직후 작업 트리는 깨끗했다.
 
-Step 9 권장 커밋 메시지: `feat: 공식 지역 코드 초기 데이터 구성`. Step 9는 아직 커밋하지 않았다.
+### 구현과 실제 결정사항
+
+- `packages/shared/src/policies.ts`에 SPEC 3장의 `SortKey`, `ApplicationStatus`, `MatchTag`, `UserConditions`, `PolicySearchRequest`, `PolicyCard`, `PolicySearchResponse`, `PolicyDetail`을 그대로 정의했다. 선택 입력과 응답의 필수 nullable 필드를 구분하고, 상세는 카드를 확장한다. 날짜·점수·숫자 범위는 명세의 자료형과 주석을 유지한다.
+- `src/index.ts`는 8개 타입만 다시 내보낸다. 공용 패키지의 `types`·`exports`는 루트와 `/policies`에서 같은 소스 타입을 읽도록 구성했다. DB 엔티티·TypeORM·NestJS 의존성과 런타임 내보내기는 없다. 따라서 별도 공용 빌드 없이 웹의 Bundler 설정과 API의 NodeNext 설정에서 모두 사용할 수 있다.
+- 웹·API는 공용 작업공간 `0.1.0`을 개발 의존성으로 선언하고 잠금 파일을 동기화했다. 타입 전용이므로 실행 이미지의 운영 의존성에 추가하지 않았다. 외부 패키지는 추가하지 않았다.
+- Dockerfile의 API·웹 빌드 단계에 `packages/shared/src` 복사만 추가했다. 설치 단계에서 이미 복사하는 공용 `package.json`과 연결되며 실행 이미지에는 공용 소스가 필요 없다.
+- 새 엔드포인트·DB 스키마·Migration·런타임 판정 규칙은 추가하지 않았다. 요청값 검증은 Step 11, 정책·메타 API 구현은 해당 후속 Step에서 진행한다. SPEC의 계약 변경 없이 PLAN과 이 문서에 완료 상태만 반영했다.
+
+웹·API에서 동일하게 다음 경로를 사용한다. 두 경로가 내보내는 타입은 같다.
+
+```ts
+import type { PolicySearchRequest, PolicySearchResponse } from '@youth-kkultong/shared';
+import type { PolicyDetail } from '@youth-kkultong/shared/policies';
+```
+
+### 실제 검증과 남은 문제
+
+- `npm install --package-lock-only --ignore-scripts --offline --no-audit --no-fund`: **통과**. 기존 작업공간 연결을 사용하며 외부 패키지 버전 변경은 없다.
+- `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`: **공용·API·웹 모두 통과**. API의 기존 테스트 소스도 타입 검사에 포함했다.
+- 실제 API·웹 tsconfig를 읽는 TypeScript 컴파일러 검사에서 루트·하위 경로의 **8개 타입이 동일**하고 실제 해석 경로가 모두 `packages/shared/src`임을 확인했다. 정상 검색 요청·nullable 카드·상세 확장·검색 응답을 양쪽에서 통과시키고 잘못된 정렬·상태·태그·나이 자료형·마감 포함 자료형·필수 제목 null·필수 nullable 필드 누락·상세 링크 표시명 등 **오류 8종을 양쪽에서 거부**했다. 임시 가상 소스를 사용해 제품 코드에 검사 예시를 남기지 않았고, 변환 결과에 공용 패키지의 런타임 import가 없는 것도 확인했다.
+- `NEXT_TELEMETRY_DISABLED=1 npm run build`: **공용·API·웹 모두 통과**. 첫 샌드박스 실행은 Next.js가 TypeScript `--showConfig` 출력을 해석하지 못해 실패했다. Node 자식 프로세스의 단순 출력도 비는 현상을 재현한 뒤, 같은 빌드를 샌드박스 밖에서 재실행해 통과했다. 이 문제를 우회하는 제품 코드 변경은 하지 않았다.
+- `docker --config /tmp/youth-kkultong-docker-config compose build api web`: **두 이미지 모두 통과**. 잠금 파일 기반 `npm ci`, API 운영 의존성 설치, 공용 소스 복사, 양쪽 빌드 및 실행 이미지 생성까지 확인했다. 앞 Step의 임시 Docker 인증 설정을 재사용했으며 사용자 설정은 변경하지 않았다.
+- `git diff --check`: **통과**. 이번 변경은 타입·빌드 입력에 한정되어 DB 통합 테스트는 재실행하지 않았다. Step 9의 93개 통과 기록은 앞 절에 남겼다. DB와 실행 중인 컨테이너는 변경하지 않았다.
+- Step 10 완료를 막는 불일치는 없다. 타입 선언만으로 숫자 범위·실제 날짜·공식 코드 값이 검증되지는 않으며, 요청의 실행 시점 검증은 Step 11에서 구현한다.
+
+핵심 코드 읽는 순서: `packages/shared/src/policies.ts` → `packages/shared/src/index.ts` → `packages/shared/package.json` → `Dockerfile`.
+
+## 14. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 11: API 요청값·오류 응답 검증**이다. Step 11~57은 시작하지 않았다. Step 1의 제품 API 키·실제 온통청년 호출, 개발 도구의 후속 검토 사항은 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+
+Step 10 권장 커밋 메시지: `feat: 정책 조회 공용 타입 정의`. Step 10은 아직 커밋하지 않았다.
