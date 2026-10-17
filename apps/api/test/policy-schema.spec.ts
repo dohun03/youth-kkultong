@@ -3,6 +3,7 @@ import type { DataSource, Repository } from 'typeorm';
 import { loadEnvironment } from '../src/common/environment';
 import { createDataSource } from '../src/database/data-source';
 import { Policy } from '../src/modules/policies/entities/policy.entity';
+import { CreatePolicies1792162800000 } from '../src/database/migrations/1792162800000-create-policies';
 
 const requiredPolicy = (externalId = randomUUID()) => ({
   source: 'youthcenter', externalId, title: '검증용 정책',
@@ -25,6 +26,8 @@ describe('정책 테이블과 엔티티의 실제 DB 검증', () => {
     // 실제 Migration 파일을 읽되 모든 연결의 쓰기 대상을 자체 생성한 검증 스키마로 한정한다.
     dataSource = createDataSource(environment).setOptions({
       schema,
+      entities: [Policy],
+      migrations: [CreatePolicies1792162800000],
       extra: { options: `-c timezone=${environment.TZ} -c search_path=${schema}` },
     });
     await dataSource.initialize();

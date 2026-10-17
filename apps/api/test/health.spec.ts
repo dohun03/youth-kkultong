@@ -1,6 +1,8 @@
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
+import { Policy } from '../src/modules/policies/entities/policy.entity';
+import { Region } from '../src/modules/meta/entities/region.entity';
 import { createApplication } from '../src/main';
 
 describe('상태 확인 API', () => {
@@ -20,7 +22,10 @@ describe('상태 확인 API', () => {
   });
 
   it('DB 연결을 완료한 애플리케이션에서 SQL을 실행할 수 있다', async () => {
-    expect(await app.get(DataSource).query('SELECT 1 AS connected')).toEqual([{ connected: 1 }]);
+    const dataSource = app.get(DataSource);
+    expect(dataSource.hasMetadata(Policy)).toBe(true);
+    expect(dataSource.hasMetadata(Region)).toBe(true);
+    expect(await dataSource.query('SELECT 1 AS connected')).toEqual([{ connected: 1 }]);
   });
 
   it('GET /api/v1/health는 정상 상태를 JSON으로 반환한다', async () => {

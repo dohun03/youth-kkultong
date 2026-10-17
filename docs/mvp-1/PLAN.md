@@ -2,7 +2,7 @@
 
 > 저장 위치: `docs/mvp-1/PLAN.md`  
 > 기준: `docs/PRD.md`(PRD v0.8), `docs/ARCHITECTURE.md`(v0.3), `docs/mvp-1/SPEC.md`(v0.4), `docs/AGENT_RULES.md`  
-> 상태: **Step 1~7 완료 · Step 8~57 미착수** · 작성일: 2026-10-16
+> 상태: **Step 1~8 완료 · Step 9~57 미착수** · 작성일: 2026-10-16
 
 ## 목차
 
@@ -106,8 +106,8 @@
 
 ### Step 8. `regions` 테이블·엔티티
 
-- [ ] SPEC 2.2의 지역 컬럼과 부모 관계를 `MetaModule` 소속 엔티티·Migration으로 구현한다.
-- [ ] 현행·폐지 여부와 상위 코드 표현을 검증한다.
+- [x] SPEC 2.2의 지역 컬럼과 부모 관계를 `MetaModule` 소속 엔티티·Migration으로 구현한다.
+- [x] 현행·폐지 여부와 상위 코드 표현을 검증한다.
 
 **검증/완료:** 5자리 코드·상위 관계·현행 여부를 저장하고 조회할 수 있다. **커밋:** `feat: 공식 지역 코드 테이블 생성`.
 

@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~7 완료, Step 8~57 미착수**
+최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~8 완료, Step 9~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -375,8 +375,50 @@ docker compose up -d --no-deps --wait --wait-timeout 60 api
 
 핵심 코드 읽는 순서: `modules/policies/entities/policy.entity.ts` → `database/migrations/1792162800000-create-policies.ts` → `test/policy-schema.spec.ts` → `database/data-source.ts`.
 
-## 11. 다음 작업을 위한 상태
+## 11. Step 8 구현·검증 결과
 
-다음 요청 대상은 **Step 8: regions 테이블·엔티티**다. Step 8~57은 시작하지 않았다. Step 1의 인증키·API 호출·조사 자료 및 개발 도구의 후속 검토 사항은 그대로 남아 있다.
+사용자 요청에 따라 ARCHITECTURE의 디렉터리 구성을 맞추고 Step 7을 재검증한 뒤 `e08f0ae` (`feat: 정책 저장 테이블과 고유 제약조건 생성`)으로 커밋했다. 정책은 `src/modules/policies/`, 공통 설정은 `src/common/`, DB 기반은 `src/database/`에 둔다. Step 8 착수 시 작업 트리는 깨끗했고 기존 DB의 정책 Migration 이력 1건을 확인했다.
 
-Step 7 권장 커밋 메시지: `feat: 정책 저장 테이블과 고유 제약조건 생성`. Step 7은 아직 커밋하지 않았다.
+### 구현과 실제 결정사항
+
+- `modules/meta/entities/region.entity.ts`에 SPEC 2.2의 `code`, `name`, `province_name`, `parent_code`, `is_active` 5개 컬럼을 정의했다. `MetaModule`을 만들고 `AppModule`에 연결했다. 지역 Repository·메타 API는 후속 Step 범위다.
+- `database/migrations/1792162801000-create-regions.ts` 하나로 지역 테이블을 생성한다. 코드는 `varchar(5)` 기본키와 5자리 숫자 CHECK 제약으로 검증하고 앞자리 0을 보존한다. 지역명·시도 그룹명은 `varchar(100)` 필수값, 현행 여부는 기본값 없는 필수 boolean이다.
+- `parent_code`는 같은 테이블의 `code`를 참조하는 nullable 외래키다. 엔티티의 `parent` 관계로 직접 상위 지역을 조회할 수 있으며 코드 앞자리로 관계를 추정하지 않는다. 참조 중인 상위 코드의 삭제·변경은 `NO ACTION`으로 거부한다. 폐지 여부를 false로 바꾸는 작업은 관계를 유지한다. 상위 지역이 없는 경우에는 NULL을 저장한다.
+- 지역 코드의 고유성·형식, 필수값, 길이, 부모 참조를 DB에서 보호한다. 실제 공식 코드의 이름·현행 여부·부모 관계를 채우는 시드는 Step 9에서 출처 자료를 검증한 뒤 구현한다. 이번 테스트의 가상 자료는 테스트 전용 임시 스키마에만 저장했고 개발 DB에는 지역 데이터를 넣지 않았다.
+- 정책 스키마 테스트는 정책 엔티티·Migration을 명시해 이후 Migration 추가에 영향을 받지 않도록 했다. 새 지역 테스트는 실제 정책 → 지역 Migration 순서를 함께 검증하고, health 테스트는 실제 애플리케이션이 두 엔티티를 정상 로딩하는지도 확인한다.
+- API 계약·제품 판정 규칙·외부 패키지·공통 구조의 추가 변경은 없다. ARCHITECTURE에 정의된 경로를 그대로 따르며 SPEC의 의미 변경도 없어 기준 문서는 유지했다. PLAN과 이 문서에 Step 8의 실제 상태를 반영했다.
+
+참고: [TypeORM 부모 참조 관계](https://typeorm.io/docs/relations/many-to-one-one-to-many-relations/), [PostgreSQL CHECK·외래키 제약](https://www.postgresql.org/docs/17/ddl-constraints.html).
+
+### 실행 방법
+
+기존 DB가 실행 중인 상태에서 앞 절과 같은 명령으로 API를 빌드하고 `npm run migration:run`·`migration:show`를 실행한다. 현재 적용 이력은 정책·지역 2건이며 재실행해도 중복 적용하지 않는다. API 시작 시 자동 Migration 실행은 하지 않는다.
+
+통합 테스트는 Step 6에 기록한 `api-build` 임시 Compose 설정에서 `npm test`로 실행할 수 있다. 이번에는 기존 검증 이미지에 현재 소스·테스트를 읽기 전용으로 연결해 다음 명령으로 수행했다.
+
+```bash
+docker compose -f compose.yaml -f /tmp/youth-kkultong-step7-test.compose.yaml run --rm --pull never --no-deps \
+  --volume "$PWD/apps/api/src:/app/apps/api/src:ro" \
+  --volume "$PWD/apps/api/test:/app/apps/api/test:ro" api npm test
+```
+
+`step7-test.compose.yaml`은 앞 절의 검증용 설정과 같고 이미지 이름만 `youth-kkultong-api-step7-test`로 지정했다. 새 환경에서는 먼저 해당 설정으로 이미지를 빌드한다.
+
+### 실제 검증과 남은 문제
+
+- `npm run build --workspace apps/api`, `npm run typecheck --workspace apps/api`, `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`, `git diff --check`: **통과**.
+- 실제 PostgreSQL 17의 전체 `npm test`: **6개 테스트 모음, 71개 통과**. 새 지역 검사 22개에서 컬럼·기본키·CHECK·외래키·엔티티 일치, 앞자리 0·NULL 보존, 명시적 부모 조회, 현행/폐지 조회, 중복·형식·NULL·길이 오류, 부모 삭제 거부, 폐지 전환 시 관계 보존을 확인했다.
+- 정책 → 지역 Migration 연속 적용, 지역 Migration 재실행 무변경, 지역만 되돌리기·재적용 후 정책 데이터 유지 **통과**. 되돌리기와 가상 자료 저장은 매번 자체 생성한 임시 스키마에서만 수행한다. 기존 49개 검사도 통과했다.
+- Docker Desktop이 중지돼 처음에는 컨테이너 검증을 실행하지 못했다. 기존 Desktop과 DB를 다시 기동해 이전 볼륨·Migration 이력을 보존했다. 공개 이미지 조회의 Windows 자격 증명 도우미 오류는 사용자 설정을 바꾸지 않고 `/tmp/youth-kkultong-docker-config/config.json`에 `{"auths": {}}`를 둔 임시 설정으로 우회했다. `docker --config /tmp/youth-kkultong-docker-config compose build api` **통과**. 사용자 Docker 로그인·인증 설정은 수정하지 않았다.
+- 실행 이미지에서 지역 Migration 미적용 표시 → 적용 → 재실행 무변경 → 정책·지역 모두 적용 표시 **통과**. 최종 개발 DB의 `policies`·`regions`는 각 **0건**, Migration 이력은 **2건**이다. 공식 지역 시드는 미실행 상태다.
+- 최종 실행 이미지에서 새 경로의 `Policy`·`Region` 엔티티만 중복 없이 로딩되고, 실제 DB와 엔티티 사이 변경 SQL **0건**, `step6_test_*`·`step7_test_*`·`step8_test_*` 잔여 스키마 **0개**임을 확인했다.
+- API 직접·웹 경유 health 응답 **통과**, `web`·`api`·`db` 모두 **healthy**로 실행 중이다. 기존 DB 볼륨·orphan 컨테이너를 보존했다.
+- 기존 TypeORM 스키마 검사 중 `pg` 사용 중단 예고·Jest VM 모듈·개발 의존성 경고는 유지하며 외부 패키지 변경은 하지 않았다. Step 8 완료를 막는 코드·DB 불일치는 없다.
+
+핵심 코드 읽는 순서: `modules/meta/entities/region.entity.ts` → `database/migrations/1792162801000-create-regions.ts` → `test/region-schema.spec.ts`.
+
+## 12. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 9: 공식 지역 코드 초기 데이터**다. Step 9~57은 시작하지 않았다. Step 1의 인증키·API 호출·조사 자료 및 개발 도구의 후속 검토 사항은 그대로 남아 있다.
+
+Step 8 권장 커밋 메시지: `feat: 공식 지역 코드 테이블 생성`. Step 8은 아직 커밋하지 않았다.
