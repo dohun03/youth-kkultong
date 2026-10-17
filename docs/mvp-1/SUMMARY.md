@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~17 완료, Step 18~57 미착수**
+최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~18 완료, Step 19~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -801,8 +801,47 @@ docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tm
 
 핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center-policy.transform.ts`의 `YouthCenterPolicyBasicInfo` → `transformYouthCenterPolicyBasicInfo` → `readTimestamp`·`readViewCount`·`YouthCenterPolicyTransformError` → `apps/api/test/youth-center-policy-transform.spec.ts` → `apps/api/test/fixtures/youth-center-policy.json`.
 
-## 21. 다음 작업을 위한 상태
+## 21. Step 18 구현·검증 결과
 
-다음 요청 대상은 **Step 18: 자격 조건·신청기간 변환**이다. Step 18~57은 시작하지 않았다. 단일 페이지 호출·일시 오류 재시도·응답 구조/메타데이터/중복 검증·전체 페이지 순차 수집·기본 정보 변환은 Step 12~17에서 구현·검증했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+사용자의 명시적 요청에 따라 Step 17 변경사항 5개 파일을 `7ca57b8` (`feat: 정책 기본 정보 정규화 구현`)로 커밋했다. 사용자가 다듬은 주석을 보존했으며, 깨끗한 작업 트리를 확인한 뒤 Step 18만 진행했다.
 
-Step 17 추천 커밋 메시지: `feat: 정책 기본 정보 정규화 구현`.
+### 구현과 실제 결정사항
+
+- 기존 `youth-center-policy.transform.ts`에 `YouthCenterPolicy`와 `transformYouthCenterPolicy`를 추가했다. Step 17 기본 정보에 최소/최대 나이·취업/학력/지역 코드·추가 자격·참여 제한·신청기간 코드/원문/시작일/종료일을 합친다. `rawJson`은 원본 전체를 유지하며 입력 객체는 수정하지 않는다.
+- 나이의 누락·NULL·빈 문자열·공백은 NULL이고, 정수 문자열은 숫자로 변환한다. `'0'`은 0이다. 음수·역전 범위·120 초과 등 DB 정수로 표현 가능한 값은 임의 수정하지 않고 후속 매칭 단계에서 UNKNOWN으로 판단하도록 유지한다. 자료형 오류는 기존 `INVALID_TYPE`, 정수로 해석할 수 없거나 PostgreSQL INTEGER 범위를 넘은 값은 `INVALID_INTEGER`로 정책 ID·필드를 전달한다.
+- 코드 문자열은 쉼표로 나누고 각 코드의 앞뒤 공백만 제거한다. 앞자리 0·순서·중복·미확인/폐지 코드와 비어 있는 토큰도 임의 제거하지 않는다. 미확인 토큰을 버려 조건이 명확한 것처럼 보이지 않도록 하기 위한 처리이며, 코드 유효성·제한 없음·지역 관계는 후속 판정 단계에 남긴다. 코드 필드 전체가 비어 있으면 NULL이다.
+- 추가 자격·참여 제한은 내용이 있는 원문의 공백·줄바꿈을 보존하고, 비어 있으면 NULL이다. 신청기간 코드는 주변 공백을 제거하며 기존 DB 최대 길이 20자를 검사한다. 미확인 기간 코드도 값 그대로 보관한다.
+- 신청기간은 전체 문자열이 `YYYYMMDD` 또는 `YYYY-MM-DD` 날짜 두 개를 `~`로 연결한 단일 구간일 때만 처리한다. 양 끝 날짜가 실제 달력에 존재하고 시작일이 종료일 이하이면 시간대 변환 없이 `YYYY-MM-DD` 문자열로 반환한다. 같은 날도 허용하며 윤년·월별 일수 검증을 기존 등록/수정 시각 검증과 공유한다.
+- 복수 구간·설명 포함·날짜 누락·잘못된 날짜·역전은 시작일과 종료일을 모두 NULL로 두고 원문을 보존한다. 상시/마감 코드로 날짜를 만들거나 사업기간에서 신청기간을 추정하지 않는다. 신청기간 코드와 날짜의 모순·현재 신청 상태는 Step 32에서 판단한다.
+- 기존 실제 응답 발췌본에 같은 정책의 자격·신청기간 필드 8개를 추가하고 `youth-center-eligibility-transform.spec.ts`를 작성했다. 기존 기본 정보 테스트와 사용자 주석은 유지했으며, 등록/수정 시각의 달력 검증만 공통 함수로 옮겼다.
+- 공개 API·DB·Migration·외부 패키지·설계 의미는 변경하지 않았고 SPEC도 수정하지 않았다. 기존 수집 서비스는 원본 배열 반환을 유지하며 해시·잠금·저장·CLI 연결은 후속 Step 범위다.
+
+### 실행 방법
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/youth-center-policy-transform.spec.ts test/youth-center-eligibility-transform.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+```
+
+전체 회귀 테스트는 기존 테스트 이미지에 현재 소스·테스트를 읽기 전용으로 연결했다.
+
+```bash
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tmp/youth-kkultong-step11-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" api npm test
+```
+
+### 실제 검증과 남은 문제
+
+- 신규 자격 조건·신청기간 테스트 **74개 통과**. 실제 샘플의 0~0·코드·추가 자격, 누락·NULL·공백, 나이 정수·역전/큰 상한·변환 오류, 코드 공백·앞자리 0·순서·미확인/빈 토큰, 단일 날짜 구간·동일일·윤년·복수 구간·날짜 오류·역전, 코드와 날짜의 독립성·사업기간 미사용·원본 보존·오류의 정책 ID/필드 및 민감값 비노출을 확인했다.
+- 최초 변환 테스트 실행은 기존 62개+신규 73개로 **2개 모음·135개 통과**했다. 이후 사업기간에서 신청일을 추정하지 않는 테스트 1개를 추가했고, 실제 PostgreSQL·기존 HTTP 테스트를 포함한 최종 전체 회귀 테스트는 **17개 모음·549개 모두 통과**했다. 실행 중인 API·웹·DB 서비스를 교체하지 않았다.
+- `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`: **공용·API·웹 통과**. `npm run build --workspace apps/api`: **공용 선행 빌드·API 빌드 통과**. 웹 소스 변경이 없어 Next.js 배포 빌드는 재실행하지 않았다.
+- `TZ=Asia/Seoul`, `TZ=UTC`, `TZ=America/New_York` 환경에서 각각 `node /tmp/youth-kkultong-step18-check.cjs`: **모두 통과**. 보관된 원본 정책 **3,255건**의 나이·코드·추가 조건·기간 및 원본 전체 필드/값을 대조했다. 각 환경에서 유효 단일 기간 **1,557건**, 날짜 NULL **1,698건**(빈 값 1,695·복수 기간 2·역전 1), 최대 나이 999의 원본 값 유지 **5건**이 동일했다. 실제 API 요청·DB 저장 없이 검증했으며 로컬 조사 원본과 `/tmp` 스크립트는 Git 추적 대상이 아니다.
+- `git diff --check`: **통과**. Step 18 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
+
+핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center-policy.transform.ts`의 `YouthCenterPolicy` → `transformYouthCenterPolicy` → `readAge`·`readCodes` → `readApplicationDates`·`isValidCalendarDate` → `apps/api/test/youth-center-eligibility-transform.spec.ts`.
+
+## 22. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 19: 정책 내용 해시 생성**이다. Step 19~57은 시작하지 않았다. Step 12~18에서 단일/전체 페이지 수집·재시도·구조/중복/총합 검증·정책 기본 정보/자격 조건/신청기간 변환을 구현·검증했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+
+Step 18 추천 커밋 메시지: `feat: 정책 자격 조건과 신청기간 변환 구현`.
