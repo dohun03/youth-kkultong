@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~16 완료, Step 17~57 미착수**
+최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~17 완료, Step 18~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -763,8 +763,46 @@ docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tm
 
 핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/ingestion.service.ts`의 `collectPolicies` → `validateYouthCenterCollection` → `apps/api/src/modules/ingestion/ingestion.module.ts` → `apps/api/test/ingestion-collection.spec.ts`.
 
-## 20. 다음 작업을 위한 상태
+## 20. Step 17 구현·검증 결과
 
-다음 요청 대상은 **Step 17: 원본 정책 기본 정보 변환**이다. Step 17~57은 시작하지 않았다. 단일 페이지 호출·일시 오류 재시도·응답 구조/메타데이터/중복 검증·전체 페이지 순차 수집은 Step 12~16에서 구현·검증했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+`AGENT_RULES.md` → PLAN Step 17 → SPEC 2.1·5.3·5.4 → Step 16 완료 기록 → 관련 소스 순서로 확인했다. 착수 시 작업 트리는 깨끗했으며 Step 17의 기본 정보 변환만 구현했다.
 
-Step 16 추천 커밋 메시지: `feat: 전체 정책 페이지 수집과 최종 검증`.
+### 구현과 실제 결정사항
+
+- `youth-center-policy.transform.ts`의 순수 함수 `transformYouthCenterPolicyBasicInfo`가 원본 정책번호·제목·대/중분류·설명·지원 내용·신청/참고 링크·조회수·등록/수정일을 `YouthCenterPolicyBasicInfo`로 매핑한다. 출처는 `youthcenter`이며, `rawJson`에는 추가 필드와 중첩 값까지 포함한 입력 객체 전체를 유지한다. 변환 중 원본을 수정하지 않는다.
+- 선택 문자열의 누락·NULL·빈 문자열·공백만 있는 값은 NULL이다. 내용이 있는 ID·제목·설명·링크는 앞뒤 공백과 줄바꿈도 보존한다. 문자열이 아닌 값은 변환 오류이며, 정책 ID·분류는 기존 DB의 최대 길이도 검사한다. 링크의 HTTP(S) 유효성 검사는 SPEC대로 상세 응답을 구현하는 Step 42에 남긴다.
+- 조회수는 앞뒤 공백을 제거한 0 이상의 정수 문자열만 숫자로 바꾼다. `'0'`은 0이며, 숫자 자료형·음수·소수·지수 표기·해석 불가·PostgreSQL INTEGER 최대값 초과는 NULL이다. 이는 SPEC 5.3의 조회수 예외 처리이며 수집 실패로 바꾸지 않는다. 원본 조회수 문자열은 그대로 유지한다.
+- 등록·수정일은 `YYYY-MM-DD HH:mm:ss` 형식과 윤년·월별 일수·시/분/초를 검증한다. 빈 값은 NULL이고 잘못된 형식이나 존재하지 않는 날짜는 오류다. 변환 결과는 시간대 없는 문자열이며 `Date`나 UTC로 바꾸지 않는다. 이 자료형은 DB 조회 엔티티(`Policy`의 `Date` 속성)와 구분되는 변환 중간 결과로, 실제 저장 연결은 후속 Step 범위다.
+- `YouthCenterPolicyTransformError`는 단계 `TRANSFORMATION`, `policyId`, 원본 `field`, 실패 원인 `INVALID_TYPE`/`REQUIRED`/`TOO_LONG`/`INVALID_TIMESTAMP`를 전달한다. 오류 메시지에도 정책 ID·필드·원인을 포함하며, 실패 입력값·본문·URL·원본 오류는 포함하지 않는다.
+- `test/fixtures/youth-center-policy.json`은 기존 조사 `initial-page-0001-size-5.json`의 첫 정책에서 기본 정보와 미변환 코드 필드를 발췌한 자료다. 자동 테스트는 Git에 포함된 자료를 사용하므로 로컬 조사 원본에 의존하지 않는다.
+- 공개 API·DB·Migration·외부 패키지·설계 의미는 변경하지 않았고 SPEC도 수정하지 않았다. 기존 `collectPolicies`는 원본 배열 반환을 유지한다. 자격 조건·신청기간·해시·저장·CLI 연결은 후속 Step에 남겼다.
+
+### 실행 방법
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/youth-center-policy-transform.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+```
+
+전체 회귀 테스트는 기존 테스트 이미지에 현재 소스·테스트를 읽기 전용으로 연결했다.
+
+```bash
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tmp/youth-kkultong-step11-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" api npm test
+```
+
+### 실제 검증과 남은 문제
+
+- 신규 기본 정보 변환 테스트 **1개 모음·62개 통과**. 실제 응답 발췌본 매핑, 선택 필드의 누락·NULL·빈 값, 문자열 공백·줄바꿈, 원본 추가/중첩 필드 보존, 조회수 0·잘못된 값·정수 범위, 시간대 없는 시각·윤년·달력/형식 오류, 필수값·자료형·길이 오류 및 정책 ID·필드·민감값 비노출을 확인했다.
+- 실제 PostgreSQL·기존 HTTP 테스트를 포함한 전체 회귀 테스트 **16개 모음·475개 통과**. 실행 중인 API·웹·DB 서비스를 교체하지 않았다.
+- `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`: **공용·API·웹 통과**. `npm run build --workspace apps/api`: **공용 선행 빌드·API 빌드 통과**. 웹 소스 변경이 없어 Next.js 배포 빌드는 재실행하지 않았다.
+- `TZ=Asia/Seoul`, `TZ=UTC`, `TZ=America/New_York` 환경에서 각각 `node /tmp/youth-kkultong-step17-check.cjs`: **모두 통과**. 로컬 조사 `collection.json`의 원본 정책 **3,255건**을 매번 전부 변환해 기본 정보 매핑·조회수·시간대 없는 시각·원본 전체 필드/값 보존을 확인했다. 실제 API 요청·DB 저장 없이 보관 자료로 검증했으며 조사 원본과 `/tmp` 스크립트는 Git 추적 대상이 아니다.
+- `git diff --check`: **통과**. Step 17 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
+
+핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center-policy.transform.ts`의 `YouthCenterPolicyBasicInfo` → `transformYouthCenterPolicyBasicInfo` → `readTimestamp`·`readViewCount`·`YouthCenterPolicyTransformError` → `apps/api/test/youth-center-policy-transform.spec.ts` → `apps/api/test/fixtures/youth-center-policy.json`.
+
+## 21. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 18: 자격 조건·신청기간 변환**이다. Step 18~57은 시작하지 않았다. 단일 페이지 호출·일시 오류 재시도·응답 구조/메타데이터/중복 검증·전체 페이지 순차 수집·기본 정보 변환은 Step 12~17에서 구현·검증했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+
+Step 17 추천 커밋 메시지: `feat: 정책 기본 정보 정규화 구현`.

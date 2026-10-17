@@ -1,0 +1,15 @@
+{
+  "plcyNo": "20261014005400213950",
+  "plcyNm": "1인가구 병원 안심동행 사업",
+  "lclsfNm": "금융･복지･문화",
+  "mclsfNm": "건강",
+  "plcyExplnCn": "병원 이용에 어려움을 겪는 1인가구에게 병원 동행서비스 지원\n",
+  "plcySprtCn": "병원동행(입‧퇴원 접수,수납 등)퇴원 서비스 제공\n - 병원 출발 및 귀가 시 동행, 병원내 접수‧수납, 약국동행 및 의약품 수령 등\n    * 이동서비스(차량운행 등) 미제공, 택시비‧버스비 등 교통비는 본인 부담\n",
+  "aplyUrlAddr": "https://gg24.gg.go.kr/svcreqst/selectSvcReqst.do?svc_seq=850",
+  "refUrlAddr1": "https://gg24.gg.go.kr",
+  "refUrlAddr2": "https://www.gg.go.kr/1ingg/main.do",
+  "inqCnt": "14",
+  "frstRegDt": "2026-10-14 16:23:02",
+  "lastMdfcnDt": "2026-10-15 10:27:26",
+  "jobCd": "0013010"
+}
