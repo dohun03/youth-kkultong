@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~15 완료, Step 16~57 미착수**
+최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~16 완료, Step 17~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -724,8 +724,47 @@ docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tm
 
 핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center-page.validation.ts` → `apps/api/src/modules/ingestion/youth-center.client.ts`의 구조 검증 이후 처리 → `apps/api/test/youth-center-page-validation.spec.ts`.
 
-## 19. 다음 작업을 위한 상태
+## 19. Step 16 구현·검증 결과
 
-다음 요청 대상은 **Step 16: 전체 페이지 순차 수집**이다. Step 16~57은 시작하지 않았다. 실제 단일 페이지 호출은 Step 12, 일시 오류 재시도·페이지 간 대기는 Step 13, 응답 구조 검증은 Step 14, 페이지 메타데이터·중복 ID 검증은 Step 15에서 확인했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+사용자의 명시적 요청에 따라 Step 15 변경사항 7개 파일을 `8f63843` (`feat: 수집 페이지 번호와 중복 정책 검증`)로 커밋하고, 깨끗한 작업 트리를 확인한 뒤 Step 16만 진행했다.
 
-Step 15 추천 커밋 메시지: `feat: 수집 페이지 번호와 중복 정책 검증`.
+### 구현과 실제 결정사항
+
+- `IngestionService.collectPolicies`를 추가하고 `IngestionModule`의 제공·내보내기에 연결했다. 첫 페이지에서 검증된 `totCount`와 `pageSize`로 마지막 페이지를 계산하고, 이후 `fetchPageWithRetry`를 하나씩 기다리며 호출한다. 페이지 간 대기·해당 페이지 재시도·구조/메타데이터 검증은 기존 클라이언트를 그대로 사용한다. 총 0건이면 첫 페이지만 확인하고 빈 배열을 반환하며 마지막 이후 페이지는 추가로 요청하지 않는다.
+- 수집 작업마다 새 정책 ID 집합과 수신 페이지 기록·원본 정책 배열을 만든다. 모든 페이지에 같은 ID 집합을 전달해 페이지 간 중복을 검출하고 원본 정책을 순서대로 메모리에 모은다. 최종 실패한 작업을 다시 호출하면 첫 페이지와 새 집합부터 시작한다.
+- 이후 페이지의 `totCount`가 첫 응답과 다르면 즉시 중단한다. 반환 직전 `validateYouthCenterCollection`에서 페이지 누락·페이지 수·첫 응답 대비 최종 총합·최종 배열 자체의 ID 중복을 독립적으로 다시 검사한다. 검증이 모두 통과한 배열만 반환하므로 호출·검증 실패 시 부분 배열을 다음 처리로 전달하지 않는다.
+- 전체 검증 오류는 `YouthCenterCollectionValidationError`로 전달한다. 단계 `COLLECTION_VALIDATION`, `TOTAL_COUNT_CHANGED`/`TOTAL_COUNT_MISMATCH`/`PAGE_MISSING`/`PAGE_COUNT_MISMATCH`/`DUPLICATE_POLICY_ID`, 예상·실제 숫자 또는 중복 ID를 담는다. 총 건수 변화는 발생 페이지·실제 시도 횟수도 유지한다. 페이지별 오류는 기존 오류를 그대로 전달한다.
+- 스키마에서 원본 정책 타입 `YouthCenterRawPolicy`를 내보내 다음 변환 단계에서도 필수 ID·제목과 추가 필드를 함께 사용할 수 있게 했다. 함수·타입·오류·수집 및 검증 구간에 간결한 한국어 역할 주석을 작성했다.
+- 원본 변환·해시·DB 잠금/저장·파일 로그·수집 CLI는 해당 후속 Step에 남겼다. 현재 서비스는 수집·검증된 원본 배열을 반환하며 DB 저장 의존성을 갖지 않는다. 공개 API·DB·Migration·새 외부 패키지·설계 의미는 변경하지 않았고 SPEC은 수정하지 않았다.
+
+### 실행 방법
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/ingestion-collection.spec.ts test/youth-center.client.spec.ts test/youth-center-retry.spec.ts test/youth-center-response.spec.ts test/youth-center-page-validation.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+```
+
+전체 회귀 테스트는 기존 테스트 이미지에 현재 소스·테스트를 읽기 전용으로 연결했다.
+
+```bash
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tmp/youth-kkultong-step11-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" api npm test
+```
+
+### 실제 검증과 남은 문제
+
+- 수집 관련 테스트 **5개 모음·224개 통과**(기존 194개 + 신규 30개). 0건·한 페이지·여러 페이지·마지막 일부 건수, 순차 호출과 기본 대기, 중간 시간 초과 시 해당 페이지만 재시도, 최종 호출 실패·구조/페이지/건수/중복/e003 오류 후 즉시 중단, 총 건수 변화, 반복/실패 후 재수집의 첫 페이지 시작, 최종 총합·누락·중복 검증을 확인했다. 실패 시 다음 처리 함수가 호출되지 않는 것도 검증했다.
+- 최초 테스트에서 누락 페이지 배열을 Jest `it.each`의 인수 목록으로 잘못 전달해 **3개 실패** 및 타입 오류가 발생했다. 배열을 담는 객체 형식으로 테스트 자료를 수정하고 재실행해 모두 통과했다. 제품 코드의 요구사항이나 거부 기준은 변경하지 않았다.
+- 실제 PostgreSQL·기존 HTTP 테스트를 포함한 전체 회귀 테스트 **15개 모음·413개 통과**. 새 서비스의 NestJS 의존성 주입과 기존 health 경로도 통과했으며 실행 중인 API·웹·DB 서비스를 교체하지 않았다.
+- `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`: **공용·API·웹 통과**. `npm run build --workspace apps/api`: **공용 선행 빌드·API 빌드 통과**. 웹 소스 변경이 없어 Next.js 배포 빌드는 재실행하지 않았다.
+- `node /tmp/youth-kkultong-step16-check.cjs`: **통과**. 로컬 조사 `collection.json`의 정상 페이지에서 원본 정책 **3,255건**을 재구성하고, 기본 50건씩 **66페이지**로 오프라인 응답을 재생했다. 실제 서비스·클라이언트로 순차 수집한 반환 배열 **3,255건**, 고유 ID **3,255개**, 원본 전체 필드·값 보존을 확인했다. 보관 자료를 재생한 검증이며 현재 API 총 건수나 실시간 수집 결과가 아니다. 검증 프로세스에서만 대기를 0ms로 설정했고 제품 기본 3초 대기는 변경하지 않았다. 실제 API 키·네트워크·DB 저장은 사용하지 않았다.
+- 조사 자료와 `/tmp` 검증 스크립트는 Git 추적 대상이 아니며 자동 테스트는 독립적인 모의 응답을 사용한다. 첫 조사 자료 구조 확인 명령은 정수형 `coverage_records`를 배열로 가정해 실패했으며, 실제 구조를 확인한 후 오프라인 검증을 수행했다.
+- `git diff --check`: **통과**. Step 16 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
+
+핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/ingestion.service.ts`의 `collectPolicies` → `validateYouthCenterCollection` → `apps/api/src/modules/ingestion/ingestion.module.ts` → `apps/api/test/ingestion-collection.spec.ts`.
+
+## 20. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 17: 원본 정책 기본 정보 변환**이다. Step 17~57은 시작하지 않았다. 단일 페이지 호출·일시 오류 재시도·응답 구조/메타데이터/중복 검증·전체 페이지 순차 수집은 Step 12~16에서 구현·검증했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+
+Step 16 추천 커밋 메시지: `feat: 전체 정책 페이지 수집과 최종 검증`.

@@ -23,6 +23,9 @@ const youthCenterListResponseSchema = z.looseObject({
 /** 구조 검증을 통과한 온통청년 목록 응답이다. */
 export type YouthCenterListResponse = z.infer<typeof youthCenterListResponseSchema>;
 
+/** 필수 ID·제목 구조를 검증하고 추가 필드를 보존한 원본 정책이다. */
+export type YouthCenterRawPolicy = YouthCenterListResponse['result']['youthPolicyList'][number];
+
 /** 입력값이나 원본 Zod 오류 대신 페이지·시도 횟수·실패 필드만 전달한다. */
 export class YouthCenterResponseValidationError extends Error {
   /** 검증 실패 단계 */
