@@ -2,7 +2,7 @@
 
 > 저장 위치: `docs/mvp-1/PLAN.md`  
 > 기준: `docs/PRD.md`(PRD v0.8), `docs/ARCHITECTURE.md`(v0.3), `docs/mvp-1/SPEC.md`(v0.4), `docs/AGENT_RULES.md`  
-> 상태: **Step 1~13 완료 · Step 14~57 미착수** · 작성일: 2026-10-16
+> 상태: **Step 1~14 완료 · Step 15~57 미착수** · 작성일: 2026-10-16
 
 ## 목차
 
@@ -152,8 +152,8 @@
 
 ### Step 14. 목록 응답 Zod 구조 검증
 
-- [ ] 원본의 `result.youthPolicyList`, `result.pagging` 및 필수 정책 식별자·제목의 구조를 검증한다.
-- [ ] 실패 시 필드·페이지를 식별할 수 있는 검증 오류로 변환한다.
+- [x] 원본의 `result.youthPolicyList`, `result.pagging` 및 필수 정책 식별자·제목의 구조를 검증한다.
+- [x] 실패 시 필드·페이지를 식별할 수 있는 검증 오류로 변환한다.
 
 **검증/완료:** 정상 샘플을 통과시키고 누락·잘못된 자료형·빈 `plcyNo`/`plcyNm`을 거부한다. **커밋:** `feat: 온통청년 목록 응답 구조 검증 추가`.
 

@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~13 완료, Step 14~57 미착수**
+최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~14 완료, Step 15~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -648,8 +648,46 @@ docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tm
 
 핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center.client.ts`의 `fetchPageWithRetry` → `fetchPage`의 통신 오류 분류 → `retryDelay`·`wait` → `apps/api/test/youth-center-retry.spec.ts`.
 
-## 17. 다음 작업을 위한 상태
+## 17. Step 14 구현·검증 결과
 
-다음 요청 대상은 **Step 14: 목록 응답 Zod 구조 검증**이다. Step 14~57은 시작하지 않았다. 실제 단일 페이지 호출은 Step 12, 일시 오류 재시도·페이지 간 대기는 Step 13에서 확인했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+사용자의 명시적 요청에 따라 Step 13 구현과 사용자가 수정한 `AGENT_RULES.md`의 주석 규칙을 `9e17954` (`feat: 온통청년 API 일시 오류 재시도 처리`)로 커밋했다. 사용자 주석은 보존하고 줄 끝 공백 2곳만 정리했으며, 커밋 후 깨끗한 작업 트리를 확인했다.
 
-Step 13 추천 커밋 메시지: `feat: 온통청년 API 일시 오류 재시도 처리`.
+### 구현과 실제 결정사항
+
+- `youth-center-response.schema.ts`에 온통청년 목록 응답의 Zod 구조 검증을 정의했다. 숫자형 성공 값 `resultCode=200`, 문자열 `resultMessage`, 객체 `result`, 배열 `youthPolicyList`, 객체 `pagging`을 확인한다. `pagging.totCount`는 0 이상의 안전한 정수, `pageNum`·`pageSize`는 1 이상의 안전한 정수만 허용하며 문자열 숫자를 자동 변환하지 않는다.
+- 정책 항목은 객체여야 하고 `plcyNo`·`plcyNm`은 공백만 있지 않은 필수 문자열이어야 한다. 문자열에 공백이 있는지 검사하되 원문을 잘라내거나 변환하지 않는다. 모든 객체에 추가 필드를 허용해 이후 변환·원본 보관에 필요한 값도 유지한다. 반환 데이터의 객체 키 순서는 달라질 수 있으나 필드와 값은 보존한다.
+- `parseYouthCenterPageResponse`는 실패를 `YouthCenterResponseValidationError`로 변환한다. 수집 단계 `PAGE_VALIDATION`, 요청 페이지, 실제 시도 횟수, 중복을 제거한 실패 필드 경로를 전달한다. 루트 오류는 `$`, 정책 항목 오류는 `result.youthPolicyList.0.plcyNo`처럼 배열 위치까지 식별한다. 입력값·인증키·URL·Zod 원본 오류·`cause`는 담지 않는다.
+- `fetchPageWithRetry`에서 HTTP/API 성공을 확인한 뒤 반환 직전에 구조를 검증한다. 반환 타입은 `YouthCenterValidatedPageResponse`로 구체화했다. 검증 실패는 재시도 분기 밖으로 전달하므로 잘못된 구조를 반복 요청하지 않으며, 일시 오류 이후 검증에 실패하면 해당 실제 시도 횟수를 유지한다. `finally`의 페이지 종료 시각 기록과 다음 페이지 간격도 유지된다. 저수준 `fetchPage`의 응답 본문 구분 동작은 유지했다.
+- `test/fixtures/youth-center-list.json`은 기존 `docs/api-research/samples/initial-page-0001-size-5.json`에서 응답 봉투·페이지 정보·정책 5건의 ID·제목·조회수만 발췌한 테스트 자료다. 원본 전체나 접속 정보를 복제하지 않았다. 기존 재시도 테스트의 최소 성공 값도 이 구조가 완전한 자료로 보강했다.
+- 수정된 주석 규칙에 따라 스키마·타입·오류·함수의 역할을 한국어로 명시하고, 클라이언트의 긴 처리 흐름에 요청 간격·응답 보관·구조 검증·오류 분류·재시도 대기·종료 시각 갱신 주석을 추가했다. 통신 오류의 종류에는 비재시도 `REQUEST`도 있어 기존의 '일시적 에러' 주석을 실제 역할에 맞게 정정했다.
+- 요청·응답 페이지 번호/크기 비교, 페이지당 건수, 정책 ID 중복·전체 수집 검증은 후속 Step에 남겼다. 공개 API·DB·Migration·외부 패키지·설계 의미는 변경하지 않았고 SPEC은 수정하지 않았다.
+
+### 실행 방법
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/youth-center.client.spec.ts test/youth-center-retry.spec.ts test/youth-center-response.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+```
+
+전체 회귀 테스트는 기존 테스트 이미지에 현재 소스·테스트를 읽기 전용으로 연결했다.
+
+```bash
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tmp/youth-kkultong-step11-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" api npm test
+```
+
+### 실제 검증과 남은 문제
+
+- 수집 클라이언트 테스트 **3개 모음·164개 통과**(기존 104개 + 신규 60개). 실제 응답 발췌본·0건 응답·추가 필드/원문 보존, 봉투·배열·페이지·필수 정책 필드의 누락/자료형/빈 값 오류, 오류의 필드 경로·페이지·횟수·민감값 비노출을 검증했다. 구조 검증 실패 직후 중단, 재시도 뒤 구조 오류, 검증 실패 후 다음 페이지 간격도 확인했다.
+- 실제 PostgreSQL·기존 HTTP 테스트를 포함한 전체 회귀 테스트 **13개 모음·353개 통과**. 실행 중인 API·웹·DB 서비스를 교체하지 않았다.
+- `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`: **공용·API·웹 통과**. `npm run build --workspace apps/api`: **공용 선행 빌드·API 빌드 통과**. 웹 소스 변경이 없어 Next.js 배포 빌드는 재실행하지 않았다.
+- 빌드한 검증 함수로 로컬 조사 자료의 **정상 목록 응답 36개 전체 통과**, 검증 후 객체의 필드·값 보존도 확인했다. 상세 응답 1개와 오류 응답 1개는 목록 성공 응답 검증 대상에서 제외했다. 실제 네트워크 요청·DB 저장 없이 수행했으며 조사 원본은 기존처럼 Git 추적에서 제외된다. 자동 테스트는 저장소에 포함한 발췌본을 사용하므로 조사 원본에 의존하지 않는다.
+- `git diff --check`: **통과**. Step 14 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
+
+핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center-response.schema.ts` → `apps/api/src/modules/ingestion/youth-center.client.ts`의 성공 응답 검증 → `apps/api/test/youth-center-response.spec.ts` → `apps/api/test/fixtures/youth-center-list.json`.
+
+## 18. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 15: 페이지 메타데이터·중복 식별 검증**이다. Step 15~57은 시작하지 않았다. 실제 단일 페이지 호출은 Step 12, 일시 오류 재시도·페이지 간 대기는 Step 13, 응답 구조 검증은 Step 14에서 확인했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+
+Step 14 추천 커밋 메시지: `feat: 온통청년 목록 응답 구조 검증 추가`.

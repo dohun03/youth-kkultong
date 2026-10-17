@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ENVIRONMENT } from '../../common/environment';
 import type { Environment } from '../../common/environment';
+import { parseYouthCenterPageResponse } from './youth-center-response.schema';
+import type { YouthCenterListResponse } from './youth-center-response.schema';
 
 /** HTTP 상태와 온통청년의 성공 여부를 분리한 단일 페이지 응답 */
 export interface YouthCenterPageResponse {
@@ -11,7 +13,13 @@ export interface YouthCenterPageResponse {
   retryAfter: string | null;
 }
 
-/** 일시적 에러: 페이지와 통신 실패 종류만 전달 */
+/** 재시도와 구조 검증을 통과한 페이지 응답과 실제 시도 횟수다. */
+export interface YouthCenterValidatedPageResponse extends YouthCenterPageResponse {
+  body: YouthCenterListResponse;
+  attempts: number;
+}
+
+/** 일시적 에러: 통신 오류가 발생한 페이지와 실패 종류만 전달한다. */
 export class YouthCenterRequestError extends Error {
   constructor(
     readonly pageNum: number,
@@ -44,8 +52,9 @@ export class YouthCenterClient {
 
   constructor(@Inject(ENVIRONMENT) private readonly environment: Environment) {}
 
-  /** 현재 페이지의 일시 오류만 재시도 */
-  async fetchPageWithRetry(pageNum: number): Promise<YouthCenterPageResponse & { attempts: number }> {
+  /** 현재 페이지의 일시 오류를 재시도하고 성공 응답의 구조를 검증한다. */
+  async fetchPageWithRetry(pageNum: number): Promise<YouthCenterValidatedPageResponse> {
+    // 이전 페이지 종료 후 요청 간격 유지
     if (this.lastPageFinishedAt !== undefined) {
       const elapsed = performance.now() - this.lastPageFinishedAt;
       await this.wait(this.environment.YOUTH_CENTER_REQUEST_DELAY_MS - elapsed);
@@ -53,6 +62,7 @@ export class YouthCenterClient {
 
     try {
       for (let attempt = 1; ; attempt += 1) {
+        // 현재 시도의 HTTP 응답 또는 통신 오류 보관
         let response: YouthCenterPageResponse | undefined;
         let requestError: YouthCenterRequestError | undefined;
         try {
@@ -71,9 +81,12 @@ export class YouthCenterClient {
             || ('resultCode' in body && body.resultCode === 'e003'));
 
         if (response?.httpOk && response.apiSuccess && !isE003) {
-          return { ...response, attempts: attempt };
+          // 성공 응답의 구조 검증. 실패하면 재시도 없이 호출자에게 전달한다.
+          const validatedBody = parseYouthCenterPageResponse(response.body, pageNum, attempt);
+          return { ...response, body: validatedBody, attempts: attempt };
         }
 
+        // 재시도 대상과 최종 실패 원인 분류
         const status = response?.httpStatus;
         const retryable = !isE003 && (requestError
           ? requestError.kind !== 'REQUEST'
@@ -85,9 +98,11 @@ export class YouthCenterClient {
             pageNum, attempt, retryable ? 'RETRY_EXHAUSTED' : 'NON_RETRYABLE', failure, status,
           );
         }
+        // 재시도 전 대기 후 다음 시도로 진행
         await this.wait(this.retryDelay(response?.retryAfter ?? null, attempt));
       }
     } finally {
+      // 성공·실패와 관계없이 페이지 종료 시각 갱신
       this.lastPageFinishedAt = performance.now();
     }
   }
