@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~19 완료, Step 20~57 미착수**
+최종 확인일: 2026-10-18 (Asia/Seoul) · **Step 1~20 완료, Step 21~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -878,8 +878,58 @@ docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tm
 
 핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center-policy.hash.ts`의 `createYouthCenterPolicyContentHash` → `serializePolicyContent` → `YouthCenterPolicyHashError` → `apps/api/test/youth-center-policy-hash.spec.ts`.
 
-## 23. 다음 작업을 위한 상태
+## 23. Step 20 구현·검증 결과
 
-다음 요청 대상은 **Step 20: PostgreSQL 중복 실행 잠금**이다. Step 20~57은 시작하지 않았다. Step 12~19에서 단일/전체 페이지 수집·재시도·구조/중복/총합 검증·정책 기본 정보/자격 조건/신청기간 변환·원본 내용 해시 생성을 구현·검증했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+사용자의 명시적 요청에 따라 Step 19 변경사항 5개 파일을 `d5c6e48` (`feat: 정책 내용 변경 판정용 해시 추가`)로 커밋했다. 사용자가 보강한 해시 설명·주석을 보존하고 깨끗한 작업 트리를 확인한 뒤 Step 20만 진행했다.
 
-Step 19 추천 커밋 메시지: `feat: 정책 내용 변경 판정용 해시 추가`.
+### 구현과 실제 결정사항
+
+- `IngestionLockService.runWithLock`를 추가해 `IngestionModule`의 제공·내보내기에 등록했다. 실행마다 전용 `QueryRunner`를 만들고 `pg_try_advisory_lock($1::bigint)`으로 세션 잠금을 획득한다. 온통청년 수집 전용 키는 문자열 상수 `202610180001`로 고정했으며 모든 프로세스가 같은 키를 사용한다. SQL 값은 매개변수로 바인딩한다.
+- 획득 결과가 정확히 true이면 전달받은 작업을 실행하고, 작업이 끝날 때까지 같은 연결을 유지한다. 작업에는 해당 `QueryRunner`를 전달하므로 후속 저장도 같은 `manager`에서 수행할 수 있다. 잠금 서비스는 수집 전에 트랜잭션을 열지 않는다. false이면 작업을 호출하지 않고 기본 로그와 내부 결과 `ALREADY_RUNNING`만 남긴다. 정상 완료는 `COMPLETED`와 작업 반환값으로 구분한다.
+- `finally`에서 획득한 잠금만 해제하고 `pg_advisory_unlock`의 true 반환을 확인한 뒤 연결을 반환한다. 획득 응답이 불확실하거나 해제에 실패하면 `connect()`가 반환한 PostgreSQL 클라이언트의 공개 `end()`로 세션을 종료해 잠금 보유 연결이 풀에 재사용되지 않도록 한다. 연결 반환 자체가 실패한 경우에도 세션 종료를 시도한다.
+- 작업이 트랜잭션을 끝내지 않았으면 잠금 해제 전에 롤백한다. 미확정 작업을 정상 완료로 처리하지 않으며, 롤백이 실패해도 잠금 해제·세션 종료·연결 반환을 계속 시도한다. 남은 트랜잭션이 있는 연결은 세션을 종료한다.
+- `IngestionLockError`는 `LOCK`/`LOCK_RELEASE` 단계와 접속·획득·해제·미종료 트랜잭션·롤백·세션 종료·연결 반환의 실패 원인을 전달한다. DB 원본 오류·접속 정보·`cause`는 포함하지 않는다. 작업 오류는 원래 객체로 전달하고, 정리 오류가 함께 나면 `AggregateError`에 모두 담아 어느 한쪽도 잃지 않는다. 중복 로그 기록이 실패해도 연결 정리는 진행한다.
+- 현재 잠금 경계는 `runWithLock`에 전달하는 작업 전체다. 통합 테스트에서 기존 `collectPolicies`와 조합해 두 번째 수집이 API 호출 전에 건너뛰는 것을 확인했다. 저수준 원본 수집 함수 자체의 계약은 유지하며, CLI에서 잠금→수집→변환→해시→저장 전체를 연결하는 작업은 Step 25에 남겼다. 파일 결과 로그 통합은 Step 24 범위다.
+- [PostgreSQL 17 세션 Advisory Lock 문서](https://www.postgresql.org/docs/17/explicit-locking.html#ADVISORY-LOCKS)와 [잠금 함수 문서](https://www.postgresql.org/docs/17/functions-admin.html#FUNCTIONS-ADVISORY-LOCKS), [TypeORM QueryRunner 문서](https://typeorm.io/docs/query-runner/)를 대조했다. 설치된 TypeORM의 PostgreSQL 연결 반환 구현도 확인한 뒤 실제 세션 종료·풀 재사용 여부를 통합 테스트로 검증했다.
+- 공개 API·DB 스키마·Migration·외부 패키지·설계 의미는 변경하지 않았고 SPEC도 수정하지 않았다. 정책 저장·변경 분류·저장 재시도·CLI는 구현하지 않았다.
+
+### 실행 방법
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/ingestion-lock.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+```
+
+이번 환경에서는 기존 `/tmp` Docker 설정·오버레이가 없어 다시 준비했다. Docker 설정 파일은 `/tmp/youth-kkultong-docker-config/config.json`의 `{}`이며, 테스트 오버레이 `/tmp/youth-kkultong-step20-test.compose.yaml`은 다음과 같다. 기존 테스트 이미지를 재사용하고 소스·테스트만 읽기 전용으로 연결한다.
+
+```yaml
+services:
+  api:
+    image: youth-kkultong-api-step11-test
+    build:
+      target: api-build
+```
+
+```bash
+docker --config /tmp/youth-kkultong-docker-config compose up -d db
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tmp/youth-kkultong-step20-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" api npm test
+docker --config /tmp/youth-kkultong-docker-config compose stop db
+```
+
+### 실제 검증과 남은 문제
+
+- 신규 잠금 검증 **26개 통과**(단위 19개·실제 DB 통합 7개). 획득/작업/해제/반환 순서, 비획득 시 작업·해제 미실행, 응답 검증, 오류 시 정리, 중복 로그 실패, 오류 단계·민감값 비노출 및 작업/정리 오류 동시 보존을 확인했다.
+- 실제 PostgreSQL의 독립 연결에서 첫 수집 중 두 번째 API 미호출·첫 작업 후 재획득, 같은 서비스의 중첩 실행 차단, COMMIT/ROLLBACK 이후 세션 잠금 유지, 실패/반복 실행 뒤 재획득을 확인했다. 서버에서 잠금을 획득한 뒤 응답 확인에 실패하는 경우와 해제 쿼리가 실패하는 경우도 실제 연결 종료 후 다른 세션이 재획득했다. 해제 실패 시 기존 세션 PID가 다시 쓰이지 않는 것도 확인했다.
+- 초기 잠금 테스트 **22개**, 첫 전체 회귀 **20개 모음·611개 통과** 후 코드 검토에서 미종료 트랜잭션 반환 경로를 발견해 롤백 안전장치와 테스트 4개를 추가했다. 최종 실제 DB·HTTP 포함 전체 회귀는 **20개 모음·615개 모두 통과**했다.
+- 최종 `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`: **공용·API·웹 통과**. `npm run build --workspace apps/api`: **공용 선행 빌드·API 빌드 통과**. 웹 소스 변경이 없어 Next.js 배포 빌드는 재실행하지 않았다.
+- 기존 PostgreSQL 서비스가 정지 상태여서 테스트를 위해 시작했으며, 검증 후 다시 정지해 시작 전 상태로 복원했다. 기존 DB 볼륨은 유지했고 API·웹 서비스는 시작하지 않았다. 잠금 통합 테스트는 정책 테이블을 변경하지 않으며 실제 외부 API 대신 모의 HTTP 응답을 사용한다. 기존 회귀 테스트의 DB 쓰기도 각 테스트의 별도 검증 스키마 안에서 실행됐다.
+- `git diff --check`: **통과**. Step 20 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
+
+핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/ingestion-lock.service.ts`의 `runWithLock` → `finally`의 롤백·해제·반환 → `IngestionLockError` → `apps/api/src/modules/ingestion/ingestion.module.ts` → `apps/api/test/ingestion-lock.integration.spec.ts` → `apps/api/test/ingestion-lock.spec.ts`.
+
+## 24. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 21: 저장 전 정책 변경 분류**이다. Step 21~57은 시작하지 않았다. Step 12~20에서 수집·검증·정규화·해시 함수와 전용 연결의 중복 실행 잠금 경계를 구현·검증했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+
+Step 20 추천 커밋 메시지: `feat: 정책 수집 중복 실행 잠금 추가`.
