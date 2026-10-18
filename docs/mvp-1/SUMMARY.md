@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~18 완료, Step 19~57 미착수**
+최종 확인일: 2026-10-17 (Asia/Seoul) · **Step 1~19 완료, Step 20~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -840,8 +840,46 @@ docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tm
 
 핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center-policy.transform.ts`의 `YouthCenterPolicy` → `transformYouthCenterPolicy` → `readAge`·`readCodes` → `readApplicationDates`·`isValidCalendarDate` → `apps/api/test/youth-center-eligibility-transform.spec.ts`.
 
-## 22. 다음 작업을 위한 상태
+## 22. Step 19 구현·검증 결과
 
-다음 요청 대상은 **Step 19: 정책 내용 해시 생성**이다. Step 19~57은 시작하지 않았다. Step 12~18에서 단일/전체 페이지 수집·재시도·구조/중복/총합 검증·정책 기본 정보/자격 조건/신청기간 변환을 구현·검증했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+사용자의 명시적 요청에 따라 Step 18 변경사항 5개 파일을 `0369785` (`feat: 정책 자격 조건과 신청기간 변환 구현`)로 커밋했다. 사용자가 다듬은 주석을 보존하고 깨끗한 작업 트리를 확인한 뒤 Step 19만 진행했다.
 
-Step 18 추천 커밋 메시지: `feat: 정책 자격 조건과 신청기간 변환 구현`.
+### 구현과 실제 결정사항
+
+- `youth-center-policy.hash.ts`의 순수 함수 `createYouthCenterPolicyContentHash`는 검증된 원본 정책을 받아 최상위 `inqCnt`만 제외한 내용의 SHA-256을 64자리 소문자 16진수 문자열로 반환한다. Node.js 내장 `node:crypto`를 사용하며 외부 패키지를 추가하지 않았다.
+- 객체는 모든 깊이에서 키를 문자열 순서로 정렬해 직렬화하고 배열은 원소 순서·중복을 유지한다. 숫자처럼 보이는 객체 키도 정렬된 순서대로 직접 JSON 문자열을 작성한다. 문자열의 공백·줄바꿈·코드 문자열·미확인 필드·중첩 `inqCnt`는 해시 내용에 포함한다. 키와 문자열의 이스케이프는 `JSON.stringify`를 사용한다.
+- 원본을 복사해 조회수만 제외하고 중첩 객체·배열을 읽기만 하므로 `rawJson`에 보관할 원본의 조회수·키·값·배열 순서는 바뀌지 않는다. 정상적인 JSON이 아닌 값(`undefined`, 비유한 숫자, BigInt, 함수, Date 등)을 묵시적으로 누락/NULL 처리하지 않고 거부한다. 순환 참조는 오류이며 같은 객체를 여러 필드에서 참조하는 경우와 구분한다.
+- `YouthCenterPolicyHashError`는 단계 `HASH`, `policyId`, 실패 `field` 경로, 원인 `INVALID_JSON_VALUE`/`CYCLIC_REFERENCE`/`HASH_FAILED`를 전달한다. 예상 밖 오류도 원본 메시지·입력값·`cause` 없이 안전한 오류로 바꾼다.
+- 해시 생성은 Step 17~18의 정규화와 구분되는 함수다. 해시는 변환값이 아닌 원본 전체를 기준으로 계산해야 하며, 수집→변환→해시→저장 흐름의 연결은 후속 Step에 남겼다. 기존 변환 자료형의 주석도 해시를 원본으로 별도 계산한다는 현재 상태로 정정했다.
+- 공개 API·DB·Migration·설계 의미는 변경하지 않았고 SPEC도 수정하지 않았다. NEW/CHANGED/UNCHANGED 판정과 DB 저장·잠금·CLI는 구현하지 않았다.
+
+### 실행 방법
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/youth-center-policy-hash.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+```
+
+전체 회귀 테스트는 기존 테스트 이미지에 현재 소스·테스트를 읽기 전용으로 연결했다.
+
+```bash
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tmp/youth-kkultong-step11-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" api npm test
+```
+
+### 실제 검증과 남은 문제
+
+- 신규 해시 테스트 **1개 모음·40개 통과**. 알려진 SHA-256 값·실제 샘플·조회수 변경/누락·중첩 키 정렬·숫자 모양 키·실제 내용 변경·중첩 조회수·배열 순서·문자열 공백/자료형·특수 문자/키·원본 보존·비JSON 값·순환 참조·오류의 정책 ID/필드 및 민감값 비노출을 확인했다.
+- 최초 타입 검사에서 테스트 객체의 `constructor` 필드에 문자열을 직접 대입한 코드가 기본 `Function` 타입과 충돌했다. 해당 특수 키를 `Reflect.set`으로 설정하도록 고쳤고, 최종 `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`는 **공용·API·웹 모두 통과**했다. 타입 검사를 우회하지 않았다.
+- 실제 PostgreSQL·기존 HTTP 테스트를 포함한 최종 전체 회귀 테스트 **18개 모음·589개 통과**. 실행 중인 API·웹·DB 서비스를 교체하지 않았다.
+- `npm run build --workspace apps/api`: **공용 선행 빌드·API 빌드 통과**. 웹 소스 변경이 없어 Next.js 배포 빌드는 재실행하지 않았다.
+- Python 표준 라이브러리로 보관 원본의 키 정렬 JSON·SHA-256 기준값을 별도 생성한 뒤 `node /tmp/youth-kkultong-step19-check.cjs`: **통과**. 원본 정책 **3,255건 전체**가 기준값과 일치했고, 각 정책의 객체 키 순서 반전·조회수만 변경은 같은 해시, 제목 변경은 다른 해시였다. 원본 전체 필드/값도 보존됐다. 실제 API 요청·DB 저장 없이 검증했으며 조사 원본·`/tmp` 검증 스크립트와 기준값은 Git 추적 대상이 아니다.
+- `git diff --check`: **통과**. Step 19 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
+
+핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center-policy.hash.ts`의 `createYouthCenterPolicyContentHash` → `serializePolicyContent` → `YouthCenterPolicyHashError` → `apps/api/test/youth-center-policy-hash.spec.ts`.
+
+## 23. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 20: PostgreSQL 중복 실행 잠금**이다. Step 20~57은 시작하지 않았다. Step 12~19에서 단일/전체 페이지 수집·재시도·구조/중복/총합 검증·정책 기본 정보/자격 조건/신청기간 변환·원본 내용 해시 생성을 구현·검증했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+
+Step 19 추천 커밋 메시지: `feat: 정책 내용 변경 판정용 해시 추가`.

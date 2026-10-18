@@ -18,7 +18,7 @@ export interface YouthCenterPolicyBasicInfo {
   rawJson: YouthCenterRawPolicy;
 }
 
-/** 기본 정보(YouthCenterPolicyBasicInfo)에 자격 조건·신청기간을 합친 형태, 내용 해시는 다음 단계에서 추가한다. */
+/** 기본 정보(YouthCenterPolicyBasicInfo)에 자격 조건·신청기간을 합친 형태, 내용 해시는 원본으로 별도 계산한다. */
 export interface YouthCenterPolicy extends YouthCenterPolicyBasicInfo {
   /** 수치만 변환하며 나이 범위의 적합성은 매칭 단계에서 판단한다. */
   ageMin: number | null;
