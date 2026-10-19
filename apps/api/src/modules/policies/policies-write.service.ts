@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { EntityManager } from 'typeorm';
+import type { EntityManager, QueryRunner } from 'typeorm';
 import { ENVIRONMENT } from '../../common/environment';
 import type { Environment } from '../../common/environment';
 import type { Policy } from './entities/policy.entity';
@@ -26,13 +26,56 @@ export interface PreparedPolicyBatches {
   counts: Record<ClassifiedPolicy['status'], number>; // 실제 저장 전 분류별 건수
 }
 
-/** 수집한 정책을 NEW/CHANGED/UNCHANGED 로 나누고 저장할 데이터를 준비하는 서비스 */
+/** 수집한 정책을 분류하고 전체 데이터를 한 트랜잭션으로 저장하는 서비스 */
 @Injectable()
 export class PoliciesWriteService {
   constructor(
     @Inject(PolicyRepository) private readonly policyRepository: PolicyRepository,
     @Inject(ENVIRONMENT) private readonly environment: Environment,
   ) {}
+
+  /** 트랜잭션 단위 정책 저장 */
+  async savePolicies(queryRunner: QueryRunner, policies: readonly PolicyWriteInput[]): Promise<PreparedPolicyBatches['counts']> {
+    // 진행 중인 다른 트랜잭션 체크
+    if (queryRunner.isTransactionActive) throw new Error('이미 트랜잭션이 진행 중인 연결에서는 정책 저장을 시작할 수 없습니다.');
+
+    try {
+      await queryRunner.startTransaction();
+      const prepared = await this.prepareBatches(queryRunner.manager, policies);
+
+      // 배치 단위 처리
+      for (const batch of prepared.batches) {
+        const writes: PolicyWriteInput[] = [];
+        const refreshes: PolicyRefreshInput[] = [];
+
+        // 배치 내 개별 처리
+        for (const policy of batch) {
+          if (policy.status === 'UNCHANGED') refreshes.push(policy.data);
+          else writes.push(policy.data);
+        }
+
+        // 신규·변경은 전체 저장, 동일은 원본과 조회수만 갱신
+        await this.policyRepository.upsertPolicies(queryRunner.manager, writes);
+        await this.policyRepository.refreshPolicies(queryRunner.manager, refreshes);
+      }
+
+      // 트랜잭션 커밋 후 결과 건수 반환
+      await queryRunner.commitTransaction();
+      return prepared.counts;
+
+    } catch (error) {
+      // 오류가 나면 기존 작업까지 전부 롤백
+      if (queryRunner.isTransactionActive) {
+        try {
+          await queryRunner.rollbackTransaction();
+        } catch (rollbackError) {
+          // 취소도 실패했다면 원래 오류와 취소 오류를 함께 전달
+          throw new AggregateError([error, rollbackError], '정책 저장과 트랜잭션 취소에 모두 실패했습니다.');
+        }
+      }
+      throw error;
+    }
+  }
 
   /** 기존 DB 해시와 비교해 정책을 분류하고 최대 200건씩 묶어 반환 */
   async prepareBatches(manager: EntityManager, policies: readonly PolicyWriteInput[]): Promise<PreparedPolicyBatches> {

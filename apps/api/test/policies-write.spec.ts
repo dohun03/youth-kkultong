@@ -1,4 +1,4 @@
-import type { EntityManager } from 'typeorm';
+import type { EntityManager, QueryRunner } from 'typeorm';
 import { parseEnvironment } from '../src/common/environment';
 import { createYouthCenterPolicyContentHash } from '../src/modules/ingestion/youth-center-policy.hash';
 import { transformYouthCenterPolicy } from '../src/modules/ingestion/youth-center-policy.transform';
@@ -114,5 +114,131 @@ describe('정책 저장 전 변경 분류', () => {
 
   it('빈 키 목록은 DB에 접근하지 않고 빈 해시 목록을 반환한다', async () => {
     await expect(repository.findContentHashes(manager, [])).resolves.toEqual([]);
+  });
+});
+
+describe('전체 정책 저장 트랜잭션', () => {
+  const manager = {} as EntityManager;
+  const environment = parseEnvironment({ DATABASE_URL: 'postgresql://test@db/test' });
+  let runner: QueryRunner;
+  let transactionActive: boolean;
+  let repository: PolicyRepository;
+  let service: PoliciesWriteService;
+
+  beforeEach(() => {
+    // 실제 DB 없이 트랜잭션 시작·확정·취소 호출 확인
+    transactionActive = false;
+    runner = {
+      manager,
+      get isTransactionActive() { return transactionActive; },
+      startTransaction: jest.fn(async () => { transactionActive = true; }),
+      commitTransaction: jest.fn(async () => { transactionActive = false; }),
+      rollbackTransaction: jest.fn(async () => { transactionActive = false; }),
+      release: jest.fn(),
+    } as unknown as QueryRunner;
+    repository = new PolicyRepository();
+    jest.spyOn(repository, 'findContentHashes').mockResolvedValue([]);
+    jest.spyOn(repository, 'upsertPolicies').mockResolvedValue();
+    jest.spyOn(repository, 'refreshPolicies').mockResolvedValue();
+    service = new PoliciesWriteService(repository, environment);
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('401건을 같은 관리자로 저장하고 트랜잭션은 한 번만 확정한다', async () => {
+    const policies = Array.from({ length: 401 }, (_, index) => candidate(`policy-${index}`));
+    const lookup = jest.mocked(repository.findContentHashes);
+    lookup.mockImplementation(async () => {
+      expect(runner.isTransactionActive).toBe(true);
+      return [];
+    });
+    await expect(service.savePolicies(runner, policies)).resolves.toEqual({ NEW: 401, CHANGED: 0, UNCHANGED: 0 });
+    expect(runner.startTransaction).toHaveBeenCalledTimes(1);
+    expect(runner.commitTransaction).toHaveBeenCalledTimes(1);
+    expect(runner.rollbackTransaction).not.toHaveBeenCalled();
+    expect(jest.mocked(repository.upsertPolicies).mock.calls.map((call) => call[1].length)).toEqual([200, 200, 1]);
+    for (const method of [repository.findContentHashes, repository.upsertPolicies, repository.refreshPolicies]) {
+      expect(jest.mocked(method).mock.calls.every((call) => call[0] === manager)).toBe(true);
+    }
+    expect(runner.release).not.toHaveBeenCalled();
+  });
+
+  it('동일 정책은 원본·조회수 갱신으로 보내고 신규는 전체 저장으로 보낸다', async () => {
+    const same = candidate('same', '검증 정책', '20');
+    jest.mocked(repository.findContentHashes).mockResolvedValue([candidate('same')]);
+    await expect(service.savePolicies(runner, [same, candidate('new')]))
+      .resolves.toEqual({ NEW: 1, CHANGED: 0, UNCHANGED: 1 });
+    expect(repository.refreshPolicies).toHaveBeenCalledWith(manager, [{
+      source: same.source, externalId: same.externalId, rawJson: same.rawJson, viewCount: 20,
+    }]);
+    expect(repository.upsertPolicies).toHaveBeenCalledWith(manager, [candidate('new')]);
+  });
+
+  it.each(['조회', '전체 저장', '동일 갱신', '확정'] as const)('%s 실패 시 전체 취소하고 원래 오류를 전달한다', async (stage) => {
+    const error = new Error(`모의 ${stage} 오류`);
+    const method = {
+      조회: repository.findContentHashes, '전체 저장': repository.upsertPolicies,
+      '동일 갱신': repository.refreshPolicies, 확정: runner.commitTransaction,
+    }[stage];
+    jest.mocked(method).mockRejectedValueOnce(error);
+    await expect(service.savePolicies(runner, [candidate('policy')])).rejects.toBe(error);
+    expect(runner.rollbackTransaction).toHaveBeenCalledTimes(1);
+    if (stage !== '확정') expect(runner.commitTransaction).not.toHaveBeenCalled();
+    expect(runner.isTransactionActive).toBe(false);
+    expect(runner.release).not.toHaveBeenCalled();
+  });
+
+  it('트랜잭션 시작이 실패하면 데이터를 조회하거나 저장하지 않는다', async () => {
+    const error = new Error('모의 시작 오류');
+    jest.mocked(runner.startTransaction).mockRejectedValueOnce(error);
+    await expect(service.savePolicies(runner, [candidate('policy')])).rejects.toBe(error);
+    expect(repository.findContentHashes).not.toHaveBeenCalled();
+    expect(repository.upsertPolicies).not.toHaveBeenCalled();
+    expect(runner.rollbackTransaction).not.toHaveBeenCalled();
+  });
+
+  it('시작 도중 오류가 나도 트랜잭션이 활성 상태라면 취소를 시도한다', async () => {
+    const error = new Error('모의 시작 도중 오류');
+    jest.mocked(runner.startTransaction).mockImplementationOnce(async () => {
+      transactionActive = true;
+      throw error;
+    });
+    await expect(service.savePolicies(runner, [candidate('policy')])).rejects.toBe(error);
+    expect(runner.rollbackTransaction).toHaveBeenCalledTimes(1);
+    expect(repository.findContentHashes).not.toHaveBeenCalled();
+  });
+
+  it('저장 취소도 실패하면 저장 오류와 취소 오류를 모두 보존한다', async () => {
+    const writeError = new Error('모의 저장 오류');
+    const rollbackError = new Error('모의 취소 오류');
+    jest.mocked(repository.upsertPolicies).mockRejectedValueOnce(writeError);
+    jest.mocked(runner.rollbackTransaction).mockRejectedValueOnce(rollbackError);
+    await expect(service.savePolicies(runner, [candidate('policy')])).rejects.toMatchObject({
+      errors: [writeError, rollbackError],
+    });
+    expect(runner.commitTransaction).not.toHaveBeenCalled();
+    expect(runner.release).not.toHaveBeenCalled();
+  });
+
+  it('이미 열린 트랜잭션은 시작·확정·취소하지 않는다', async () => {
+    transactionActive = true;
+    await expect(service.savePolicies(runner, [candidate('policy')])).rejects.toThrow('이미 트랜잭션');
+    expect(runner.startTransaction).not.toHaveBeenCalled();
+    expect(runner.commitTransaction).not.toHaveBeenCalled();
+    expect(runner.rollbackTransaction).not.toHaveBeenCalled();
+    expect(repository.findContentHashes).not.toHaveBeenCalled();
+  });
+
+  it('빈 수집 결과는 0건을 반환하고 기존 정책을 건드리지 않는다', async () => {
+    await expect(service.savePolicies(runner, [])).resolves.toEqual({ NEW: 0, CHANGED: 0, UNCHANGED: 0 });
+    expect(repository.findContentHashes).not.toHaveBeenCalled();
+    expect(repository.upsertPolicies).not.toHaveBeenCalled();
+    expect(repository.refreshPolicies).not.toHaveBeenCalled();
+  });
+
+  it('빈 저장 목록은 Repository에서도 SQL을 실행하지 않는다', async () => {
+    const realRepository = new PolicyRepository();
+    await expect(realRepository.upsertPolicies(manager, [])).resolves.toBeUndefined();
+    await expect(realRepository.refreshPolicies(manager, [])).resolves.toBeUndefined();
   });
 });

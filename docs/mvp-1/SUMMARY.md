@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-18 (Asia/Seoul) · **Step 1~21 완료, Step 22~57 미착수**
+최종 확인일: 2026-10-19 (Asia/Seoul) · **Step 1~22 완료, Step 23~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -970,8 +970,60 @@ docker --config /tmp/youth-kkultong-docker-config compose stop db
 
 핵심 코드 읽는 순서: `apps/api/src/modules/policies/policies-write.service.ts`의 입력·분류 자료형 → `prepareBatches` → `apps/api/src/modules/policies/policy.repository.ts`의 `findContentHashes` → `apps/api/src/modules/policies/policies.module.ts` → `apps/api/test/policies-write.spec.ts` → `apps/api/test/policies-write.integration.spec.ts`.
 
-## 25. 다음 작업을 위한 상태
+## 25. Step 22 구현·검증 결과
 
-다음 요청 대상은 **Step 22: 200건 묶음 저장·단일 트랜잭션**이다. Step 22~57은 시작하지 않았다. Step 12~21에서 수집·검증·정규화·해시 함수, 전용 연결의 중복 실행 잠금 경계와 저장 전 변경 분류·묶음 자료 준비를 구현·검증했다. 실제 DB 저장은 아직 구현하지 않았다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+사용자의 명시적 요청에 따라 Step 21 구현·주석·작업 규칙 변경을 `e1c76f2` (`feat: 정책 신규 변경 동일 판정 구현`)로 커밋한 뒤, 다음 Step 요청으로 Step 22만 진행했다. 작업 규칙·PLAN·SPEC 2.3/5.3/5.4·Step 21 완료 상태를 코드와 대조했고 착수 시 작업 트리는 깨끗했다. 기존 코드와 사용자가 다듬은 주석은 보존했다.
 
-Step 21 추천 커밋 메시지: `feat: 정책 신규 변경 동일 판정 구현`.
+### 구현과 실제 결정사항
+
+- `PoliciesWriteService.savePolicies(queryRunner, policies)`를 추가했다. 전달받은 전용 연결에서 트랜잭션을 한 번 열고, `prepareBatches`의 조회부터 모든 묶음 저장까지 같은 `queryRunner.manager`를 사용한다. 모든 묶음이 성공한 뒤 한 번만 확정하고 `NEW/CHANGED/UNCHANGED` 건수를 반환한다.
+- 각 묶음은 기존 설정에 따라 최대 200건이다. 신규·변경은 `PolicyRepository.upsertPolicies`로 묶음 INSERT하고 `(source, external_id)` 충돌 시 전체 내용을 UPDATE한다. 동일은 `refreshPolicies`의 묶음 UPDATE로 원본 JSON·조회수·마지막 DB 반영일만 갱신한다. UUID·최초 저장일과 수집에서 빠진 기존 정책은 유지한다.
+- 신규·변경 저장은 TypeORM QueryBuilder의 `insert().values().orUpdate()`를 사용한다. SQL 생성·식별자 처리·매개변수 번호 지정은 TypeORM에 맡기며 UUID·최초 저장일을 갱신 대상에서 제외한다. 원본 등록·수정 시각은 바인딩한 문자열을 `timestamp`로 변환해 저장하고, 원본 JSON도 문자열로 바인딩해 `jsonb`로 저장한다. 입력 객체에 생성 ID 등을 쓰지 않도록 `updateEntity(false)`를 사용한다.
+- 동일 정책 갱신은 `manager.sql` 태그와 PostgreSQL의 `jsonb_to_recordset`을 사용한다. 정책 배열을 JSON 매개변수 하나로 전달해 최대 200개 행을 한 번에 갱신한다. 테이블명은 내부 엔티티 정의에서 가져와 이름을 처리하며, 정책 값은 SQL 태그가 자동 바인딩한다. `manager.query` 호출과 수동 `$1` 번호 계산은 제거했다. 이 태그는 내부적으로 같은 관리자의 `query`를 호출하므로 전달받은 트랜잭션을 유지한다.
+- 사용자 검수에서 지적한 `manager.connection`은 설치된 TypeORM `1.1.2`의 사용 중단 예정 별칭이었다. 현재는 `dataSource`를 반환하지만 앞으로의 호환성과 편집기 경고 해소를 위해 `manager.dataSource`로 바꿨다. 설치된 선언·구현과 [공식 변경 안내](https://dev.typeorm.io/docs/releases/1.0/upgrading-from-0.3/), [QueryBuilder 안내](https://typeorm.io/docs/query-builder/insert-query-builder/), [SQL 태그 안내](https://typeorm.io/docs/guides/sql-tag/)를 대조했다. DB·API·분류 규칙은 변경하지 않았다.
+- 조회·저장·확정 오류 시 활성 트랜잭션을 취소하고 원래 오류를 전달한다. 취소도 실패하면 두 오류를 `AggregateError`에 보존한다. 다른 작업의 트랜잭션이 이미 열린 연결은 시작 전에 거부한다. 빈 목록은 0건을 반환하며 정책을 삭제하지 않는다.
+- 저장 서비스는 전달받은 연결의 잠금을 해제하거나 연결을 반환하지 않는다. 실제 DB 테스트에서 저장 확정·취소 뒤에도 같은 세션과 잠금이 유지되고 바깥 `IngestionLockService`가 작업 종료 후 정리하는 것을 확인했다.
+- 수집→변환→저장·CLI 연결은 Step 25, DB 충돌 재시도는 Step 23, 파일 로그·공통 종료 처리는 Step 24에 남겼다. 현재 저장 함수는 실패한 트랜잭션을 자동 재시도하지 않는다.
+- 공개 API·DB 스키마·Migration·외부 패키지·설계 의미는 변경하지 않았다. PLAN 완료 표시와 SUMMARY를 갱신했고 SPEC 수정은 없다. 주석은 기존 잠금 서비스처럼 각 코드가 하는 일을 짧게 적었다.
+
+### 실행 방법
+
+```bash
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+```
+
+Docker Desktop이 꺼져 있어 `docker desktop start`로 기존 Docker를 시작했다. 기존 테스트 이미지를 재사용하며, `/tmp/youth-kkultong-docker-config/config.json`은 `{}`이고 `/tmp/youth-kkultong-step22-test.compose.yaml`은 다음과 같다.
+
+```yaml
+services:
+  api:
+    image: youth-kkultong-api-step11-test
+    build:
+      target: api-build
+```
+
+```bash
+docker --config /tmp/youth-kkultong-docker-config compose up -d db
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tmp/youth-kkultong-step22-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" api npm test
+docker --config /tmp/youth-kkultong-docker-config compose stop db
+```
+
+### 실제 검증과 남은 문제
+
+- 신규 저장 단위 테스트 **12개**, 실제 PostgreSQL 17 통합 테스트 **10개** 통과. 트랜잭션 한 번 시작/확정, 같은 관리자 사용, 분류별 저장, 조회·저장·확정·시작 실패, 취소 실패 시 두 오류 보존, 기존 트랜잭션 거부·빈 입력을 확인했다.
+- 실제 DB에서 **401건** 신규 저장·내용 변경·조회수 갱신이 각각 **200/200/1건의 세 번 벌크 쿼리**로 반영됐다. 확정 직전 다른 연결에는 첫 묶음도 보이지 않았고 최종 확정 후 전체가 조회됐다. 입력 데이터와 UUID·최초 저장일, NULL·0·코드 배열·원본 JSON·특수 문자·출처별 ID 구분도 보존됐다.
+- **2,000번째 정책**에 실제 `varchar(100)` 길이 제약 오류(`22001`)를 발생시켰다. 앞서 성공한 9개 묶음과 기존 정책의 내용 변경까지 모두 취소됐고, 다른 연결에서 읽은 DB 전체 행·시각이 저장 전과 같았다. 별도 사례에서는 앞 묶음의 동일 정책 원본·조회수 갱신도 취소됐다.
+- 호스트 시간대 `UTC`·`America/New_York`에서 서머타임 전환 시각을 포함한 등록·수정 시각과 DATE를 DB 저장값으로 대조해 보존을 확인했다. 설치된 PostgreSQL 드라이버의 기본 시각 변환을 별도로 실행하면 `America/New_York`의 `2026-03-08 02:30:00`이 현지 시각 03:30인 `Date`로 바뀌는 것도 확인했다. QueryBuilder에서도 이 자동 변환을 건너뛰는 처리를 유지한다. 저장 확정·취소 뒤 동일 세션 PID와 잠금 유지·작업 종료 후 잠금 재획득도 통과했다.
+- 최초 타입 검사에서 테스트가 읽기 전용 `QueryRunner.isTransactionActive`에 직접 대입한 오류를 발견했다. 별도 상태 변수와 읽기용 접근자로 테스트를 수정했고 최종 `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`는 **공용·API·웹 모두 통과**했다.
+- 사용자 검수에 따른 QueryBuilder·SQL 태그 변경 후 최종 실제 DB·HTTP 포함 전체 회귀 테스트: **23개 모음·658개 모두 통과**. SQL 태그의 단일 JSON 매개변수에서도 200/200/1건 묶음을 확인하도록 통합 테스트를 맞췄고, 특수 문자가 포함된 정책 ID·원본 JSON 보존과 전체 롤백도 다시 통과했다. `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`: **공용·API·웹 통과**. `npm run build --workspace apps/api`: **공용 선행 빌드·API 빌드 통과**. 웹 소스 변경이 없어 Next.js 배포 빌드는 재실행하지 않았다.
+- 테스트 쓰기는 임의 이름의 별도 검증 스키마에서만 수행했고 종료 시 스키마를 제거했다. 검증을 위해 시작한 기존 DB는 다시 정지했고 볼륨은 유지했다. 사용자 검수 후 재검증 종료 시 다른 프로젝트의 컨테이너가 실행 중이어서 Docker Desktop은 종료하지 않았다. 해당 컨테이너에는 명령을 실행하지 않았으며 이 프로젝트의 API·웹 서비스는 시작하지 않았다. 실제 외부 API도 호출하지 않았다.
+- `git diff --check`: **통과**. Step 22 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
+
+핵심 코드 읽는 순서: `apps/api/src/modules/policies/policies-write.service.ts`의 `savePolicies` → `prepareBatches` → `apps/api/src/modules/policies/policy.repository.ts`의 `upsertPolicies`·`refreshPolicies` → `apps/api/test/policy-storage.integration.spec.ts`.
+
+## 26. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 23: DB 충돌 시 저장 트랜잭션 재시도**이다. Step 23~57은 시작하지 않았다. Step 12~22에서 수집·검증·정규화·해시, 전용 연결의 중복 실행 잠금, 저장 전 변경 분류와 최대 200건씩 전체 트랜잭션 저장을 구현·검증했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+
+Step 22 추천 커밋 메시지: `feat: 정책 전체 트랜잭션 묶음 저장 구현`.
