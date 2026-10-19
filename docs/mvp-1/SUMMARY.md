@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-19 (Asia/Seoul) · **Step 1~22 완료, Step 23~57 미착수**
+최종 확인일: 2026-10-20 (Asia/Seoul) · **Step 1~23 완료, Step 24~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -983,7 +983,7 @@ docker --config /tmp/youth-kkultong-docker-config compose stop db
 - 사용자 검수에서 지적한 `manager.connection`은 설치된 TypeORM `1.1.2`의 사용 중단 예정 별칭이었다. 현재는 `dataSource`를 반환하지만 앞으로의 호환성과 편집기 경고 해소를 위해 `manager.dataSource`로 바꿨다. 설치된 선언·구현과 [공식 변경 안내](https://dev.typeorm.io/docs/releases/1.0/upgrading-from-0.3/), [QueryBuilder 안내](https://typeorm.io/docs/query-builder/insert-query-builder/), [SQL 태그 안내](https://typeorm.io/docs/guides/sql-tag/)를 대조했다. DB·API·분류 규칙은 변경하지 않았다.
 - 조회·저장·확정 오류 시 활성 트랜잭션을 취소하고 원래 오류를 전달한다. 취소도 실패하면 두 오류를 `AggregateError`에 보존한다. 다른 작업의 트랜잭션이 이미 열린 연결은 시작 전에 거부한다. 빈 목록은 0건을 반환하며 정책을 삭제하지 않는다.
 - 저장 서비스는 전달받은 연결의 잠금을 해제하거나 연결을 반환하지 않는다. 실제 DB 테스트에서 저장 확정·취소 뒤에도 같은 세션과 잠금이 유지되고 바깥 `IngestionLockService`가 작업 종료 후 정리하는 것을 확인했다.
-- 수집→변환→저장·CLI 연결은 Step 25, DB 충돌 재시도는 Step 23, 파일 로그·공통 종료 처리는 Step 24에 남겼다. 현재 저장 함수는 실패한 트랜잭션을 자동 재시도하지 않는다.
+- 수집→변환→저장·CLI 연결은 Step 25, DB 충돌 재시도는 Step 23, 파일 로그·공통 종료 처리는 Step 24에 남겼다. Step 22 당시 저장 함수는 실패한 트랜잭션을 자동 재시도하지 않았다.
 - 공개 API·DB 스키마·Migration·외부 패키지·설계 의미는 변경하지 않았다. PLAN 완료 표시와 SUMMARY를 갱신했고 SPEC 수정은 없다. 주석은 기존 잠금 서비스처럼 각 코드가 하는 일을 짧게 적었다.
 
 ### 실행 방법
@@ -1022,8 +1022,49 @@ docker --config /tmp/youth-kkultong-docker-config compose stop db
 
 핵심 코드 읽는 순서: `apps/api/src/modules/policies/policies-write.service.ts`의 `savePolicies` → `prepareBatches` → `apps/api/src/modules/policies/policy.repository.ts`의 `upsertPolicies`·`refreshPolicies` → `apps/api/test/policy-storage.integration.spec.ts`.
 
-## 26. 다음 작업을 위한 상태
+## 26. Step 23 구현·검증 결과
 
-다음 요청 대상은 **Step 23: DB 충돌 시 저장 트랜잭션 재시도**이다. Step 23~57은 시작하지 않았다. Step 12~22에서 수집·검증·정규화·해시, 전용 연결의 중복 실행 잠금, 저장 전 변경 분류와 최대 200건씩 전체 트랜잭션 저장을 구현·검증했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+사용자의 요청으로 Step 22의 최종 구현·테스트·문서 7개 파일을 `77b2caf` (`feat: 정책 전체 트랜잭션 묶음 저장 구현`)로 커밋한 뒤 Step 23만 진행했다. 커밋 전 발견한 빈 줄의 줄 끝 공백 한 곳만 정리했고 사용자 주석·코드는 보존했다. 작업 규칙·PLAN·SPEC 5.4·Step 22 완료 상태를 코드와 대조했으며 선행 작업 누락이나 설계 충돌은 없었다.
 
-Step 22 추천 커밋 메시지: `feat: 정책 전체 트랜잭션 묶음 저장 구현`.
+### 구현과 실제 결정사항
+
+- 기존 한 번의 저장 처리를 `PoliciesWriteService.saveTransaction`으로 옮기고, `savePolicies`에서 첫 실패가 `QueryFailedError`의 PostgreSQL 코드 `40P01` 또는 `40001`일 때만 한 번 더 호출한다. 첫 시도를 포함해 최대 2회이며, 두 번째 실패는 추가 재시도 없이 전달한다.
+- 각 시도는 기존 해시 조회·변경 분류·전체 묶음 저장을 모두 수행한다. 이전 시도의 건수를 더하지 않고 마지막에 확정된 시도의 건수만 반환한다. 재시도 범위에는 API 호출·변환·해시 계산을 포함하지 않으며, 같은 정책 배열과 같은 `QueryRunner.manager`를 사용한다.
+- 첫 시도의 롤백이 완료돼 트랜잭션이 끝났고 연결도 반환되지 않았을 때, 기존 연결에서 `SELECT 1`을 실행해 사용 가능 여부를 확인한다. 새 연결·QueryRunner는 만들지 않는다. 연결 확인이 실패하면 충돌 오류와 연결 오류를 `AggregateError`에 보존하고 두 번째 저장을 시작하지 않는다.
+- 롤백 실패·미종료 트랜잭션·반환된 연결·다른 SQLSTATE 코드·일반 작업 오류는 재시도하지 않는다. 잠금 획득·해제와 연결 반환은 기존 `IngestionLockService`의 책임을 유지한다.
+- [PostgreSQL 17의 재시도 지침](https://www.postgresql.org/docs/17/mvcc-serialization-failure-handling.html)과 [오류 코드표](https://www.postgresql.org/docs/17/errcodes-appendix.html)를 대조했다. 충돌 때 판정에 사용한 조회를 포함한 전체 트랜잭션을 다시 실행한다. 재시도 코드·횟수는 프로젝트 SPEC의 두 코드·최대 2회로 제한했다. 설치된 TypeORM의 기존 QueryRunner 연결 재사용·오류 구조도 확인했다.
+- 공개 API·DB 스키마·Migration·외부 패키지·설계 의미는 변경하지 않았다. PLAN 완료 표시와 SUMMARY만 갱신했다. 저장 시도·실패 단계의 파일 로그 연결은 Step 24에 남겼다.
+
+### 실행 방법
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/policies-write.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+```
+
+실제 DB·HTTP 포함 전체 테스트는 Step 22의 기존 Docker 설정·테스트 이미지·오버레이를 재사용했다. 소스와 테스트만 읽기 전용으로 연결한다.
+
+```bash
+docker --config /tmp/youth-kkultong-docker-config compose up -d db
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tmp/youth-kkultong-step22-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" api npm test
+docker --config /tmp/youth-kkultong-docker-config compose stop db
+```
+
+### 실제 검증과 남은 문제
+
+- 신규 재시도 단위 테스트 **19개**와 기존 분류·저장 단위 테스트를 합쳐 **48개 통과**. 두 코드의 첫 실패 후 성공·두 번째 실패 종료, 조회/확정 단계 충돌, 롤백→연결 확인→재시도 순서, 성공한 시도의 재분류·건수만 반환, 재시도하지 않을 오류·연결/롤백 실패를 확인했다.
+- 신규 실제 PostgreSQL 17 통합 테스트 **4개 통과**. 두 세션이 반대 순서로 행을 잠그게 해 실제 `40P01`을 발생시켰고, 전체 저장의 두 번째 시도에서 최종 내용이 반영됐다. 교착 상태 감지 시간을 조절한 설정은 테스트 트랜잭션 안에만 적용했다.
+- 테스트에서만 `REPEATABLE READ`를 사용하고 다른 세션이 같은 행을 먼저 갱신하게 해 실제 `40001`을 발생시켰다. 첫 시도의 동일 정책이 재조회 후 변경 정책으로 분류됐고 최종 건수 `NEW=1/CHANGED=1/UNCHANGED=0`으로 저장됐다. API는 모의 응답을 **한 번만 호출**했으며 두 저장 시도의 세션 PID가 같고 다른 수집은 계속 잠금 획득에 실패했다. 정상 종료 후 잠금 재획득도 통과했다. 제품의 기본 격리 수준은 변경하지 않았다.
+- 두 시도 모두 두 번째 묶음에서 DB 충돌을 반환하게 한 사례는 **트랜잭션 2회·롤백 2회** 후 종료했고 앞 묶음의 저장도 모두 취소돼 기존 DB가 그대로였다. 별도 사례에서 롤백 직후 실제 클라이언트를 닫으면 **트랜잭션 1회**에서 종료했고 새 QueryRunner를 만들거나 데이터를 저장하지 않았다.
+- 최종 실제 DB·HTTP 포함 전체 회귀 테스트: **24개 모음·681개 모두 통과**. `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`: **공용·API·웹 통과**. `npm run build --workspace apps/api`: **공용 선행 빌드·API 빌드 통과**. 웹 소스 변경이 없어 Next.js 배포 빌드는 재실행하지 않았다.
+- 테스트 데이터·행 잠금·충돌은 매번 새로 만든 검증 전용 스키마에 한정했고 종료 시 스키마와 연결을 정리했다. 시작한 DB는 다시 정지하고 기존 볼륨과 다른 프로젝트의 실행 중 컨테이너는 유지했다. 이 프로젝트의 기존 API·웹 컨테이너는 시작하지 않았고 실제 외부 API를 호출하지 않았다.
+- `git diff --check`: **통과**. Step 23 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
+
+핵심 코드 읽는 순서: `apps/api/src/modules/policies/policies-write.service.ts`의 `savePolicies` → `saveTransaction` → `apps/api/test/policies-write.spec.ts`의 재시도 사례 → `apps/api/test/policy-storage-retry.integration.spec.ts`.
+
+## 27. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 24: 수집 결과 로그와 공통 자원 정리**이다. Step 24~57은 시작하지 않았다. Step 12~23에서 수집·검증·정규화·해시, 중복 실행 잠금, 변경 분류, 전체 트랜잭션 묶음 저장과 지정한 DB 충돌의 제한적 재시도를 구현·검증했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+
+Step 23 추천 커밋 메시지: `feat: DB 트랜잭션 충돌 복구 처리`.

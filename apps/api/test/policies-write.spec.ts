@@ -1,4 +1,5 @@
 import type { EntityManager, QueryRunner } from 'typeorm';
+import { QueryFailedError } from 'typeorm';
 import { parseEnvironment } from '../src/common/environment';
 import { createYouthCenterPolicyContentHash } from '../src/modules/ingestion/youth-center-policy.hash';
 import { transformYouthCenterPolicy } from '../src/modules/ingestion/youth-center-policy.transform';
@@ -10,6 +11,11 @@ import { PolicyRepository } from '../src/modules/policies/policy.repository';
 function candidate(id: string, title = '검증 정책', views: string | null = '10'): PolicyWriteInput {
   const raw = { plcyNo: id, plcyNm: title, inqCnt: views };
   return { ...transformYouthCenterPolicy(raw), contentHash: createYouthCenterPolicyContentHash(raw) };
+}
+
+/** PostgreSQL 오류 코드를 담은 테스트용 DB 오류 생성 */
+function databaseError(code: string): QueryFailedError {
+  return new QueryFailedError('검증용 SQL', [], Object.assign(new Error('검증용 DB 오류'), { code }));
 }
 
 describe('정책 저장 전 변경 분류', () => {
@@ -118,23 +124,27 @@ describe('정책 저장 전 변경 분류', () => {
 });
 
 describe('전체 정책 저장 트랜잭션', () => {
-  const manager = {} as EntityManager;
+  const manager = { sql: jest.fn() } as unknown as EntityManager;
   const environment = parseEnvironment({ DATABASE_URL: 'postgresql://test@db/test' });
   let runner: QueryRunner;
   let transactionActive: boolean;
+  let released: boolean;
   let repository: PolicyRepository;
   let service: PoliciesWriteService;
 
   beforeEach(() => {
     // 실제 DB 없이 트랜잭션 시작·확정·취소 호출 확인
     transactionActive = false;
+    released = false;
+    jest.mocked(manager.sql).mockReset().mockResolvedValue([]);
     runner = {
       manager,
       get isTransactionActive() { return transactionActive; },
+      get isReleased() { return released; },
       startTransaction: jest.fn(async () => { transactionActive = true; }),
       commitTransaction: jest.fn(async () => { transactionActive = false; }),
       rollbackTransaction: jest.fn(async () => { transactionActive = false; }),
-      release: jest.fn(),
+      release: jest.fn(async () => { released = true; }),
     } as unknown as QueryRunner;
     repository = new PolicyRepository();
     jest.spyOn(repository, 'findContentHashes').mockResolvedValue([]);
@@ -240,5 +250,116 @@ describe('전체 정책 저장 트랜잭션', () => {
     const realRepository = new PolicyRepository();
     await expect(realRepository.upsertPolicies(manager, [])).resolves.toBeUndefined();
     await expect(realRepository.refreshPolicies(manager, [])).resolves.toBeUndefined();
+  });
+
+  it.each(['40P01', '40001'])('%s 오류는 롤백·연결 확인 뒤 전체 저장을 한 번 더 실행한다', async (code) => {
+    const incoming = [candidate('policy')];
+    const error = databaseError(code);
+    jest.mocked(repository.upsertPolicies).mockRejectedValueOnce(error);
+    await expect(service.savePolicies(runner, incoming)).resolves.toEqual({ NEW: 1, CHANGED: 0, UNCHANGED: 0 });
+    expect(runner.startTransaction).toHaveBeenCalledTimes(2);
+    expect(runner.rollbackTransaction).toHaveBeenCalledTimes(1);
+    expect(runner.commitTransaction).toHaveBeenCalledTimes(1);
+    expect(repository.findContentHashes).toHaveBeenCalledTimes(2);
+    expect(repository.upsertPolicies).toHaveBeenNthCalledWith(1, manager, incoming);
+    expect(repository.upsertPolicies).toHaveBeenNthCalledWith(2, manager, incoming);
+    expect(manager.sql).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(runner.rollbackTransaction).mock.invocationCallOrder[0])
+      .toBeLessThan(jest.mocked(manager.sql).mock.invocationCallOrder[0]);
+    expect(jest.mocked(manager.sql).mock.invocationCallOrder[0])
+      .toBeLessThan(jest.mocked(runner.startTransaction).mock.invocationCallOrder[1]);
+    expect(runner.release).not.toHaveBeenCalled();
+  });
+
+  it.each(['40P01', '40001'])('%s가 두 번 발생하면 두 번째 오류를 전달하고 멈춘다', async (code) => {
+    const first = databaseError(code);
+    const second = databaseError(code);
+    jest.mocked(repository.upsertPolicies).mockRejectedValueOnce(first).mockRejectedValueOnce(second);
+    await expect(service.savePolicies(runner, [candidate('policy')])).rejects.toBe(second);
+    expect(runner.startTransaction).toHaveBeenCalledTimes(2);
+    expect(runner.rollbackTransaction).toHaveBeenCalledTimes(2);
+    expect(runner.commitTransaction).not.toHaveBeenCalled();
+    expect(manager.sql).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['23505', '22001', '08006', '57014', '40000', 'ECONNRESET'])('%s 오류는 재시도하지 않는다', async (code) => {
+    const error = databaseError(code);
+    jest.mocked(repository.upsertPolicies).mockRejectedValueOnce(error);
+    await expect(service.savePolicies(runner, [candidate('policy')])).rejects.toBe(error);
+    expect(runner.startTransaction).toHaveBeenCalledTimes(1);
+    expect(manager.sql).not.toHaveBeenCalled();
+  });
+
+  it('일반 오류에 같은 코드가 있어도 DB 충돌로 취급하지 않는다', async () => {
+    const error = Object.assign(new Error('일반 작업 오류'), { code: '40P01' });
+    jest.mocked(repository.upsertPolicies).mockRejectedValueOnce(error);
+    await expect(service.savePolicies(runner, [candidate('policy')])).rejects.toBe(error);
+    expect(runner.startTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['조회', '확정'] as const)('%s 단계의 직렬화 실패도 전체 트랜잭션을 다시 실행한다', async (stage) => {
+    const method = stage === '조회' ? repository.findContentHashes : runner.commitTransaction;
+    jest.mocked(method).mockRejectedValueOnce(databaseError('40001'));
+    await expect(service.savePolicies(runner, [candidate('policy')])).resolves.toEqual({ NEW: 1, CHANGED: 0, UNCHANGED: 0 });
+    expect(runner.startTransaction).toHaveBeenCalledTimes(2);
+    expect(repository.findContentHashes).toHaveBeenCalledTimes(2);
+    expect(runner.rollbackTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('재시도 때 기존 해시를 다시 읽고 성공한 시도의 건수만 반환한다', async () => {
+    jest.mocked(repository.findContentHashes).mockResolvedValueOnce([]).mockResolvedValueOnce([candidate('policy')]);
+    jest.mocked(repository.upsertPolicies).mockRejectedValueOnce(databaseError('40P01'));
+    await expect(service.savePolicies(runner, [candidate('policy')])).resolves.toEqual({ NEW: 0, CHANGED: 0, UNCHANGED: 1 });
+    expect(repository.refreshPolicies).toHaveBeenLastCalledWith(manager, [{
+      source: 'youthcenter', externalId: 'policy', rawJson: candidate('policy').rawJson, viewCount: 10,
+    }]);
+  });
+
+  it('충돌 뒤 롤백이 실패하면 두 오류를 보존하고 재시도하지 않는다', async () => {
+    const conflict = databaseError('40P01');
+    const rollback = new Error('검증용 롤백 오류');
+    jest.mocked(repository.upsertPolicies).mockRejectedValueOnce(conflict);
+    jest.mocked(runner.rollbackTransaction).mockRejectedValueOnce(rollback);
+    await expect(service.savePolicies(runner, [candidate('policy')])).rejects.toMatchObject({ errors: [conflict, rollback] });
+    expect(runner.startTransaction).toHaveBeenCalledTimes(1);
+    expect(manager.sql).not.toHaveBeenCalled();
+  });
+
+  it('롤백 후에도 트랜잭션이 활성 상태라면 재시도하지 않는다', async () => {
+    const error = databaseError('40P01');
+    jest.mocked(repository.upsertPolicies).mockRejectedValueOnce(error);
+    jest.mocked(runner.rollbackTransaction).mockResolvedValueOnce();
+    await expect(service.savePolicies(runner, [candidate('policy')])).rejects.toBe(error);
+    expect(runner.startTransaction).toHaveBeenCalledTimes(1);
+    expect(manager.sql).not.toHaveBeenCalled();
+  });
+
+  it('연결이 이미 반환됐으면 재시도하지 않는다', async () => {
+    const error = databaseError('40P01');
+    jest.mocked(repository.upsertPolicies).mockRejectedValueOnce(error);
+    jest.mocked(runner.rollbackTransaction).mockImplementationOnce(async () => {
+      transactionActive = false;
+      released = true;
+    });
+    await expect(service.savePolicies(runner, [candidate('policy')])).rejects.toBe(error);
+    expect(runner.startTransaction).toHaveBeenCalledTimes(1);
+    expect(manager.sql).not.toHaveBeenCalled();
+  });
+
+  it('기존 연결 확인이 실패하면 오류를 보존하고 두 번째 트랜잭션을 시작하지 않는다', async () => {
+    const conflict = databaseError('40001');
+    const connection = new Error('검증용 연결 끊김');
+    jest.mocked(repository.upsertPolicies).mockRejectedValueOnce(conflict);
+    jest.mocked(manager.sql).mockRejectedValueOnce(connection);
+    await expect(service.savePolicies(runner, [candidate('policy')])).rejects.toMatchObject({ errors: [conflict, connection] });
+    expect(runner.startTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('두 번째 저장의 다른 오류도 추가 재시도 없이 전달한다', async () => {
+    const second = databaseError('23505');
+    jest.mocked(repository.upsertPolicies).mockRejectedValueOnce(databaseError('40P01')).mockRejectedValueOnce(second);
+    await expect(service.savePolicies(runner, [candidate('policy')])).rejects.toBe(second);
+    expect(runner.startTransaction).toHaveBeenCalledTimes(2);
+    expect(runner.rollbackTransaction).toHaveBeenCalledTimes(2);
   });
 });

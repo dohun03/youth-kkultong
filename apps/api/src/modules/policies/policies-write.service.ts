@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { QueryFailedError } from 'typeorm';
 import type { EntityManager, QueryRunner } from 'typeorm';
 import { ENVIRONMENT } from '../../common/environment';
 import type { Environment } from '../../common/environment';
@@ -34,8 +35,29 @@ export class PoliciesWriteService {
     @Inject(ENVIRONMENT) private readonly environment: Environment,
   ) {}
 
-  /** 트랜잭션 단위 정책 저장 */
+  /** 정책 저장 중 DB 충돌이 나면 전체 저장을 한 번만 재시도 */
   async savePolicies(queryRunner: QueryRunner, policies: readonly PolicyWriteInput[]): Promise<PreparedPolicyBatches['counts']> {
+    try {
+      return await this.saveTransaction(queryRunner, policies);
+    } catch (error) {
+      // PostgreSQL의 교착 상태·직렬화 실패만 재시도
+      const code = error instanceof QueryFailedError && 'code' in error.driverError ? error.driverError.code : undefined;
+      if ((code !== '40P01' && code !== '40001') || queryRunner.isTransactionActive || queryRunner.isReleased) throw error;
+
+      // 롤백 뒤에도 기존 연결을 사용할 수 있는지 확인. 새 연결은 만들지 않음
+      try {
+        await queryRunner.manager.sql`SELECT 1`;
+      } catch (connectionError) {
+        throw new AggregateError([error, connectionError], 'DB 연결 확인에 실패해 정책 저장 재시도를 중단했습니다.');
+      }
+
+      // 같은 연결·수집 데이터로 두 번째 실행. 이게 마지막 재시도.
+      return this.saveTransaction(queryRunner, policies);
+    }
+  }
+
+  /** 전체 정책을 트랜잭션 하나로 저장하고 실패하면 롤백 */
+  private async saveTransaction(queryRunner: QueryRunner, policies: readonly PolicyWriteInput[]): Promise<PreparedPolicyBatches['counts']> {
     // 진행 중인 다른 트랜잭션 체크
     if (queryRunner.isTransactionActive) throw new Error('이미 트랜잭션이 진행 중인 연결에서는 정책 저장을 시작할 수 없습니다.');
 
