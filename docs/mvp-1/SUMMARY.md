@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-18 (Asia/Seoul) · **Step 1~20 완료, Step 21~57 미착수**
+최종 확인일: 2026-10-18 (Asia/Seoul) · **Step 1~21 완료, Step 22~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -928,8 +928,50 @@ docker --config /tmp/youth-kkultong-docker-config compose stop db
 
 핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/ingestion-lock.service.ts`의 `runWithLock` → `finally`의 롤백·해제·반환 → `IngestionLockError` → `apps/api/src/modules/ingestion/ingestion.module.ts` → `apps/api/test/ingestion-lock.integration.spec.ts` → `apps/api/test/ingestion-lock.spec.ts`.
 
-## 24. 다음 작업을 위한 상태
+## 24. Step 21 구현·검증 결과
 
-다음 요청 대상은 **Step 21: 저장 전 정책 변경 분류**이다. Step 21~57은 시작하지 않았다. Step 12~20에서 수집·검증·정규화·해시 함수와 전용 연결의 중복 실행 잠금 경계를 구현·검증했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+작업 규칙 → Step 21 PLAN → SPEC 2.3·5.3 및 관련 검증 항목 → Step 20 완료 기록 → 실제 코드를 대조했다. 착수 시 작업 트리는 깨끗했고 선행 Step의 누락이나 이번 범위의 문서 충돌은 없었다. 커밋은 실행하지 않았다.
 
-Step 20 추천 커밋 메시지: `feat: 정책 수집 중복 실행 잠금 추가`.
+### 구현과 실제 결정사항
+
+- `PoliciesModule`에 명세에 있는 `PolicyRepository`와 `PoliciesWriteService`를 등록하고 저장 서비스를 내보냈다. 모듈은 기존 `DatabaseModule`에서 환경변수를 받는다. 수집 서비스와 CLI의 실제 연결은 후속 Step에 남겼다.
+- `PolicyRepository.findContentHashes`는 호출자가 전달한 `EntityManager`로 출처·외부 ID·해시 세 컬럼만 조회한다. 각 출처와 ID를 한 쌍으로 매개변수 바인딩하며 빈 목록은 DB 조회 없이 반환한다. 전체 원본·긴 본문을 읽거나 정책마다 별도 조회하지 않는다.
+- `PoliciesWriteService.prepareBatches`는 전체 검증·변환·해시 계산을 마친 중복 없는 정책 배열을 받는다. 기존 `POLICY_IMPORT_BATCH_SIZE` 설정(기본 200, 허용 1~200)으로 나눠 조회하고, `(source, externalId)`의 기존 해시가 없으면 `NEW`, 다르면 `CHANGED`, 같으면 `UNCHANGED`를 반환한다. 출처·ID에 구분 문자가 있어도 충돌하지 않도록 두 값을 JSON 배열로 표현한 키를 사용한다.
+- `PolicyWriteInput`은 엔티티에서 DB 자동 생성 ID·저장 시각을 제외하고 원본 등록·수정 시각을 시간대 없는 문자열로 받는 내부 저장 자료형이다. Policies가 Ingestion의 구현 자료형에 의존하지 않으며, 기존 변환 결과에 해시를 붙인 자료를 그대로 받을 수 있다.
+- 신규·변경 자료에는 정규화 컬럼·해시·원본·조회수를 모두 담는다. 동일 자료에는 출처·외부 ID·최신 `rawJson`·`viewCount`만 담아 내용 컬럼·해시를 덮어쓰지 않도록 구분한다. 조회수만 바뀌거나 0/NULL로 바뀌어도 `UNCHANGED`이며, 완전히 동일한 자료도 최신화 대상으로 남긴다.
+- 반환값은 입력 순서를 유지한 분류 묶음과 `NEW/CHANGED/UNCHANGED` 합계다. 이 건수는 **저장 준비 결과**이며 DB 반영 성공 건수가 아니다. 조회 실패는 부분 결과 없이 호출자에게 전파한다. 이 메서드는 DB 쓰기·트랜잭션 시작/종료·연결 반환을 수행하지 않으며, Step 22에서 같은 `QueryRunner.manager`를 넘겨 전체 저장 트랜잭션에 참여시킨다.
+- 공개 API·DB 스키마·Migration·외부 패키지·설계 의미는 변경하지 않았다. PLAN 완료 표시와 SUMMARY만 갱신했고 SPEC 수정은 없다. 실제 묶음 저장·저장 재시도·결과 로그·CLI는 후속 Step 범위다.
+
+### 실행 방법
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/policies-write.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+```
+
+실제 DB·HTTP를 포함한 전체 테스트는 Step 20의 기존 테스트 이미지·오버레이에 현재 소스와 테스트를 읽기 전용으로 연결했다. 오버레이 내용은 위 Step 20 실행 방법과 같다.
+
+```bash
+docker --config /tmp/youth-kkultong-docker-config compose up -d db
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tmp/youth-kkultong-step20-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" api npm test
+docker --config /tmp/youth-kkultong-docker-config compose stop db
+```
+
+### 실제 검증과 남은 문제
+
+- 신규 단위 테스트 **17개**, 실제 PostgreSQL 통합 테스트 **4개** 통과. 새 정책·내용 변경·조회수만 변경·동일 자료, 조회수 0/NULL, 출처별 ID 구분, 복합 키 충돌 방지, 빈 입력, 199/200/201/401건 경계, 설정한 작은 묶음, 여러 묶음 건수 합산·입력 순서, 조회 실패 전파·입력 보존을 확인했다.
+- 실제 DB에서 세 컬럼만 읽는 단일 조회·정확한 복합 조건·SQL 매개변수 바인딩, 201건의 두 번 조회, 호출자가 넘긴 트랜잭션의 미확정 행 조회, 분류 전후 DB 전체 행 불변·수집에서 빠진 기존 정책 유지·연결/트랜잭션 유지도 확인했다. 테스트 쓰기는 임의 이름의 별도 스키마에서만 수행하고 각 테스트를 롤백한 뒤 스키마를 제거했다.
+- 최초 타입 검사에서 테스트 준비용 `insert`가 `rawJson: Record<string, unknown>`을 TypeORM의 깊은 갱신 타입으로 받지 못했다. 준비 자료 입력에 `save`를 사용하도록 수정해 타입 단언으로 우회하지 않았다. 최종 `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`: **공용·API·웹 모두 통과**.
+- 수정 후 최종 실제 DB·HTTP 포함 전체 회귀 테스트: **22개 모음·636개 모두 통과**. NestJS 앱 기동 시 저장 서비스의 모듈 의존성 주입도 정상 완료됐다.
+- `npm run build --workspace apps/api`: **공용 선행 빌드·API 빌드 통과**. 웹 소스 변경이 없어 Next.js 배포 빌드는 재실행하지 않았다.
+- 테스트를 위해 기존 정지 상태의 DB만 시작했고 검증 후 다시 정지했다. DB 볼륨은 유지했으며 API·웹 서비스는 시작하지 않았다. 실제 외부 API는 호출하지 않았다.
+- `git diff --check`: **통과**. Step 21 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
+
+핵심 코드 읽는 순서: `apps/api/src/modules/policies/policies-write.service.ts`의 입력·분류 자료형 → `prepareBatches` → `apps/api/src/modules/policies/policy.repository.ts`의 `findContentHashes` → `apps/api/src/modules/policies/policies.module.ts` → `apps/api/test/policies-write.spec.ts` → `apps/api/test/policies-write.integration.spec.ts`.
+
+## 25. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 22: 200건 묶음 저장·단일 트랜잭션**이다. Step 22~57은 시작하지 않았다. Step 12~21에서 수집·검증·정규화·해시 함수, 전용 연결의 중복 실행 잠금 경계와 저장 전 변경 분류·묶음 자료 준비를 구현·검증했다. 실제 DB 저장은 아직 구현하지 않았다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+
+Step 21 추천 커밋 메시지: `feat: 정책 신규 변경 동일 판정 구현`.

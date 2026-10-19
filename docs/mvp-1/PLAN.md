@@ -2,7 +2,7 @@
 
 > 저장 위치: `docs/mvp-1/PLAN.md`  
 > 기준: `docs/PRD.md`(PRD v0.8), `docs/ARCHITECTURE.md`(v0.3), `docs/mvp-1/SPEC.md`(v0.4), `docs/AGENT_RULES.md`  
-> 상태: **Step 1~20 완료 · Step 21~57 미착수** · 작성일: 2026-10-16
+> 상태: **Step 1~21 완료 · Step 22~57 미착수** · 작성일: 2026-10-16
 
 ## 목차
 
@@ -201,8 +201,8 @@
 
 ### Step 21. 저장 전 정책 변경 분류
 
-- [ ] `PoliciesModule` 저장 서비스에서 기존 `(source, external_id)`와 `content_hash`를 비교해 `NEW / CHANGED / UNCHANGED`를 분류한다.
-- [ ] 조회수 갱신과 변경 판정의 차이를 유지하고 저장할 자료를 묶음별로 준비한다.
+- [x] `PoliciesModule` 저장 서비스에서 기존 `(source, external_id)`와 `content_hash`를 비교해 `NEW / CHANGED / UNCHANGED`를 분류한다.
+- [x] 조회수 갱신과 변경 판정의 차이를 유지하고 저장할 자료를 묶음별로 준비한다.
 
 **검증/완료:** 새 정책·내용 변경·조회수만 변경·동일 자료를 정확히 분류한다. **커밋:** `feat: 정책 신규 변경 동일 판정 구현`.
 
