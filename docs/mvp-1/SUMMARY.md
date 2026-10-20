@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-20 (Asia/Seoul) · **Step 1~26 완료, Step 27~57 미착수**
+최종 확인일: 2026-10-20 (Asia/Seoul) · **Step 1~27 완료, Step 28~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1240,8 +1240,46 @@ SELECT source, external_id, count(*) FROM public.policies GROUP BY source, exter
 
 실제 실행에서는 앞 Step들과 같은 `/tmp/youth-kkultong-docker-config` 설정을 사용했다. Docker Desktop의 포트 전달 방식은 [Docker 공식 문서](https://docs.docker.com/desktop/features/networking/), 접속 항목은 [DBeaver PostgreSQL 공식 문서](https://dbeaver.com/docs/dbeaver/Database-driver-PostgreSQL/)와 대조했다. `compose.local.yaml`·`.env.example`·`ARCHITECTURE`를 실제 로컬 접속 구성과 맞췄다. 제품 수집 코드·DB 스키마·Migration·패키지는 변경하지 않았다. Compose 구성 확인, 실제 전체 수집, 전체 행 검증, 포트·인증·SQL 검증, `git diff --check`를 수행했다. 이전 Step 26의 테스트·문서 변경도 미커밋 상태로 유지한다.
 
-## 31. 다음 작업을 위한 상태
+## 31. Step 27 구현·검증 결과
 
-다음 요청 대상은 **Step 27: 수집 실패·동시 실행 통합 테스트**다. Step 27~57은 시작하지 않았다. Step 12~26의 구현·성공 경로 테스트에 더해, 실제 온통청년 전체 수집을 완료했고 개발 정책 테이블 **3,390건**과 운영 로그를 보존했다. DB는 DBeaver용 `127.0.0.1:5433` 포트를 적용해 실행 중이다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+사용자 요청에 따라 Step 26 테스트·문서를 `7859ea4` (`test: 정책 수집과 재수집 정상 경로 검증`), 실제 API 수집 기록·로컬 DB 접속 설정을 `3355a46` (`chore: 실제 정책 수집 기록과 로컬 DB 접속 구성`)로 분리해 커밋한 뒤 Step 27만 진행했다. `.env`와 실제 수집 로그는 커밋에 포함하지 않았다. 작업 규칙·PLAN Step 27·SPEC 5.4와 관련 테스트 기준·Step 26 및 실제 수집 완료 상태를 대조했으며 선행 작업 누락이나 설계 충돌은 없었다.
 
-Step 26 추천 커밋 메시지: `test: 정책 수집과 재수집 정상 경로 검증`.
+### 구현과 실제 결정사항
+
+- `ingestion-failure.integration.spec.ts`에 9개 사례를 추가했다. 중간 페이지 타임아웃 후 해당 페이지만 재시도하는 성공, `e003` 즉시 종료, HTTP 429·503 최대 3회 후 종료, 페이지 간 ID 중복, 변환·해시 실패를 실제 PostgreSQL·모의 HTTP 응답으로 확인한다. 저장 전 실패는 저장 서비스를 호출하지 않으며, 최종 로그의 단계·페이지·시도 횟수·미확정 건수와 기존 행·시각 보존·잠금 재획득을 대조한다.
+- 2,000건을 수집하는 사례에서는 검증 스키마에만 CHECK 제약을 추가해 마지막 정책이 실제 DB 오류 `23514`를 발생시키게 했다. 앞서 성공한 200건 묶음 9개와 기존 정책 내용 변경이 모두 롤백됐으며, 재시도 없이 저장 1회에서 종료했다. 정상 변환 가능한 자료로 DB 저장 단계 실패를 재현하고 테스트 제약은 `finally`에서 제거한다. 다른 사례에서는 첫 묶음 반영 후 수집 전용 클라이언트 연결을 실제로 닫아 부분 변경 취소·연결 반환·새 연결 재시도 없음까지 확인했다.
+- `ingestion-cli-process.integration.spec.ts`에 실제 독립 Node CLI 프로세스 2개를 겹쳐 실행하는 잠금 경쟁과, 첫 묶음 반영 후 COMMIT 전에 `SIGKILL`로 종료하는 복구 사례를 추가했다. IPC(프로세스 간 알림)로 실제 API·저장 도달 시점을 맞추며 임의의 긴 대기 시간에 의존하지 않는다. 먼저 실행한 CLI만 API를 호출하고 다른 CLI는 코드 2·`ALREADY_RUNNING`을 기록한다. 강제 종료된 실행의 부분 갱신은 취소되고 잠금이 풀린 뒤 다음 CLI가 코드 0으로 정상 저장한다. 강제 종료 시 최종 로그가 없을 수 있다는 기존 SPEC도 확인했다.
+- 테스트 전용 `fixtures/ingestion-cli.preload.cjs`는 기존 TypeScript 개발 의존성으로 CLI 소스의 데코레이터를 변환해 실제 진입 파일을 새 프로세스로 실행한다. DB는 `step27_cli_<임의값>` 스키마인지 검사한 뒤 그 경로로만 연결하고, 로그는 자식 프로세스별 임시 폴더에 기록한다. 외부 HTTP만 모의 응답을 사용한다. 운영 코드에 테스트용 실행 옵션이나 공개 API를 추가하지 않았다.
+- 기존 Step 23~24의 실제 교착·직렬화 충돌, 저장 재시도 한도, 파일 로그 실패·기본 로그 대체·양쪽 로그 실패의 정리 검증은 재작성하지 않고 전체 회귀 테스트에 포함했다. 제품 코드·공개 API·DB 스키마·Migration·패키지·모듈 구조는 변경하지 않았고 PLAN·SUMMARY만 갱신했다.
+
+| SPEC 기준 | 실제 검증 근거 |
+| --- | --- |
+| T-18·T-18a·T-19 | 신규 실패 통합 테스트의 중간 타임아웃·e003·429/503·페이지 간 중복 |
+| T-25·T-26 | 신규 프로세스 통합 테스트의 CLI 2개 잠금 경쟁·COMMIT 전 강제 종료 후 재실행 |
+| T-27 | 신규 실패 통합 테스트의 2,000번째 정책 CHECK 오류·전체 롤백 |
+| T-27a | 기존 `policy-storage-retry.integration.spec.ts`의 실제 40P01·40001 및 `ingestion-run.integration.spec.ts`의 API/DB 제한적 재시도 |
+| T-27b | 신규 실패 통합 테스트의 변환·해시 실패·저장 미호출 |
+| T-27c | 기존 `ingestion-run.integration.spec.ts`의 파일 실패 대체 기록·여러 기록 지점의 양쪽 로그 실패 후 잠금 반환 |
+| T-27d | 신규 실패 통합 테스트의 실제 수집 연결 끊김·전체 취소·자동 재연결 없음 |
+
+### 실행 방법과 실제 검증
+
+이미 실행 중인 실제 DB는 재시작하지 않았다. 기존 테스트 이미지·로그 격리 설정을 재사용하고 DBeaver용 로컬 Compose 설정도 함께 지정했다. `--no-deps`로 검증 컨테이너만 실행하므로 DB 컨테이너·포트를 재구성하지 않는다.
+
+```bash
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f compose.local.yaml -f /tmp/youth-kkultong-step24-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" api npm run test --workspace apps/api -- --runTestsByPath test/ingestion-failure.integration.spec.ts test/ingestion-cli-process.integration.spec.ts
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f compose.local.yaml -f /tmp/youth-kkultong-step24-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" api npm test
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+```
+
+- 신규 **11개 모두 통과**, 실제 DB·HTTP 포함 전체 회귀 테스트 **32개 모음·742개 모두 통과**. 자식 프로세스 표준 출력의 nullable(비어 있을 수 있는) 타입을 명시적 `pipe` 설정과 맞춘 뒤 최종 타입 검사도 **공용·API·웹 통과**했다. 테스트·문서만 변경했으므로 API·웹·운영 Docker 이미지 빌드는 재실행하지 않았다.
+- 테스트 전후 실제 `public.policies`는 **3,390건**이고 전체 행·시각의 MD5 지문이 같았다. 실제 수집 로그 원본과 로컬 복사본은 모두 **74줄·같은 SHA-256 지문**을 유지했다. Step 27 검증 스키마 0개·수집 잠금 0개를 별도 SQL로 확인했다. 데이터·운영 로그·DB 볼륨을 삭제하거나 갱신하지 않았다.
+- DB는 기존 컨테이너와 **`127.0.0.1:5433`** 포트를 유지해 계속 실행 중이다. 자식 프로세스·검증 스키마·임시 로그·연결은 정리했으며 실제 외부 API는 호출하지 않았다. `git diff --check`: **통과**. Step 27 완료를 막는 불일치는 없으며 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
+
+핵심 코드 읽는 순서: `ingestion-failure.integration.spec.ts`의 `expectPreserved` → 2,000번째 정책·연결 끊김 사례 → `ingestion-cli-process.integration.spec.ts`의 `startCli`·T-25·T-26 → `fixtures/ingestion-cli.preload.cjs`의 실행 일시 정지 지점.
+
+## 32. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 28: 정책 읽기 Repository**다. Step 28~57은 시작하지 않았다. Step 12~27의 수집·저장·로그·잠금·CLI·성공/실패/동시 실행 검증과 실제 온통청년 전체 수집을 완료했다. 실제 정책 **3,390건**과 운영 로그는 보존했고 DB는 DBeaver용 `127.0.0.1:5433` 포트로 실행 중이다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+
+Step 27 추천 커밋 메시지: `test: 정책 수집 오류 복구와 동시 실행 검증`.
