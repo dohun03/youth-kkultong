@@ -1,8 +1,8 @@
 import { parseEnvironment } from '../src/common/environment';
-import { YouthCenterClient } from '../src/modules/ingestion/youth-center.client';
-import { validateYouthCenterPage, YouthCenterPageValidationError } from '../src/modules/ingestion/youth-center-page.validation';
-import type { YouthCenterListResponse } from '../src/modules/ingestion/youth-center-response.schema';
-import { parseYouthCenterPageResponse } from '../src/modules/ingestion/youth-center-response.schema';
+import { YouthCenterClient } from '../src/modules/ingestion/youth-center/youth-center.client';
+import { validateYouthCenterPage, YouthCenterPageValidationError } from '../src/modules/ingestion/youth-center/youth-center-page.validation';
+import type { YouthCenterListResponse } from '../src/modules/ingestion/youth-center/youth-center-response.schema';
+import { parseYouthCenterPageResponse } from '../src/modules/ingestion/youth-center/youth-center-response.schema';
 import validPage from './fixtures/youth-center-list.json';
 
 /** 실제 응답 발췌본의 구조를 검증한 테스트 기준 자료 */

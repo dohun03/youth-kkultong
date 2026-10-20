@@ -1,6 +1,6 @@
 import { parseEnvironment } from '../src/common/environment';
-import { YouthCenterClient } from '../src/modules/ingestion/youth-center.client';
-import { parseYouthCenterPageResponse, YouthCenterResponseValidationError } from '../src/modules/ingestion/youth-center-response.schema';
+import { YouthCenterClient } from '../src/modules/ingestion/youth-center/youth-center.client';
+import { parseYouthCenterPageResponse, YouthCenterResponseValidationError } from '../src/modules/ingestion/youth-center/youth-center-response.schema';
 import validPage from './fixtures/youth-center-list.json';
 
 /** 기존 조사 응답에서 봉투·페이지 정보·정책 ID·제목·조회수를 발췌한 정상 자료를 검증한다. */

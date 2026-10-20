@@ -4,11 +4,12 @@ import type { DataSource, QueryRunner } from 'typeorm';
 import { loadEnvironment } from '../src/common/environment';
 import { createDataSource } from '../src/database/data-source';
 import { CreatePolicies1792162800000 } from '../src/database/migrations/1792162800000-create-policies';
-import { IngestionLockService } from '../src/modules/ingestion/ingestion-lock.service';
-import { IngestionService } from '../src/modules/ingestion/ingestion.service';
-import { YouthCenterClient } from '../src/modules/ingestion/youth-center.client';
-import { createYouthCenterPolicyContentHash } from '../src/modules/ingestion/youth-center-policy.hash';
-import { transformYouthCenterPolicy } from '../src/modules/ingestion/youth-center-policy.transform';
+import { IngestionLockService } from '../src/modules/ingestion/services/ingestion-lock.service';
+import { IngestionLogService } from '../src/modules/ingestion/services/ingestion-log.service';
+import { IngestionService } from '../src/modules/ingestion/services/ingestion.service';
+import { YouthCenterClient } from '../src/modules/ingestion/youth-center/youth-center.client';
+import { createYouthCenterPolicyContentHash } from '../src/modules/ingestion/youth-center/youth-center-policy.hash';
+import { transformYouthCenterPolicy } from '../src/modules/ingestion/youth-center/youth-center-policy.transform';
 import { Policy } from '../src/modules/policies/entities/policy.entity';
 import { PoliciesWriteService } from '../src/modules/policies/policies-write.service';
 import type { PolicyWriteInput } from '../src/modules/policies/policies-write.service';
@@ -82,7 +83,9 @@ describe('DB 충돌 재시도의 실제 PostgreSQL 검증', () => {
       },
     }));
     jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
-    const collector = new IngestionService(new YouthCenterClient(environment));
+    const collector = new IngestionService(
+      new YouthCenterClient(environment), new IngestionLockService(dataSource), service, new IngestionLogService(environment),
+    );
     const lock = new IngestionLockService(dataSource);
     const find = repository.findContentHashes.bind(repository);
     const refresh = repository.refreshPolicies.bind(repository);

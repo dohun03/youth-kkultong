@@ -1,5 +1,5 @@
-import { transformYouthCenterPolicyBasicInfo, YouthCenterPolicyTransformError } from '../src/modules/ingestion/youth-center-policy.transform';
-import type { YouthCenterRawPolicy } from '../src/modules/ingestion/youth-center-response.schema';
+import { transformYouthCenterPolicyBasicInfo, YouthCenterPolicyTransformError } from '../src/modules/ingestion/youth-center/youth-center-policy.transform';
+import type { YouthCenterRawPolicy } from '../src/modules/ingestion/youth-center/youth-center-response.schema';
 import sample from './fixtures/youth-center-policy.json';
 
 /** 외부 응답에서 기본 정보와 후속 변환용 코드만 발췌한 자료의 매핑을 검증한다. */

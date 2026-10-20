@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-20 (Asia/Seoul) · **Step 1~23 완료, Step 24~57 미착수**
+최종 확인일: 2026-10-20 (Asia/Seoul) · **Step 1~24 완료, Step 25~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -606,7 +606,7 @@ docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tm
 - 제품용 키는 미설정이므로 수동 검증 프로세스에서만 기존 조사용 키를 제품 설정에 주입했다. `.env`와 제품 코드에는 별칭·자동 대체를 추가하지 않았고 키·요청 URL·실제 응답 원문을 출력·저장하지 않았다. 첫 수동 검증은 로컬 `.env`에 `DATABASE_URL`이 없어 호출 전에 종료됐으며, DB를 사용하지 않는 검증용 주소를 전달해 수정했다. 샌드박스의 외부 네트워크·Docker 접근 제한은 샌드박스 밖에서 동일 검증을 실행해 해결했다. 클라이언트 자체의 자동 재시도는 없다.
 - `git diff --check`: **통과**. Step 12 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
 
-핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center.client.ts` → `apps/api/src/modules/ingestion/ingestion.module.ts` → `apps/api/src/app.module.ts` → `apps/api/test/youth-center.client.spec.ts`.
+핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center/youth-center.client.ts` → `apps/api/src/modules/ingestion/ingestion.module.ts` → `apps/api/src/app.module.ts` → `apps/api/test/youth-center.client.spec.ts`.
 
 ## 16. Step 13 구현·검증 결과
 
@@ -646,7 +646,7 @@ docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tm
 - `git diff --check`: **통과**. 실제 온통청년 API의 오류를 유발하는 호출은 하지 않았고, 일시 오류는 모의 응답으로 검증했다. 실제 정상 단일 페이지 호출 근거는 Step 12 기록을 따른다.
 - Step 13 완료를 막는 불일치는 없다. 전체 페이지 순회는 Step 16에서 새 재시도 함수를 순차 호출하도록 연결해야 한다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
 
-핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center.client.ts`의 `fetchPageWithRetry` → `fetchPage`의 통신 오류 분류 → `retryDelay`·`wait` → `apps/api/test/youth-center-retry.spec.ts`.
+핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center/youth-center.client.ts`의 `fetchPageWithRetry` → `fetchPage`의 통신 오류 분류 → `retryDelay`·`wait` → `apps/api/test/youth-center-retry.spec.ts`.
 
 ## 17. Step 14 구현·검증 결과
 
@@ -684,7 +684,7 @@ docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tm
 - 빌드한 검증 함수로 로컬 조사 자료의 **정상 목록 응답 36개 전체 통과**, 검증 후 객체의 필드·값 보존도 확인했다. 상세 응답 1개와 오류 응답 1개는 목록 성공 응답 검증 대상에서 제외했다. 실제 네트워크 요청·DB 저장 없이 수행했으며 조사 원본은 기존처럼 Git 추적에서 제외된다. 자동 테스트는 저장소에 포함한 발췌본을 사용하므로 조사 원본에 의존하지 않는다.
 - `git diff --check`: **통과**. Step 14 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
 
-핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center-response.schema.ts` → `apps/api/src/modules/ingestion/youth-center.client.ts`의 성공 응답 검증 → `apps/api/test/youth-center-response.spec.ts` → `apps/api/test/fixtures/youth-center-list.json`.
+핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center/youth-center-response.schema.ts` → `apps/api/src/modules/ingestion/youth-center/youth-center.client.ts`의 성공 응답 검증 → `apps/api/test/youth-center-response.spec.ts` → `apps/api/test/fixtures/youth-center-list.json`.
 
 ## 18. Step 15 구현·검증 결과
 
@@ -722,7 +722,7 @@ docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tm
 - 빌드한 검증 함수로 보관된 **정상 목록 응답 36개 전체 통과**. 각 응답을 보관된 `.meta.json`의 요청 페이지 번호·크기와 대조했으며, 서로 겹치는 조사 샘플도 있어 각 샘플은 독립적인 ID 집합으로 검사했다. 별도로 `full/page-0001.json`·`full/page-0002.json`은 하나의 ID 집합으로 검증해 고유 정책 ID **200개**를 확인했다. 실제 네트워크 요청·DB 저장은 하지 않았다.
 - `git diff --check`: **통과**. Step 15 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
 
-핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center-page.validation.ts` → `apps/api/src/modules/ingestion/youth-center.client.ts`의 구조 검증 이후 처리 → `apps/api/test/youth-center-page-validation.spec.ts`.
+핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center/youth-center-page.validation.ts` → `apps/api/src/modules/ingestion/youth-center/youth-center.client.ts`의 구조 검증 이후 처리 → `apps/api/test/youth-center-page-validation.spec.ts`.
 
 ## 19. Step 16 구현·검증 결과
 
@@ -761,7 +761,7 @@ docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tm
 - 조사 자료와 `/tmp` 검증 스크립트는 Git 추적 대상이 아니며 자동 테스트는 독립적인 모의 응답을 사용한다. 첫 조사 자료 구조 확인 명령은 정수형 `coverage_records`를 배열로 가정해 실패했으며, 실제 구조를 확인한 후 오프라인 검증을 수행했다.
 - `git diff --check`: **통과**. Step 16 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
 
-핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/ingestion.service.ts`의 `collectPolicies` → `validateYouthCenterCollection` → `apps/api/src/modules/ingestion/ingestion.module.ts` → `apps/api/test/ingestion-collection.spec.ts`.
+핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/services/ingestion.service.ts`의 `collectPolicies` → `validateYouthCenterCollection` → `apps/api/src/modules/ingestion/ingestion.module.ts` → `apps/api/test/ingestion-collection.spec.ts`.
 
 ## 20. Step 17 구현·검증 결과
 
@@ -799,7 +799,7 @@ docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tm
 - `TZ=Asia/Seoul`, `TZ=UTC`, `TZ=America/New_York` 환경에서 각각 `node /tmp/youth-kkultong-step17-check.cjs`: **모두 통과**. 로컬 조사 `collection.json`의 원본 정책 **3,255건**을 매번 전부 변환해 기본 정보 매핑·조회수·시간대 없는 시각·원본 전체 필드/값 보존을 확인했다. 실제 API 요청·DB 저장 없이 보관 자료로 검증했으며 조사 원본과 `/tmp` 스크립트는 Git 추적 대상이 아니다.
 - `git diff --check`: **통과**. Step 17 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
 
-핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center-policy.transform.ts`의 `YouthCenterPolicyBasicInfo` → `transformYouthCenterPolicyBasicInfo` → `readTimestamp`·`readViewCount`·`YouthCenterPolicyTransformError` → `apps/api/test/youth-center-policy-transform.spec.ts` → `apps/api/test/fixtures/youth-center-policy.json`.
+핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center/youth-center-policy.transform.ts`의 `YouthCenterPolicyBasicInfo` → `transformYouthCenterPolicyBasicInfo` → `readTimestamp`·`readViewCount`·`YouthCenterPolicyTransformError` → `apps/api/test/youth-center-policy-transform.spec.ts` → `apps/api/test/fixtures/youth-center-policy.json`.
 
 ## 21. Step 18 구현·검증 결과
 
@@ -838,7 +838,7 @@ docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tm
 - `TZ=Asia/Seoul`, `TZ=UTC`, `TZ=America/New_York` 환경에서 각각 `node /tmp/youth-kkultong-step18-check.cjs`: **모두 통과**. 보관된 원본 정책 **3,255건**의 나이·코드·추가 조건·기간 및 원본 전체 필드/값을 대조했다. 각 환경에서 유효 단일 기간 **1,557건**, 날짜 NULL **1,698건**(빈 값 1,695·복수 기간 2·역전 1), 최대 나이 999의 원본 값 유지 **5건**이 동일했다. 실제 API 요청·DB 저장 없이 검증했으며 로컬 조사 원본과 `/tmp` 스크립트는 Git 추적 대상이 아니다.
 - `git diff --check`: **통과**. Step 18 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
 
-핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center-policy.transform.ts`의 `YouthCenterPolicy` → `transformYouthCenterPolicy` → `readAge`·`readCodes` → `readApplicationDates`·`isValidCalendarDate` → `apps/api/test/youth-center-eligibility-transform.spec.ts`.
+핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center/youth-center-policy.transform.ts`의 `YouthCenterPolicy` → `transformYouthCenterPolicy` → `readAge`·`readCodes` → `readApplicationDates`·`isValidCalendarDate` → `apps/api/test/youth-center-eligibility-transform.spec.ts`.
 
 ## 22. Step 19 구현·검증 결과
 
@@ -876,7 +876,7 @@ docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tm
 - Python 표준 라이브러리로 보관 원본의 키 정렬 JSON·SHA-256 기준값을 별도 생성한 뒤 `node /tmp/youth-kkultong-step19-check.cjs`: **통과**. 원본 정책 **3,255건 전체**가 기준값과 일치했고, 각 정책의 객체 키 순서 반전·조회수만 변경은 같은 해시, 제목 변경은 다른 해시였다. 원본 전체 필드/값도 보존됐다. 실제 API 요청·DB 저장 없이 검증했으며 조사 원본·`/tmp` 검증 스크립트와 기준값은 Git 추적 대상이 아니다.
 - `git diff --check`: **통과**. Step 19 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
 
-핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center-policy.hash.ts`의 `createYouthCenterPolicyContentHash` → `serializePolicyContent` → `YouthCenterPolicyHashError` → `apps/api/test/youth-center-policy-hash.spec.ts`.
+핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/youth-center/youth-center-policy.hash.ts`의 `createYouthCenterPolicyContentHash` → `serializePolicyContent` → `YouthCenterPolicyHashError` → `apps/api/test/youth-center-policy-hash.spec.ts`.
 
 ## 23. Step 20 구현·검증 결과
 
@@ -926,7 +926,7 @@ docker --config /tmp/youth-kkultong-docker-config compose stop db
 - 기존 PostgreSQL 서비스가 정지 상태여서 테스트를 위해 시작했으며, 검증 후 다시 정지해 시작 전 상태로 복원했다. 기존 DB 볼륨은 유지했고 API·웹 서비스는 시작하지 않았다. 잠금 통합 테스트는 정책 테이블을 변경하지 않으며 실제 외부 API 대신 모의 HTTP 응답을 사용한다. 기존 회귀 테스트의 DB 쓰기도 각 테스트의 별도 검증 스키마 안에서 실행됐다.
 - `git diff --check`: **통과**. Step 20 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
 
-핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/ingestion-lock.service.ts`의 `runWithLock` → `finally`의 롤백·해제·반환 → `IngestionLockError` → `apps/api/src/modules/ingestion/ingestion.module.ts` → `apps/api/test/ingestion-lock.integration.spec.ts` → `apps/api/test/ingestion-lock.spec.ts`.
+핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/services/ingestion-lock.service.ts`의 `runWithLock` → `finally`의 롤백·해제·반환 → `IngestionLockError` → `apps/api/src/modules/ingestion/ingestion.module.ts` → `apps/api/test/ingestion-lock.integration.spec.ts` → `apps/api/test/ingestion-lock.spec.ts`.
 
 ## 24. Step 21 구현·검증 결과
 
@@ -1063,8 +1063,66 @@ docker --config /tmp/youth-kkultong-docker-config compose stop db
 
 핵심 코드 읽는 순서: `apps/api/src/modules/policies/policies-write.service.ts`의 `savePolicies` → `saveTransaction` → `apps/api/test/policies-write.spec.ts`의 재시도 사례 → `apps/api/test/policy-storage-retry.integration.spec.ts`.
 
-## 27. 다음 작업을 위한 상태
+## 27. Step 24 구현·검증 결과
 
-다음 요청 대상은 **Step 24: 수집 결과 로그와 공통 자원 정리**이다. Step 24~57은 시작하지 않았다. Step 12~23에서 수집·검증·정규화·해시, 중복 실행 잠금, 변경 분류, 전체 트랜잭션 묶음 저장과 지정한 DB 충돌의 제한적 재시도를 구현·검증했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+사용자 요청으로 Step 23을 `72c0ad1` (`feat: DB 트랜잭션 충돌 복구 처리`)로 커밋한 뒤 다음 Step 요청에 따라 Step 24만 진행했다. 작업 규칙·PLAN·SPEC 5장·Step 23 완료 상태를 대조했고 착수 시 작업 트리는 깨끗했다. 로그 경로·보관은 ARCHITECTURE 6장·9장의 `/app/logs/` 및 볼륨 기준을 확인했다.
 
-Step 23 추천 커밋 메시지: `feat: DB 트랜잭션 충돌 복구 처리`.
+### 구현과 실제 결정사항
+
+- `IngestionService.importPolicies`로 잠금 → 전체 수집·검증 → 변환·해시 → 저장 → 결과 기록을 연결했다. 기존 `collectPolicies`의 원본 배열 반환은 유지하며, CLI 진입점·명령·종료 코드는 Step 25에 남겼다. 서비스 생성자에 기존 잠금·저장 서비스와 새 파일 로그 서비스를 주입하고 `IngestionModule`에서 제공한다. 기존 테스트 3개 파일도 생성자 의존성만 맞췄다.
+- `IngestionLogService`는 저장소 루트의 `logs/policies-import.jsonl`, 컨테이너의 `/app/logs/policies-import.jsonl`에 UTF-8 JSON 한 줄씩 추가한다. 실행 UUID·UTC ISO 시각·이벤트·단계·상태·페이지·페이지 시도 횟수·저장 시도 횟수·신규/변경/동일 확정 건수·실패 원인을 남긴다. 이벤트는 `RUN_STARTED`, `PAGE_ATTEMPT`, `SAVE_ATTEMPT`, `WORK_FINISHED`, `RUN_FINISHED`다. 파일은 소유자 읽기·쓰기 권한(`0600`)으로 생성한다.
+- 클라이언트·저장 함수에 선택적인 기록 콜백을 추가했다. 페이지 재시도나 DB 재시도 횟수와 이전 실패의 HTTP 상태/SQLSTATE까지 기록하며 기존 재시도 대상·횟수·대기 규칙은 유지한다. 콜백에서 기록이 실패하면 수집/저장을 더 진행하지 않고 공통 정리로 전달한다.
+- 잠금 해제 전에는 `WORK_FINISHED`를 기록하고, 기존 `IngestionLockService.runWithLock`의 `finally`가 롤백·잠금 해제·연결 반환을 시도한 뒤 `RUN_FINISHED`를 기록한다. 작업 오류·정리 오류·최종 기록 오류가 겹치면 `AggregateError`로 함께 전달한다. 로그 오류가 잠금 정리를 건너뛰지 않는다.
+- `counts`는 확정된 DB 반영 건수이며, 롤백된 실행은 0건이다. `saved`로 DB 확정 여부를 별도로 기록한다. 확정 후 로그나 잠금 정리에 실패하면 최종 상태는 실패이지만 `saved=true`와 확정 건수는 유지한다. 이미 확정한 데이터를 롤백했다고 잘못 기록하지 않는다.
+- 원본 오류의 메시지·스택·SQL·매개변수·응답 원문은 로그에 넘기지 않는다. 알려진 오류에서 단계·원인 코드·정책 ID·필드·HTTP 상태·SQLSTATE만 추출하고, 모르는 오류는 `UNEXPECTED_ERROR`로 기록한다. 파일 작성 시 허용한 속성만 복사하고 문자열 값에서 인증키·DB URL·인코딩 전후 비밀번호를 제거한다. 필드명이나 정책 ID에 비밀값이 들어간 경우도 가린다.
+- 파일 기록이 실패하면 같은 안전한 기록을 NestJS 기본 로그에 `FILE_LOG_FAILED`로 남긴다. 기본 로그까지 실패하면 `IngestionLogError`를 전달한다. 로그 파일은 Git 및 Docker 빌드 문맥에서 제외했다.
+- Compose에 계획된 `ingestion_logs:/app/logs` 볼륨을 추가했고, API 실행 이미지에서 로그 폴더를 `node` 사용자 소유로 만든다. 공개 API·DB 스키마·Migration·외부 패키지·설계 의미는 변경하지 않았다. 파일명·형식·운영상 세부 결정은 이 문서에 기록하고 SPEC은 수정하지 않았다.
+- 사용자 요청에 따라 수집 모듈의 실행·잠금·로그 서비스 3개를 `ingestion/services/`로, 온통청년 API 호출·응답/페이지 검증·변환·해시 파일 5개를 `ingestion/youth-center/`로 묶었다. 모듈 선언은 기존 위치에 두고 소스·테스트의 import, 문서의 읽기 경로와 주석 기준 파일 경로를 갱신했다. 로그 서비스의 상대 경로도 이동한 깊이에 맞춰 수정해 저장소 루트 `logs/`와 컨테이너 `/app/logs/` 저장 위치를 유지한다.
+
+### 실행 방법
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/ingestion-log.spec.ts test/ingestion-run.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+docker --config /tmp/youth-kkultong-docker-config compose build api
+```
+
+전체 테스트에는 기존 테스트 이미지를 재사용했다. `/tmp/youth-kkultong-step24-test.compose.yaml`은 다음과 같다. 테스트가 운영 로그 볼륨에 쓰지 않도록 `/tmp` 경로로 덮어쓴다. Docker 설정 파일은 기존 `{}`를 사용한다.
+
+```yaml
+services:
+  api:
+    image: youth-kkultong-api-step11-test
+    build:
+      target: api-build
+    volumes:
+      - /tmp/youth-kkultong-step24-test-logs:/app/logs
+```
+
+```bash
+mkdir -p /tmp/youth-kkultong-step24-test-logs
+docker --config /tmp/youth-kkultong-docker-config compose up -d db
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tmp/youth-kkultong-step24-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" api npm test
+docker --config /tmp/youth-kkultong-docker-config compose stop db
+```
+
+### 실제 검증과 남은 문제
+
+- 신규 파일 로그 테스트 **6개**, 실행/정리 단위 테스트 **13개**, 실제 PostgreSQL 17 통합 테스트 **13개** 통과. 정상·중복·API/검증/변환/해시/DB 실패의 결과 기록, 파일 실패의 기본 로그 대체, 파일·기본 로그 동시 실패의 오류 보존과 자원 정리를 확인했다.
+- 실제 DB에서 처리 전 실패와 묶음 저장 중 오류는 기존 행·시각을 그대로 유지했다. 페이지·저장 시도·작업 결과·최종 결과 기록 지점의 양쪽 로그 실패 후에도 다른 세션이 잠금을 재획득했다. 잠금 해제 쿼리의 실패는 기존 세션을 종료해 잠금이 남지 않았으며 최종 로그에 저장 완료와 정리 실패가 함께 나타났다.
+- 모의 HTTP `503` 이후 성공과 실제 DB가 반환한 `40P01` 이후 성공을 한 실행에서 확인했다. 페이지 시도 `1/2`, 다음 페이지 `1`, 저장 시도 `1/2`와 이전 실패 원인이 기록됐고 확정 신규 건수는 중복 합산 없이 3건이었다. 실제 외부 API는 호출하지 않았다.
+- 파일 속성 허용 목록, 인증키·DB 비밀번호 가림, SQL·원본 메시지 제외, 동시 파일 추가, `0600` 권한을 확인했다. 테스트 파일·스키마·잠금·연결은 종료 시 정리했다.
+- 통합 테스트의 QueryRunner 쿼리 감시 코드를 TypeORM의 오버로드에 맞게 수정한 뒤 최종 `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`: **공용·API·웹 통과**. 최종 실제 DB·HTTP 포함 전체 회귀 테스트: **27개 모음·713개 모두 통과**. `npm run build --workspace apps/api`: **공용 선행 빌드·API 빌드 통과**.
+- `docker compose build api`: **통과**. API 실행 이미지의 별도 임시 컨테이너에서 UID **1000**·로그 볼륨 소유자 **1000**으로 진단 파일을 썼고, 다음 컨테이너에서 읽어 볼륨 유지를 확인한 뒤 해당 진단 파일만 제거했다. 기존 API·웹 서비스는 교체하거나 기동하지 않았다. 새 로그 볼륨은 빈 상태로 유지한다.
+- 테스트를 위해 시작한 DB는 다시 정지했고 기존 DB 볼륨과 다른 프로젝트의 실행 중 컨테이너는 유지했다. 웹 소스 변경이 없어 Next.js 배포 빌드는 재실행하지 않았다.
+- `git diff --check`, 로그 경로 Git 제외 확인: **통과**. Step 24 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다. CLI에서는 원본 예외를 그대로 출력하지 않도록 Step 25에서 종료 메시지를 연결한다.
+- 폴더 재배치 후에도 전체 **27개 모음·713개 테스트**, 공용·API·웹 타입 검사, API 빌드와 Docker API 이미지 빌드가 모두 통과했다. 빌드 결과에서 이전 경로의 생성물이 제거되고 기본 로그 경로가 저장소 루트 `logs/`로 유지되는 것을 확인했다. 운영 이미지의 임시 컨테이너에서도 새 경로의 서비스가 로딩되고 `/app/logs/`에 UID 1000 사용자의 쓰기 권한이 있음을 확인했다.
+
+핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/services/ingestion.service.ts`의 `importPolicies` → `ingestion-log.service.ts`의 `write` → `ingestion-lock.service.ts`의 `finally` → `apps/api/test/ingestion-run.integration.spec.ts`.
+
+## 28. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 25: 수동 수집 CLI 연결**이다. Step 25~57은 시작하지 않았다. Step 12~24에서 전체 수집 실행 메서드, 단계별 결과 로그, 중복 실행 잠금·공통 정리, 변환·해시·전체 트랜잭션 묶음 저장과 제한적 DB 재시도를 구현·검증했다. `npm run import:policies` 명령과 CLI 종료 코드는 아직 없다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+
+Step 24 추천 커밋 메시지: `feat: 정책 수집 오류 로그와 자원 정리 통합`.

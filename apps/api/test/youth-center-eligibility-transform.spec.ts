@@ -1,5 +1,5 @@
-import { transformYouthCenterPolicy, transformYouthCenterPolicyBasicInfo, YouthCenterPolicyTransformError } from '../src/modules/ingestion/youth-center-policy.transform';
-import type { YouthCenterRawPolicy } from '../src/modules/ingestion/youth-center-response.schema';
+import { transformYouthCenterPolicy, transformYouthCenterPolicyBasicInfo, YouthCenterPolicyTransformError } from '../src/modules/ingestion/youth-center/youth-center-policy.transform';
+import type { YouthCenterRawPolicy } from '../src/modules/ingestion/youth-center/youth-center-response.schema';
 import sample from './fixtures/youth-center-policy.json';
 
 /** 나이·코드·추가 조건과 신청기간의 변환 및 원본 보존을 검증한다. */

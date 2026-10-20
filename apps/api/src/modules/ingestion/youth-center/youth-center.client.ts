@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ENVIRONMENT } from '../../common/environment';
-import type { Environment } from '../../common/environment';
+import { ENVIRONMENT } from '../../../common/environment';
+import type { Environment } from '../../../common/environment';
 import { parseYouthCenterPageResponse } from './youth-center-response.schema';
 import type { YouthCenterListResponse } from './youth-center-response.schema';
 import { validateYouthCenterPage } from './youth-center-page.validation';
@@ -45,6 +45,11 @@ export class YouthCenterPageError extends Error {
   }
 }
 
+/** 페이지 요청 직전 시도 횟수와 이전 실패 원인을 기록할 함수 */
+export type YouthCenterAttemptObserver = (
+  pageNum: number, attempts: number, previousFailure?: Pick<YouthCenterPageError, 'failure' | 'httpStatus'>,
+) => Promise<void>;
+
 /** 온통청년 목록 API의 지정한 한 페이지만 호출 */
 @Injectable()
 export class YouthCenterClient {
@@ -54,7 +59,9 @@ export class YouthCenterClient {
   constructor(@Inject(ENVIRONMENT) private readonly environment: Environment) {}
 
   /** 현재 페이지를 재시도·검증한다. 전체 수집에서는 작업별 ID 집합을 전달한다. */
-  async fetchPageWithRetry(pageNum: number, seenIds = new Set<string>()): Promise<YouthCenterValidatedPageResponse> {
+  async fetchPageWithRetry(
+    pageNum: number, seenIds = new Set<string>(), onAttempt?: YouthCenterAttemptObserver,
+  ): Promise<YouthCenterValidatedPageResponse> {
     // 이전 페이지 종료 후 요청 간격 유지
     if (this.lastPageFinishedAt !== undefined) {
       const elapsed = performance.now() - this.lastPageFinishedAt;
@@ -62,7 +69,10 @@ export class YouthCenterClient {
     }
 
     try {
+      let previousFailure: Pick<YouthCenterPageError, 'failure' | 'httpStatus'> | undefined;
       for (let attempt = 1; ; attempt += 1) {
+        // 재시도를 포함해 실제 요청 직전에 페이지와 시도 횟수 기록
+        await onAttempt?.(pageNum, attempt, previousFailure);
         // 현재 시도의 HTTP 응답 또는 통신 오류 보관
         let response: YouthCenterPageResponse | undefined;
         let requestError: YouthCenterRequestError | undefined;
@@ -102,6 +112,7 @@ export class YouthCenterClient {
           );
         }
         // 재시도 전 대기 후 다음 시도로 진행
+        previousFailure = { failure, httpStatus: status };
         await this.wait(this.retryDelay(response?.retryAfter ?? null, attempt));
       }
     } finally {

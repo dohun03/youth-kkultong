@@ -36,6 +36,7 @@ FROM api-dependencies AS api
 ENV NODE_ENV=production
 COPY --from=api-build /app/apps/api/dist apps/api/dist
 COPY --from=api-build /app/packages/shared/dist packages/shared/dist
+RUN mkdir -p /app/logs && chown node:node /app/logs
 USER node
 EXPOSE 4000
 CMD ["node", "apps/api/dist/main.js"]

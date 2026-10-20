@@ -6,6 +6,7 @@
 .codex
 docs
 scripts
+logs
 **/node_modules
 **/.next
 **/dist

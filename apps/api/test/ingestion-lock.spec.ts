@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import type { QueryRunner } from 'typeorm';
-import { IngestionLockError, IngestionLockService, YOUTH_CENTER_INGESTION_LOCK_KEY } from '../src/modules/ingestion/ingestion-lock.service';
+import { IngestionLockError, IngestionLockService, YOUTH_CENTER_INGESTION_LOCK_KEY } from '../src/modules/ingestion/services/ingestion-lock.service';
 
 /** DB 모의 응답으로 잠금 경계·작업 건너뛰기·모든 자원 정리 경로를 검증한다. */
 describe('수집 중복 실행 잠금', () => {

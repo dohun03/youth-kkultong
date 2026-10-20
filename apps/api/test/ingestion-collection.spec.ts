@@ -1,7 +1,12 @@
 import { parseEnvironment } from '../src/common/environment';
-import { IngestionService, validateYouthCenterCollection, YouthCenterCollectionValidationError } from '../src/modules/ingestion/ingestion.service';
-import { YouthCenterClient } from '../src/modules/ingestion/youth-center.client';
-import type { YouthCenterListResponse, YouthCenterRawPolicy } from '../src/modules/ingestion/youth-center-response.schema';
+import { DataSource } from 'typeorm';
+import { IngestionLockService } from '../src/modules/ingestion/services/ingestion-lock.service';
+import { IngestionLogService } from '../src/modules/ingestion/services/ingestion-log.service';
+import { PoliciesWriteService } from '../src/modules/policies/policies-write.service';
+import { PolicyRepository } from '../src/modules/policies/policy.repository';
+import { IngestionService, validateYouthCenterCollection, YouthCenterCollectionValidationError } from '../src/modules/ingestion/services/ingestion.service';
+import { YouthCenterClient } from '../src/modules/ingestion/youth-center/youth-center.client';
+import type { YouthCenterListResponse, YouthCenterRawPolicy } from '../src/modules/ingestion/youth-center/youth-center-response.schema';
 
 /** 요청 페이지의 정책 건수와 고유 ID를 포함한 모의 원본 응답을 만든다. */
 function createPage(pageNum: number, totalCount = 5, pageSize = 2): YouthCenterListResponse {
@@ -32,7 +37,10 @@ describe('전체 정책 페이지 순차 수집', () => {
       DATABASE_URL: 'postgresql://tester:unit-secret@localhost:5432/example',
       YOUTH_CENTER_API_KEY: 'collection-unit-secret', YOUTH_CENTER_PAGE_SIZE: '2',
     });
-    service = new IngestionService(new YouthCenterClient(environment));
+    service = new IngestionService(
+      new YouthCenterClient(environment), new IngestionLockService(new DataSource({ type: 'postgres' })),
+      new PoliciesWriteService(new PolicyRepository(), environment), new IngestionLogService(environment),
+    );
     requestedPages = [];
     fetchMock = jest.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const pageNum = Number(new URL(String(input)).searchParams.get('pageNum'));

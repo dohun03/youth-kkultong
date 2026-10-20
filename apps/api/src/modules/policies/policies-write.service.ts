@@ -36,7 +36,10 @@ export class PoliciesWriteService {
   ) {}
 
   /** 정책 저장 중 DB 충돌이 나면 전체 저장을 한 번만 재시도 */
-  async savePolicies(queryRunner: QueryRunner, policies: readonly PolicyWriteInput[]): Promise<PreparedPolicyBatches['counts']> {
+  async savePolicies(
+    queryRunner: QueryRunner, policies: readonly PolicyWriteInput[], onAttempt?: (attempts: number, previousError?: unknown) => Promise<void>,
+  ): Promise<PreparedPolicyBatches['counts']> {
+    await onAttempt?.(1);
     try {
       return await this.saveTransaction(queryRunner, policies);
     } catch (error) {
@@ -52,6 +55,7 @@ export class PoliciesWriteService {
       }
 
       // 같은 연결·수집 데이터로 두 번째 실행. 이게 마지막 재시도.
+      await onAttempt?.(2, error);
       return this.saveTransaction(queryRunner, policies);
     }
   }

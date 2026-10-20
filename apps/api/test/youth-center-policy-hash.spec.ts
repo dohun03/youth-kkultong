@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { createYouthCenterPolicyContentHash, YouthCenterPolicyHashError } from '../src/modules/ingestion/youth-center-policy.hash';
-import type { YouthCenterRawPolicy } from '../src/modules/ingestion/youth-center-response.schema';
+import { createYouthCenterPolicyContentHash, YouthCenterPolicyHashError } from '../src/modules/ingestion/youth-center/youth-center-policy.hash';
+import type { YouthCenterRawPolicy } from '../src/modules/ingestion/youth-center/youth-center-response.schema';
 import sample from './fixtures/youth-center-policy.json';
 
 /** 조회수 제외·객체 키 정렬·배열 순서 보존과 해시 오류 정보를 검증한다. */

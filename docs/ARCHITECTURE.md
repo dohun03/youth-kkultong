@@ -172,6 +172,9 @@ youth-kkultong/
 │       │   │   │   └── policies-write.service.ts
 │       │   │   ├── matching/
 │       │   │   ├── ingestion/         # API 호출·변환·잠금·수집 명령
+│       │   │   │   ├── ingestion.module.ts
+│       │   │   │   ├── services/      # 수집 실행·중복 실행 잠금·결과 로그
+│       │   │   │   └── youth-center/  # 온통청년 API 호출·응답 검증·변환·해시
 │       │   │   └── meta/
 │       │   │       ├── entities/region.entity.ts
 │       │   │       └── repositories/region.repository.ts

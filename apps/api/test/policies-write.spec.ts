@@ -1,8 +1,8 @@
 import type { EntityManager, QueryRunner } from 'typeorm';
 import { QueryFailedError } from 'typeorm';
 import { parseEnvironment } from '../src/common/environment';
-import { createYouthCenterPolicyContentHash } from '../src/modules/ingestion/youth-center-policy.hash';
-import { transformYouthCenterPolicy } from '../src/modules/ingestion/youth-center-policy.transform';
+import { createYouthCenterPolicyContentHash } from '../src/modules/ingestion/youth-center/youth-center-policy.hash';
+import { transformYouthCenterPolicy } from '../src/modules/ingestion/youth-center/youth-center-policy.transform';
 import { PoliciesWriteService } from '../src/modules/policies/policies-write.service';
 import type { PolicyWriteInput } from '../src/modules/policies/policies-write.service';
 import { PolicyRepository } from '../src/modules/policies/policy.repository';

@@ -1,5 +1,5 @@
 import { parseEnvironment } from '../src/common/environment';
-import { YouthCenterClient, YouthCenterRequestError } from '../src/modules/ingestion/youth-center.client';
+import { YouthCenterClient, YouthCenterRequestError } from '../src/modules/ingestion/youth-center/youth-center.client';
 
 const apiKey = 'unit-secret +/&=?한글';
 

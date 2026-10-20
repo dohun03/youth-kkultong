@@ -1,6 +1,6 @@
 import { parseEnvironment } from '../src/common/environment';
 import validPage from './fixtures/youth-center-list.json';
-import { YouthCenterClient, YouthCenterPageError } from '../src/modules/ingestion/youth-center.client';
+import { YouthCenterClient, YouthCenterPageError } from '../src/modules/ingestion/youth-center/youth-center.client';
 
 /** 재시도 테스트 전용 인증키 */
 const apiKey = 'retry-unit-secret';

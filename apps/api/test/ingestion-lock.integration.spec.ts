@@ -2,9 +2,12 @@ import { Logger } from '@nestjs/common';
 import type { DataSource, QueryRunner } from 'typeorm';
 import { loadEnvironment } from '../src/common/environment';
 import { createDataSource } from '../src/database/data-source';
-import { IngestionLockService } from '../src/modules/ingestion/ingestion-lock.service';
-import { IngestionService } from '../src/modules/ingestion/ingestion.service';
-import { YouthCenterClient } from '../src/modules/ingestion/youth-center.client';
+import { IngestionLockService } from '../src/modules/ingestion/services/ingestion-lock.service';
+import { IngestionService } from '../src/modules/ingestion/services/ingestion.service';
+import { YouthCenterClient } from '../src/modules/ingestion/youth-center/youth-center.client';
+import { IngestionLogService } from '../src/modules/ingestion/services/ingestion-log.service';
+import { PoliciesWriteService } from '../src/modules/policies/policies-write.service';
+import { PolicyRepository } from '../src/modules/policies/policy.repository';
 
 /** 작업 중간에서 잠금 보유 여부를 확인하기 위한 수동 완료 신호를 만든다. */
 function createGate(): { promise: Promise<void>; resume: () => void } {
@@ -46,7 +49,10 @@ describe('수집 잠금의 실제 PostgreSQL 검증', () => {
 
   it('독립 연결의 두 번째 수집은 API 호출 전 건너뛰고 첫 작업 종료 후 다시 실행된다', async () => {
     const environment = { ...loadEnvironment(), YOUTH_CENTER_API_KEY: 'lock-integration-placeholder', YOUTH_CENTER_REQUEST_DELAY_MS: 0 };
-    const collector = new IngestionService(new YouthCenterClient(environment));
+    const collector = new IngestionService(
+      new YouthCenterClient(environment), firstService,
+      new PoliciesWriteService(new PolicyRepository(), environment), new IngestionLogService(environment),
+    );
     const fetchMock = jest.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json({
       resultCode: 200, resultMessage: '성공', result: {
         pagging: { totCount: 1, pageNum: 1, pageSize: environment.YOUTH_CENTER_PAGE_SIZE },

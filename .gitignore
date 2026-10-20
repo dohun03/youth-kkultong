@@ -6,3 +6,4 @@ dist/
 .next/
 *.tsbuildinfo
 apps/web/next-env.d.ts
+logs/
