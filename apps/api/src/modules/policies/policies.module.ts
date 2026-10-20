@@ -7,6 +7,6 @@ import { PolicyRepository } from './policy.repository';
 @Module({
   imports: [DatabaseModule],
   providers: [PolicyRepository, PoliciesWriteService],
-  exports: [PoliciesWriteService],
+  exports: [PolicyRepository, PoliciesWriteService],
 })
 export class PoliciesModule {}

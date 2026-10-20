@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-20 (Asia/Seoul) · **Step 1~27 완료, Step 28~57 미착수**
+최종 확인일: 2026-10-20 (Asia/Seoul) · **Step 1~28 완료, Step 29~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1278,8 +1278,38 @@ NEXT_TELEMETRY_DISABLED=1 npm run typecheck
 
 핵심 코드 읽는 순서: `ingestion-failure.integration.spec.ts`의 `expectPreserved` → 2,000번째 정책·연결 끊김 사례 → `ingestion-cli-process.integration.spec.ts`의 `startCli`·T-25·T-26 → `fixtures/ingestion-cli.preload.cjs`의 실행 일시 정지 지점.
 
-## 32. 다음 작업을 위한 상태
+## 32. Step 28 구현·검증 결과
 
-다음 요청 대상은 **Step 28: 정책 읽기 Repository**다. Step 28~57은 시작하지 않았다. Step 12~27의 수집·저장·로그·잠금·CLI·성공/실패/동시 실행 검증과 실제 온통청년 전체 수집을 완료했다. 실제 정책 **3,390건**과 운영 로그는 보존했고 DB는 DBeaver용 `127.0.0.1:5433` 포트로 실행 중이다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+작업 규칙을 먼저 읽고 PLAN Step 28·SPEC의 저장 원칙, 상세·분야 조회, 상태·자격·정렬 기준과 Step 27 완료 상태를 기존 코드에 대조했다. 선행 작업 누락이나 설계 충돌은 없었으며 Step 28만 진행했다. 착수 시 Git 변경사항은 없었고 이번 작업에서도 커밋하지 않았다.
 
-Step 27 추천 커밋 메시지: `test: 정책 수집 오류 복구와 동시 실행 검증`.
+### 구현과 실제 결정사항
+
+- `PolicyRepository.findCandidates(manager)`는 목록 평가에 필요한 내부 ID·외부 ID·제목·분야·조회수·원본 등록일·신청기간·나이·취업·학력·지역 코드를 한 번의 SQL로 읽는다. 서버 내부 타입 `PolicyCandidate`로 전체 엔티티와 구분했다. 마감 정책을 포함한 전체 후보를 반환하며 필터·점수·정렬·페이지 나누기는 후속 검색 서비스에서 수행한다.
+- 긴 지원 내용은 DB의 `LEFT`로 앞 **200자**만 `benefitPreview`에 담는다. 추가 자격·참여 제한 설명은 공백을 제외한 글자가 있는지 DB에서 확인해 `hasExtraText`로 반환한다. 원본 JSON·설명 본문·지원 본문 전체·추가 자격 본문·링크·해시·내부 저장 시각은 후보 결과에 담지 않는다. 200자는 목록 조회의 내부 미리보기 길이이며 API 계약이나 원본 저장 값을 변경하지 않는다.
+- 원시 조회(`getRawMany`)에서는 엔티티의 DATE 변환을 거치지 않아 최초 검증에서 날짜가 `Date`로 반환됐다. 신청 시작·종료일을 DB의 `TO_CHAR`로 명시적으로 `YYYY-MM-DD` 문자열로 반환하도록 보완했으며 NULL은 유지한다. 0·NULL·미확인 코드도 임의로 보정하지 않는다.
+- `findById(manager, id)`는 UUID로 원본·긴 본문까지 전체 엔티티를 조회하며 없으면 `null`이다. UUID 입력 검증·404 응답은 후속 API 계층의 책임이다. `findCategories(manager)`는 실제 DB 대분류의 고유값을 정렬해 반환하고 NULL·빈 문자열·공백뿐인 값은 제외한다. 유효한 분야 문자열은 수정하지 않는다.
+- 기존 저장 메서드와 동일하게 호출자가 `EntityManager`를 전달하며, 자체 연결·트랜잭션을 생성하지 않는다. `PoliciesModule`은 후속 조회 서비스와 메타 모듈에서 사용할 수 있도록 `PolicyRepository`를 내보낸다. DB 스키마·Migration·공개 API·공용 타입·외부 패키지는 변경하지 않았다. SPEC의 설계 의미 변경은 없어 PLAN·SUMMARY만 갱신했다.
+
+### 실행 방법과 실제 검증
+
+기존 DB 컨테이너와 DBeaver용 로컬 포트를 유지하고 기존 테스트 이미지·임시 로그 설정을 재사용했다. 신규 통합 테스트는 임의 이름의 `step28_test_<임의값>` 스키마에만 데이터를 저장하며 사례별 롤백과 종료 시 스키마·연결 정리를 수행한다.
+
+```bash
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f compose.local.yaml -f /tmp/youth-kkultong-step24-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" api npm test
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+git diff --check
+```
+
+- 신규 통합 테스트 **8개**, 전체 회귀 테스트 **33개 모음·750개 모두 통과**. 후보 단일 조회·긴 본문 제외·Unicode 미리보기·날짜 문자열·NULL·0·코드 배열·추가 조건 존재 여부·UUID 상세와 없는 UUID·분야 고유값·호출자 트랜잭션 사용을 확인했다. 최초 날짜 변환 실패는 위 수정 후 전체 회귀 테스트에서 해소됐다.
+- 공용·API·웹 **타입 검사 통과**, API **빌드 통과**, `git diff --check` **통과**. 웹·운영 Docker 이미지 빌드는 변경 범위에 해당하지 않아 재실행하지 않았다.
+- 테스트 전후 실제 `public.policies` **3,390건**, 전체 행·시각의 MD5 지문 **`46a965ded0407e47a7af9816cd3e7b6e`로 동일**. 테스트 후 Step 28 임시 스키마 **0개**를 별도 SQL로 확인했다. 실제 외부 API는 호출하지 않았고 운영 로그·볼륨·DB 컨테이너를 변경하지 않았다. DB는 기존 `127.0.0.1:5433` 포트로 계속 실행 중이다.
+- Step 28 완료를 막는 미해결 문제는 없다. 기존 Jest VM Modules·`pg` 경고와 고아 컨테이너 안내는 변경하지 않았다.
+
+핵심 코드 읽는 순서: `policy.repository.ts`의 `PolicyCandidate` → `findCandidates` → `findById`·`findCategories` → `policies.module.ts` → `policy-read.integration.spec.ts`.
+
+## 33. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 29: 취업·학력 코드표 검증과 제공**이다. Step 29~57은 시작하지 않았다. 정책 읽기 Repository까지 완료했으며 검색·상세·메타 API 연결은 해당 후속 Step에서 진행한다. 실제 정책 **3,390건**과 운영 로그는 보존했고 DB는 DBeaver용 `127.0.0.1:5433` 포트로 실행 중이다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+
+Step 28 추천 커밋 메시지: `feat: 정책 조회 전용 Repository 메서드 구성`.

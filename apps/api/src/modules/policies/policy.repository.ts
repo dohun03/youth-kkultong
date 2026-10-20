@@ -3,8 +3,60 @@ import type { EntityManager } from 'typeorm';
 import { Policy } from './entities/policy.entity';
 import type { PolicyRefreshInput, PolicyWriteInput } from './policies-write.service';
 
+/** 목록 카드·신청 상태·자격 판정·정렬에 필요한 값만 담는 서버 내부 자료형 */
+export type PolicyCandidate = Pick<Policy,
+  'id' | 'externalId' | 'title' | 'category' | 'subcategory' | 'viewCount' | 'sourceRegisteredAt'
+  | 'applicationPeriodCode' | 'applicationPeriodRaw' | 'applicationStartDate' | 'applicationEndDate'
+  | 'ageMin' | 'ageMax' | 'jobCodes' | 'schoolCodes' | 'regionCodes'
+> & {
+  benefitPreview: string | null;
+  hasExtraText: boolean;
+};
+
 @Injectable()
 export class PolicyRepository {
+  /** 전체 정책 목록 조회 (경량) */
+  async findCandidates(manager: EntityManager): Promise<PolicyCandidate[]> {
+    const columns = [
+      'id', 'externalId', 'title', 'category', 'subcategory', 'viewCount', 'sourceRegisteredAt',
+      'applicationPeriodCode', 'applicationPeriodRaw',
+      'ageMin', 'ageMax', 'jobCodes', 'schoolCodes', 'regionCodes',
+    ] as const;
+    const query = manager.getRepository(Policy).createQueryBuilder('policy');
+
+    // 필요한 컬럼만 선택
+    query.select([]);
+    for (const column of columns) query.addSelect(`policy.${column}`, column);
+
+    // 긴 지원 본문은 DB에서 앞 200자만 가져오고, 추가 자격·제한 설명은 존재 여부만 확인
+    // NULL·빈 문자열·공백뿐인 설명은 추가 조건으로 보지 않음
+    return query
+      // 원시 조회를 사용해서 DB에서 날짜 문자열로 명시. (JS의 지저분한 DATE 변환을 거치지 않게 조회)
+      .addSelect(`TO_CHAR(policy.applicationStartDate, 'YYYY-MM-DD')`, 'applicationStartDate')
+      .addSelect(`TO_CHAR(policy.applicationEndDate, 'YYYY-MM-DD')`, 'applicationEndDate')
+      .addSelect('LEFT(policy.benefitText, 200)', 'benefitPreview')
+      .addSelect(`COALESCE(policy.extraQualification ~ '[^[:space:]]', false)
+        OR COALESCE(policy.participationRestriction ~ '[^[:space:]]', false)`, 'hasExtraText')
+      .getRawMany<PolicyCandidate>();
+  }
+
+  /** 상세 정책 조회 */
+  async findById(manager: EntityManager, id: string): Promise<Policy | null> {
+    return manager.getRepository(Policy).findOneBy({ id });
+  }
+
+  /** 정책의 카테고리 고유값 조회. (NULL·공백 값은 제외) */
+  async findCategories(manager: EntityManager): Promise<string[]> {
+    const rows = await manager.getRepository(Policy).createQueryBuilder('policy')
+      .select('policy.category', 'category')
+      .distinct(true)
+      .where(`policy.category ~ '[^[:space:]]'`)
+      .orderBy('policy.category', 'ASC')
+      .getRawMany<{ category: string }>();
+
+    return rows.map(({ category }) => category);
+  }
+
   /** 정책 해시 조회 */
   async findContentHashes(
     manager: EntityManager,

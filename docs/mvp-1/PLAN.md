@@ -2,7 +2,7 @@
 
 > 저장 위치: `docs/mvp-1/PLAN.md`  
 > 기준: `docs/PRD.md`(PRD v0.8), `docs/ARCHITECTURE.md`(v0.3), `docs/mvp-1/SPEC.md`(v0.4), `docs/AGENT_RULES.md`  
-> 상태: **Step 1~27 완료 · Step 28~57 미착수** · 작성일: 2026-10-16
+> 상태: **Step 1~28 완료 · Step 29~57 미착수** · 작성일: 2026-10-16
 
 ## 목차
 
@@ -254,8 +254,8 @@
 
 ### Step 28. 정책 읽기 Repository
 
-- [ ] `PolicyRepository`에 목록 평가에 필요한 **경량 컬럼 조회**, UUID 단건 조회, 분야 고유값 조회를 구현한다.
-- [ ] 상세 조회에서만 원본 JSON·긴 본문을 사용하는 경계를 유지한다.
+- [x] `PolicyRepository`에 목록 평가에 필요한 **경량 컬럼 조회**, UUID 단건 조회, 분야 고유값 조회를 구현한다.
+- [x] 상세 조회에서만 원본 JSON·긴 본문을 사용하는 경계를 유지한다.
 
 **검증/완료:** 정렬에 필요한 조회수·기간·자격 조건을 조회할 수 있고 없는 UUID는 결과 없음으로 반환한다. **커밋:** `feat: 정책 조회 전용 Repository 메서드 구성`.
 
