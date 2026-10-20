@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~31 완료, Step 32~57 미착수**
+최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~32 완료, Step 33~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1415,8 +1415,36 @@ git diff --check
 
 핵심 코드 읽는 순서: `packages/shared/src/meta.ts` → `meta/controllers/meta.controller.ts` → `meta/meta.module.ts` → `policies/repositories/policy.repository.ts`의 `findCategories` → `meta-options.integration.spec.ts`.
 
-## 37. 다음 작업을 위한 상태
+## 37. Step 32 구현·검증 결과
 
-다음 요청 대상은 **Step 32: 신청 상태 계산 순수 함수**다. Step 32~57은 시작하지 않았다. 지역·분야·취업·학력 선택용 메타 API를 완료했다. 실제 정책 **3,390건**·지역 **537건**·운영 로그를 보존했다.
+작업 규칙을 먼저 읽고 PLAN Step 32·SPEC 6장과 T-12~T-15·선행 완료 기록·실제 코드를 대조했다. Step 31은 `9b59876` (`feat: 정책 분야와 자격 선택 목록 API 구현`)으로 커밋되어 있었고 착수 시 변경사항은 없었다. Step 32만 진행했으며 이번 변경은 커밋하지 않았다.
 
-Step 31 추천 커밋 메시지: `feat: 정책 분야와 자격 선택 목록 API 구현`.
+### 구현과 실제 결정사항
+
+- `policies/application-status.ts`에 `getKoreaToday(now)`와 `calculateApplicationStatus(period, today)`를 추가했다. 호출자가 전달한 시각을 `Asia/Seoul` 달력 날짜로 바꾸고, 정규화된 신청기간과 오늘 날짜로 공용 `ApplicationStatus`를 반환한다. 함수 안에서 현재 시각·DB·외부 API를 읽지 않고 입력도 변경하지 않는다. 이후 검색·상세 서비스에서 요청 시각을 한 번 정해 사용할 수 있다.
+- 명시적 마감 `0057003`은 날짜 누락·잘못된 날짜·역전·복수 기간·미래 시작일보다 우선한다. 상시 `0057002`는 양쪽 날짜가 없고 원문도 없거나 빈 값·`상시`인 경우 `ALWAYS_OPEN`이다. 유한 날짜가 붙었거나 다른 미해석 기간 원문이 남으면 `UNKNOWN`으로 보류한다. 상시와 날짜의 충돌 사례는 테스트에 기록했다.
+- 나머지는 단일 유효 시작·종료일을 검증하고 시작 전 `UPCOMING`, 접수 중 8일 이상 `OPEN`, 7~0일 `CLOSING_SOON`, 종료 다음날부터 `CLOSED`로 계산한다. 코드가 없거나 미확인 코드여도 유효한 단일 날짜가 있으면 날짜 기반으로 판단한다. 누락·날짜 역전·형식 오류는 `UNKNOWN`이다.
+- 복수 기간·형식 오류를 수집 단계에서 양쪽 날짜 NULL로 남기는 기존 변환과 연결해 검증했다. 원문에서 일부 날짜를 다시 추출하지 않는다. 달력 일수는 UTC 날짜 좌표로 비교해 서버 시간대·일광 절약 시간의 영향을 피하며 1~99년의 자바스크립트 연도 보정도 피했다. 잘못 전달된 오늘 날짜·기준 시각은 `RangeError`로 드러낸다.
+- API 응답 계약·DB·Migration·패키지·모듈 경계·SPEC 변경은 없다. PLAN과 SUMMARY만 갱신했다. 검색 API의 기본 마감 제외·`includeClosed` 필터 연결은 후속 Step 범위로 남겼고 이번에는 T-13의 전제인 `CLOSED` 계산을 검증했다. SPEC_SUMMARY 파일은 없다.
+
+### 실행 방법과 실제 검증
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/application-status.spec.ts
+TZ=America/Los_Angeles npm run test --workspace apps/api -- --runTestsByPath test/application-status.spec.ts test/youth-center-eligibility-transform.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+git diff --check
+```
+
+- 신규 상태 계산 테스트 **59개 통과**. 시작 전·시작일·종료 8/7/0일 전·종료 다음날, 하루 접수, 상시·명시적 마감·미확인 코드, 누락·역전·복수 기간·형식 오류, 윤년·월말·연말·작은 연도, 한국 자정 직전/직후와 입력 불변성을 확인했다.
+- 미국 서부 시간대로 실행한 신규 테스트와 기존 자격·기간 변환 테스트 **2개 모음·133개 통과**. 한국과 다른 서버 시간대에서도 상태가 한국 자정에 바뀐다. 공용·API·웹 **타입 검사 통과**, API **빌드 통과**, `git diff --check` **통과**.
+- Docker Compose 상태 조회는 Docker 소켓 권한 부족(`permission denied`)으로 실패했다. 전체 DB·HTTP 회귀 테스트는 미실행이며, 이번 검증은 DB에 접근하지 않는 관련 단위 테스트로 수행했다. DB·운영 로그·컨테이너·볼륨은 변경하지 않았다. 운영 이미지 빌드·재배포도 수행하지 않았다.
+
+핵심 코드 읽는 순서: `policies/application-status.ts` → `application-status.spec.ts` → 기존 `youth-center-policy.transform.ts`의 `readApplicationDates`.
+
+## 38. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 33: 나이 조건 판정**이다. Step 33~57은 시작하지 않았다. Step 32의 여섯 가지 상태 계산 함수를 완료했으며 검색·상세 API 연결은 후속 Step에 남아 있다.
+
+Step 32 추천 커밋 메시지: `feat: 날짜 기준 신청 상태 계산 구현`.
