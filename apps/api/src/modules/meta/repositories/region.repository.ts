@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { RegionOption } from '@youth-kkultong/shared';
 import type { EntityManager } from 'typeorm';
-import { Region } from './entities/region.entity';
+import { Region } from '../entities/region.entity';
 
 @Injectable()
 export class RegionRepository {

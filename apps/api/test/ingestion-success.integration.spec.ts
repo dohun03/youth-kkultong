@@ -13,9 +13,9 @@ import { IngestionService } from '../src/modules/ingestion/services/ingestion.se
 import { YouthCenterClient } from '../src/modules/ingestion/youth-center/youth-center.client';
 import type { YouthCenterRawPolicy } from '../src/modules/ingestion/youth-center/youth-center-response.schema';
 import { Policy } from '../src/modules/policies/entities/policy.entity';
-import { PoliciesWriteService } from '../src/modules/policies/policies-write.service';
-import type { PreparedPolicyBatches } from '../src/modules/policies/policies-write.service';
-import { PolicyRepository } from '../src/modules/policies/policy.repository';
+import { PoliciesWriteService } from '../src/modules/policies/services/policies-write.service';
+import type { PreparedPolicyBatches } from '../src/modules/policies/services/policies-write.service';
+import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 import sample from './fixtures/youth-center-policy.json';
 
 /** 기존 원본 샘플·최소 필드·날짜와 코드가 있는 정책을 서로 다른 페이지에 배치한다. */

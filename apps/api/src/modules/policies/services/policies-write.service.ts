@@ -1,10 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
 import type { EntityManager, QueryRunner } from 'typeorm';
-import { ENVIRONMENT } from '../../common/environment';
-import type { Environment } from '../../common/environment';
-import type { Policy } from './entities/policy.entity';
-import { PolicyRepository } from './policy.repository';
+import { ENVIRONMENT } from '../../../common/environment';
+import type { Environment } from '../../../common/environment';
+import type { Policy } from '../entities/policy.entity';
+import { PolicyRepository } from '../repositories/policy.repository';
 
 /** DB에 저장할 NEW, CHANGED 정책 데이터 타입 */
 export type PolicyWriteInput = Omit<Policy, 'id' | 'createdAt' | 'updatedAt' | 'sourceRegisteredAt' | 'sourceModifiedAt'> & {

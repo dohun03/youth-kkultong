@@ -11,7 +11,7 @@ import snapshot from '../src/database/seeds/regions.json';
 import { seedRegions } from '../src/database/seeds/regions.seed';
 import { createApplication } from '../src/main';
 import { Region } from '../src/modules/meta/entities/region.entity';
-import { RegionRepository } from '../src/modules/meta/region.repository';
+import { RegionRepository } from '../src/modules/meta/repositories/region.repository';
 
 describe('지역 메타 API의 실제 PostgreSQL·HTTP 검증', () => {
   const schema = `step30_test_${randomUUID().replaceAll('-', '')}`;

@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-20 (Asia/Seoul) · **Step 1~30 완료, Step 31~57 미착수**
+최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~30 완료, Step 31~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1371,8 +1371,23 @@ git diff --check
 
 핵심 코드 읽는 순서: `packages/shared/src/meta.ts` → `region.repository.ts` → `meta.controller.ts`·`meta.module.ts` → `meta-regions.integration.spec.ts` → `api-exception.filter.ts`의 DB 연결 오류 분류.
 
-## 35. 다음 작업을 위한 상태
+## 35. 사용자 요청에 따른 모듈 내부 폴더 정리
+
+2026-10-21 사용자 요청으로 Step 30 구현을 `d20f94d` (`feat: 지역 선택 목록 API 구현`)로 먼저 커밋하고 `meta`·`policies`의 파일 위치를 역할별로 정리했다. Step 31 기능은 진행하지 않았다.
+
+- `meta/meta.controller.ts` → `meta/controllers/meta.controller.ts`
+- `meta/region.repository.ts` → `meta/repositories/region.repository.ts`
+- `policies/policy.repository.ts` → `policies/repositories/policy.repository.ts`
+- `policies/policies-write.service.ts` → `policies/services/policies-write.service.ts`
+
+기존 `entities/`·`ingestion/services/`와 일관되게 Controller·Repository·Service를 구분한다. 모듈 등록 파일과 `eligibility-codes.ts`는 루트에 유지하며 아직 사용하지 않는 역할의 빈 폴더는 추가하지 않았다. 모듈 간 책임·공개 API·DB·기능은 바꾸지 않았고, 이동한 네 파일은 import 경로를 제외한 구현 본문이 기존과 같음을 별도 비교했다. 모듈 등록·수집 서비스·관련 테스트·독립 CLI 검증 fixture의 경로도 함께 수정했다. ARCHITECTURE 6장의 디렉터리 구성을 동기화했으며 이전 Step 기록의 파일 위치는 당시 경로다.
+
+검증은 Step 30과 같은 Docker 테스트 명령으로 실행했다. **전체 35개 모음·790개 통과**, `NEXT_TELEMETRY_DISABLED=1 npm run typecheck` **공용·API·웹 통과**, `npm run build --workspace apps/api`·`git diff --check` **통과**. 기존 정책 **3,390건**·지역 **537건**과 전체 행 지문이 테스트 전후 동일했다. 기존 DB 컨테이너·운영 로그·볼륨을 변경하지 않았다. 폴더 이동만 수행해 새 테스트는 추가하지 않았고 운영 Docker 이미지 재빌드·재배포는 하지 않았다.
+
+핵심 코드 읽는 순서: `meta/meta.module.ts` → `meta/controllers/meta.controller.ts` → `meta/repositories/region.repository.ts` → `policies/policies.module.ts` → `policies/services/policies-write.service.ts` → `policies/repositories/policy.repository.ts`.
+
+## 36. 다음 작업을 위한 상태
 
 다음 요청 대상은 **Step 31: 분야·자격 코드 메타 API**다. Step 31~57은 시작하지 않았다. 현행 지역 메타 API까지 완료했으며 분야 고유값 조회는 Step 28, 취업·학력 공식 서버 코드표는 Step 29에서 준비했다. 실제 정책 **3,390건**·지역 **537건**·운영 로그를 보존했다.
 
-Step 30 추천 커밋 메시지: `feat: 지역 선택 목록 API 구현`.
+Step 30 구현은 커밋 완료했으며, 폴더 정리는 `refactor: 메타와 정책 모듈의 파일을 역할별 폴더로 정리`로 커밋한다.

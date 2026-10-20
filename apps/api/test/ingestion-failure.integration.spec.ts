@@ -14,8 +14,8 @@ import { YouthCenterClient } from '../src/modules/ingestion/youth-center/youth-c
 import type { YouthCenterRawPolicy } from '../src/modules/ingestion/youth-center/youth-center-response.schema';
 import * as hashing from '../src/modules/ingestion/youth-center/youth-center-policy.hash';
 import { Policy } from '../src/modules/policies/entities/policy.entity';
-import { PoliciesWriteService } from '../src/modules/policies/policies-write.service';
-import { PolicyRepository } from '../src/modules/policies/policy.repository';
+import { PoliciesWriteService } from '../src/modules/policies/services/policies-write.service';
+import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 
 describe('수집 중간 실패와 전체 롤백의 실제 PostgreSQL 검증', () => {
   const schema = `step27_test_${randomUUID().replaceAll('-', '')}`;

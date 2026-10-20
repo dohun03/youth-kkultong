@@ -3,9 +3,9 @@ import { QueryFailedError } from 'typeorm';
 import { parseEnvironment } from '../src/common/environment';
 import { createYouthCenterPolicyContentHash } from '../src/modules/ingestion/youth-center/youth-center-policy.hash';
 import { transformYouthCenterPolicy } from '../src/modules/ingestion/youth-center/youth-center-policy.transform';
-import { PoliciesWriteService } from '../src/modules/policies/policies-write.service';
-import type { PolicyWriteInput } from '../src/modules/policies/policies-write.service';
-import { PolicyRepository } from '../src/modules/policies/policy.repository';
+import { PoliciesWriteService } from '../src/modules/policies/services/policies-write.service';
+import type { PolicyWriteInput } from '../src/modules/policies/services/policies-write.service';
+import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 
 /** 테스트용 정책 데이터를 만들고 내용 해시 계산 */
 function candidate(id: string, title = '검증 정책', views: string | null = '10'): PolicyWriteInput {

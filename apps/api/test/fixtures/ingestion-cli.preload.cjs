@@ -51,7 +51,7 @@ globalThis.fetch = async () => {
 };
 
 if (process.env.INGESTION_TEST_MODE === 'SAVE_PAUSE') {
-  const { PolicyRepository } = require('../../src/modules/policies/policy.repository.ts');
+  const { PolicyRepository } = require('../../src/modules/policies/repositories/policy.repository.ts');
   const originalUpsert = PolicyRepository.prototype.upsertPolicies;
   let firstBatch = true;
   PolicyRepository.prototype.upsertPolicies = async function (manager, policies) {

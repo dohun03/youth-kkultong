@@ -1,7 +1,7 @@
 import { Controller, Get, Inject } from '@nestjs/common';
 import type { RegionOption } from '@youth-kkultong/shared';
 import { DataSource } from 'typeorm';
-import { RegionRepository } from './region.repository';
+import { RegionRepository } from '../repositories/region.repository';
 
 /** 조건 선택에 필요한 메타 데이터 제공 API */
 @Controller('meta')

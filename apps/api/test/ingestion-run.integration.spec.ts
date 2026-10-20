@@ -13,8 +13,8 @@ import type { IngestionLogEntry } from '../src/modules/ingestion/services/ingest
 import { IngestionService } from '../src/modules/ingestion/services/ingestion.service';
 import { YouthCenterClient } from '../src/modules/ingestion/youth-center/youth-center.client';
 import { Policy } from '../src/modules/policies/entities/policy.entity';
-import { PoliciesWriteService } from '../src/modules/policies/policies-write.service';
-import { PolicyRepository } from '../src/modules/policies/policy.repository';
+import { PoliciesWriteService } from '../src/modules/policies/services/policies-write.service';
+import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 
 /** 2건씩 나눈 3개 정책의 정상 API 응답 생성 */
 function page(pageNum: number) {

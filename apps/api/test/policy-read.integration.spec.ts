@@ -4,7 +4,7 @@ import { loadEnvironment } from '../src/common/environment';
 import { createDataSource } from '../src/database/data-source';
 import { CreatePolicies1792162800000 } from '../src/database/migrations/1792162800000-create-policies';
 import { Policy } from '../src/modules/policies/entities/policy.entity';
-import { PolicyRepository } from '../src/modules/policies/policy.repository';
+import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 
 describe('정책 읽기의 실제 PostgreSQL 검증', () => {
   const schema = `step28_test_${randomUUID().replaceAll('-', '')}`;

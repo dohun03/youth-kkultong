@@ -8,9 +8,9 @@ import { IngestionLockService } from '../src/modules/ingestion/services/ingestio
 import { createYouthCenterPolicyContentHash } from '../src/modules/ingestion/youth-center/youth-center-policy.hash';
 import { transformYouthCenterPolicy } from '../src/modules/ingestion/youth-center/youth-center-policy.transform';
 import { Policy } from '../src/modules/policies/entities/policy.entity';
-import { PoliciesWriteService } from '../src/modules/policies/policies-write.service';
-import type { PolicyWriteInput } from '../src/modules/policies/policies-write.service';
-import { PolicyRepository } from '../src/modules/policies/policy.repository';
+import { PoliciesWriteService } from '../src/modules/policies/services/policies-write.service';
+import type { PolicyWriteInput } from '../src/modules/policies/services/policies-write.service';
+import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 
 /** 원본 변환과 해시 계산을 마친 테스트 정책 생성 */
 function candidate(id: string, title = '검증 정책', views = '10', fields: Record<string, unknown> = {}): PolicyWriteInput {

@@ -167,15 +167,19 @@ youth-kkultong/
 │       ├── src/
 │       │   ├── modules/
 │       │   │   ├── policies/
+│       │   │   │   ├── policies.module.ts
 │       │   │   │   ├── entities/policy.entity.ts
 │       │   │   │   ├── repositories/policy.repository.ts
-│       │   │   │   └── policies-write.service.ts
+│       │   │   │   └── services/policies-write.service.ts
 │       │   │   ├── matching/
 │       │   │   ├── ingestion/         # API 호출·변환·잠금·수집 명령
 │       │   │   │   ├── ingestion.module.ts
 │       │   │   │   ├── services/      # 수집 실행·중복 실행 잠금·결과 로그
 │       │   │   │   └── youth-center/  # 온통청년 API 호출·응답 검증·변환·해시
 │       │   │   └── meta/
+│       │   │       ├── meta.module.ts
+│       │   │       ├── eligibility-codes.ts
+│       │   │       ├── controllers/meta.controller.ts
 │       │   │       ├── entities/region.entity.ts
 │       │   │       └── repositories/region.repository.ts
 │       │   ├── database/              # DB 연결·마이그레이션·시드
@@ -197,6 +201,8 @@ youth-kkultong/
 ```
 
 **공용 타입에는 API 요청·응답 형식만 둔다.** DB 엔티티는 소속 NestJS 모듈에 둔다. 취업·학력 코드의 실제 값·표시명은 서버에서 관리하고 `MetaModule`을 통해 제공한다. 공용 인터페이스는 이 메타 API의 응답 형식을 정의한다.
+
+`meta`·`policies`의 Controller·Repository·Service는 소속 모듈 안의 `controllers/`·`repositories/`·`services/`에 역할별로 둔다. 모듈 등록 파일은 모듈 루트에 유지하고, 해당 역할의 파일이 아직 없으면 빈 폴더는 만들지 않는다.
 
 ## 7. 실행·배포와 보안
 

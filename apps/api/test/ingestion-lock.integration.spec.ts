@@ -6,8 +6,8 @@ import { IngestionLockService } from '../src/modules/ingestion/services/ingestio
 import { IngestionService } from '../src/modules/ingestion/services/ingestion.service';
 import { YouthCenterClient } from '../src/modules/ingestion/youth-center/youth-center.client';
 import { IngestionLogService } from '../src/modules/ingestion/services/ingestion-log.service';
-import { PoliciesWriteService } from '../src/modules/policies/policies-write.service';
-import { PolicyRepository } from '../src/modules/policies/policy.repository';
+import { PoliciesWriteService } from '../src/modules/policies/services/policies-write.service';
+import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 
 /** 작업 중간에서 잠금 보유 여부를 확인하기 위한 수동 완료 신호를 만든다. */
 function createGate(): { promise: Promise<void>; resume: () => void } {

@@ -7,8 +7,8 @@ import { IngestionLogError, IngestionLogService } from '../src/modules/ingestion
 import type { IngestionLogEntry } from '../src/modules/ingestion/services/ingestion-log.service';
 import { IngestionService, YouthCenterCollectionValidationError } from '../src/modules/ingestion/services/ingestion.service';
 import { YouthCenterClient } from '../src/modules/ingestion/youth-center/youth-center.client';
-import { PoliciesWriteService } from '../src/modules/policies/policies-write.service';
-import { PolicyRepository } from '../src/modules/policies/policy.repository';
+import { PoliciesWriteService } from '../src/modules/policies/services/policies-write.service';
+import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 
 describe('수집 실행의 결과 기록과 공통 정리', () => {
   const environment = parseEnvironment({

@@ -3,7 +3,7 @@ import { appendFile, mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { ENVIRONMENT } from '../../../common/environment';
 import type { Environment } from '../../../common/environment';
-import type { PreparedPolicyBatches } from '../../policies/policies-write.service';
+import type { PreparedPolicyBatches } from '../../policies/services/policies-write.service';
 
 /** 테스트에서 로그를 임시 폴더에 저장할 때 사용하는 설정 이름 */
 export const INGESTION_LOG_DIRECTORY = Symbol('INGESTION_LOG_DIRECTORY');
