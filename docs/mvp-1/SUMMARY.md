@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-20 (Asia/Seoul) · **Step 1~25 완료, Step 26~57 미착수**
+최종 확인일: 2026-10-20 (Asia/Seoul) · **Step 1~26 완료, Step 27~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1172,8 +1172,38 @@ docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tm
 
 핵심 코드 읽는 순서: `apps/api/src/import-policies.ts` → `apps/api/src/modules/ingestion/services/ingestion.service.ts`의 `importPolicies` → `apps/api/test/import-policies.spec.ts` → `apps/api/test/import-policies.integration.spec.ts`.
 
-## 29. 다음 작업을 위한 상태
+## 29. Step 26 구현·검증 결과
 
-다음 요청 대상은 **Step 26: 수집 성공 시나리오 통합 테스트**다. Step 26~57은 시작하지 않았다. Step 12~25에서 전체 수집 실행, 단계별 결과 로그, 중복 실행 잠금·공통 정리, 변환·해시·전체 트랜잭션 저장·제한적 DB 재시도와 수동 CLI를 구현·검증했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+사용자 요청에 따라 Step 25의 코드·테스트·문서 7개 파일을 `c34a47a` (`feat: 정책 수동 수집 명령 연결`)로 커밋한 뒤 Step 26만 진행했다. 작업 규칙·PLAN Step 26·SPEC 5장과 T-20·T-21·Step 25 완료 기록을 실제 코드와 대조했다. 선행 작업 누락이나 설계 충돌은 없었다.
 
-Step 25 추천 커밋 메시지: `feat: 정책 수동 수집 명령 연결`.
+### 구현과 실제 결정사항
+
+- `apps/api/test/ingestion-success.integration.spec.ts`에 성공 경로 통합 테스트 7개를 추가했다. HTTP `fetch`만 모의 응답으로 교체하고 잠금 → 페이지별·전체 검증 → 변환·해시 → 단일 트랜잭션 저장 → 파일 기록 → 잠금·연결 반환은 기존 실제 서비스를 사용한다. 제품 코드는 수정하지 않았다.
+- 기존 원본 샘플과 최소 필드·자격 조건·단일 신청기간이 있는 3개 정책을 2페이지로 나눠 첫 수집을 검증한다. 정규화 컬럼·0과 NULL·시간대 없는 시각·코드 배열·DATE·알려지지 않은 중첩 필드까지 원본 JSON 보관을 DB에서 확인한다.
+- 동일 자료를 세 번 추가 수집하는 T-21, 제목·지원 내용 변경 후 재수집, 조회수만 증가하는 T-20, 신규·변경·조회수 변경·동일 자료가 섞인 수집을 각각 검증한다. 매 실행에서 반환 건수와 최종 파일 로그의 확정 건수를 대조하고 `(source, external_id)` 중복이 0건인지 실제 SQL로 확인한다. UUID·최초 저장일을 유지하며, 조회수만 변경되면 내용 해시와 정규화 내용도 유지하고 조회수·원본만 최신화한다.
+- 같은 외부 ID를 가진 다른 출처 정책이 바뀌지 않는지와, 빈 목록을 정상 수집해도 기존 정책을 삭제하지 않는지를 확인한다. 별도 사례에서는 201건을 50건씩 5페이지로 받아 200건 저장 경계를 넘긴 뒤 동일 자료 재수집·전체 조회수 갱신에도 201건과 원본·해시·UUID가 유지되는지 확인한다.
+- 모든 쓰기는 매번 생성한 `step26_test_<임의값>` 스키마와 `/tmp/ingestion-success-*` 임시 로그에 한정한다. 테스트가 끝나면 데이터·스키마·로그·DB 연결을 정리한다. 공개 API·DB 스키마·Migration·외부 패키지·설계 의미는 변경하지 않았고 PLAN·SUMMARY만 갱신했다.
+
+### 실행 방법과 실제 검증
+
+Step 24~25의 Docker 설정·테스트 이미지·로그 격리를 재사용했다. DB는 검증 전에 시작하고 검증 후 다시 정지했다.
+
+```bash
+docker --config /tmp/youth-kkultong-docker-config compose up -d db
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tmp/youth-kkultong-step24-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" api npm run test --workspace apps/api -- --runTestsByPath test/ingestion-success.integration.spec.ts
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tmp/youth-kkultong-step24-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" api npm test
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+docker --config /tmp/youth-kkultong-docker-config compose stop db
+```
+
+- 신규 통합 테스트 **7개 모두 통과**, 실제 DB·HTTP 포함 전체 회귀 테스트 **30개 모음·731개 모두 통과**. `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`: **공용·API·웹 통과**. 테스트·문서만 변경했으므로 API·웹·운영 Docker 이미지 빌드는 재실행하지 않았다.
+- 개발 DB의 `public.policies`는 테스트 전후 **0건**이며 전체 행 내용의 MD5 지문도 같았다. Step 26 임시 스키마가 모두 제거된 것을 별도 SQL로 확인했다. 실제 온통청년 API를 호출하거나 정책을 개발 DB에 적재하지 않았다. 테스트 로그는 검증 후 삭제했으며 운영 로그 볼륨에 수집 기록을 추가하지 않았다.
+- 검증을 위해 시작한 DB는 다시 정지하고 기존 볼륨을 보존했다. 기존 API·웹 서비스와 다른 프로젝트 컨테이너는 기동·교체하지 않았다. `git diff --check`: **통과**. Step 26 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
+
+핵심 코드 읽는 순서: `apps/api/test/ingestion-success.integration.spec.ts`의 `initialPolicies` → `createService`·`expectImport` → T-20·T-21과 혼합·201건 사례. 실제 처리 흐름은 기존 `apps/api/src/modules/ingestion/services/ingestion.service.ts`의 `importPolicies`를 따른다.
+
+## 30. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 27: 수집 실패·동시 실행 통합 테스트**다. Step 27~57은 시작하지 않았다. Step 12~26에서 수집·저장·로그·잠금·CLI와 성공 경로의 전체 수집·재수집 검증을 완료했다. 실제 온통청년 전체 수집은 아직 실행하지 않았으며 개발 정책 테이블은 0건이다. 실제 수집 실행 방법과 로그 위치는 Step 25 기록을 따른다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+
+Step 26 추천 커밋 메시지: `test: 정책 수집과 재수집 정상 경로 검증`.
