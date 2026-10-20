@@ -214,6 +214,7 @@ Content-Type: application/json
 - 링크가 비어 있거나 유효한 HTTP(S) URL이 아니면 목록에서 제거하고, 모든 링크가 없으면 화면에 **‘링크 없음’**을 표시한다.
 - 카테고리는 실제 `policies.category`의 고유값에서 제공한다.
 - 지역은 `MetaModule`의 `RegionRepository`를 통해 `regions` 테이블에서 현행 코드·지역명·상위 관계를 조회한다.
+- 지역 응답은 공용 `RegionOption[]`(`packages/shared/src/meta.ts`)이며 각 항목은 `code`, `name`, `provinceName`, `parentCode`를 담는다. 직접 상위 코드가 없으면 `parentCode=null`이며 코드 오름차순으로 반환한다.
 - 취업·학력은 검증된 **서버 코드표**에서 코드·표시명을 읽어 제공한다. 메타 응답의 형태는 공용 타입으로 관리한다.
 
 **공통 오류:** `400` 요청값 오류, `404` 정책 없음, `500` 내부 오류, `503` DB 연결 불가. 오류 응답은 `{ "code": "...", "message": "..." }` 형식으로 통일한다.

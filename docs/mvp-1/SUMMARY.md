@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-20 (Asia/Seoul) · **Step 1~29 완료, Step 30~57 미착수**
+최종 확인일: 2026-10-20 (Asia/Seoul) · **Step 1~30 완료, Step 31~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1340,8 +1340,39 @@ git diff --check
 
 핵심 코드 읽는 순서: `meta/eligibility-codes.ts` → `test/fixtures/eligibility-codes.official.json` → `test/eligibility-codes.spec.ts`.
 
-## 34. 다음 작업을 위한 상태
+## 34. Step 30 구현·검증 결과
 
-다음 요청 대상은 **Step 30: 지역 선택 메타 API**다. Step 30~57은 시작하지 않았다. 취업·학력 공식 서버 코드표는 Step 29에서 완료했으며 분야·자격 코드 메타 API 연결은 Step 31에서 진행한다. 공식 지역 시드는 Step 9에서 완료했다. 실제 정책 **3,390건**과 운영 로그는 기존 상태로 보존하며, Step 29에서는 DB와 컨테이너를 조작하지 않았다.
+사용자 요청에 따라 Step 29의 코드·테스트·문서 5개 파일을 `3412de6` (`feat: 취업 학력 공식 코드표 구성`)으로 커밋한 뒤 Step 30만 진행했다. 작업 규칙·PLAN Step 30·SPEC의 지역 저장·메타 조회·공통 오류 기준과 선행 Step 완료 상태를 대조했으며 설계 충돌이나 선행 작업 누락은 없었다.
 
-Step 29 추천 커밋 메시지: `feat: 취업 학력 공식 코드표 구성`.
+### 구현과 실제 결정사항
+
+- `MetaModule`에 `RegionRepository`·`MetaController`를 등록하고 `DatabaseModule`을 연결했다. 후속 조건 검증·지역 판정에서도 사용할 수 있도록 지역 Repository를 내보낸다. 단순 조회이므로 전달만 하는 별도 서비스는 추가하지 않았다.
+- `GET /api/v1/meta/regions`는 실제 DB에서 `is_active=true`인 지역만 코드 오름차순으로 조회한다. 코드·공식 이름·시도 그룹·직접 상위 코드를 반환하며 상위가 없으면 `parentCode=null`이다. DB의 `parent_code`를 그대로 사용하고 코드 앞자리 추측이나 시드 파일로 응답을 대체하지 않는다. 결과가 없으면 `200`과 빈 배열이다.
+- 공용 `RegionOption` 타입을 `packages/shared/src/meta.ts`에 추가하고 공용 진입점에서 내보냈다. 엔티티를 직접 반환하지 않고 `{ code, name, provinceName, parentCode }`만 담은 객체로 변환한다. 부모별 추가 조회 없이 한 번의 SQL로 필요한 컬럼을 읽는다.
+- 실제 연결 종료 검증에서 TypeORM이 `TypeORMError('Driver not Connected')`를 발생시키는 것을 확인했다. 기존 공통 필터가 이 오류를 500으로 분류하던 누락을 보완해 SPEC의 DB 연결 불가 `503`을 반환한다. 내부 오류는 기존처럼 원문 노출 없이 `500`이며 DB 오류를 빈 선택지로 숨기지 않는다.
+- SPEC 4.2에 기존 지역 응답 요구사항의 구체적인 필드·공용 타입·순서를 명시했다. 기존 API 의미·DB 스키마·Migration·제품 판정 규칙·패키지·모듈 경계는 변경하지 않았다. PLAN·SUMMARY에 완료 상태와 검증 결과를 반영했다. SPEC_SUMMARY 파일은 없다.
+
+### 실행 방법과 실제 검증
+
+실제 `AppModule`·`MetaModule`·공통 설정을 그대로 사용하며 테스트에서는 DB 연결 대상만 `step30_test_<임의값>` 스키마로 바꿨다. 공식 시드·테스트 값 저장은 해당 스키마에만 한정하고 앱·DB 연결·스키마를 종료 시 정리한다. 기존 DB 컨테이너를 재시작하거나 포트를 변경하지 않았다.
+
+```bash
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f compose.local.yaml -f /tmp/youth-kkultong-step24-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" --volume "$PWD/packages/shared/src:/app/packages/shared/src:ro" api npm test
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+git diff --check
+```
+
+- 신규 지역 DB·HTTP 통합 테스트 **8개**와 공통 오류 회귀 테스트 **1개**를 포함한 전체 **35개 모음·790개 통과**. 공식 537개 중 현행 284개 반환·폐지 253개 DB 보존·장안구 `41111`의 부모 수원시 `41110`·최상위 NULL을 확인했다. DB 값 변경 반영·임의 코드의 명시적 부모 관계 보존·단일 SQL·빈 결과·접두사·HTTP 방식·내부 500·실제 연결 종료 503도 검증했다.
+- 최초 검증에서 부분 엔티티에 남는 undefined 속성과 실제 드라이버 종료 오류의 500 분류를 발견했고 위와 같이 보완한 뒤 전체 회귀 테스트를 다시 통과했다.
+- 공용·API·웹 **타입 검사 통과**, API **빌드 통과**, `git diff --check` **통과**. 웹·운영 Docker 이미지 빌드는 재실행하지 않았다. 운영 API 컨테이너를 재배포한 상태는 아니며 API 실행에는 최신 소스 빌드 또는 이미지 재빌드가 필요하다.
+- 테스트 전후 `public.policies` **3,390건**·전체 행/시각 MD5 **`46a965ded0407e47a7af9816cd3e7b6e`**, `public.regions` **537건**·전체 행 MD5 **`a51e60bd1ddaa0f13f1830ccbf751da2`**로 모두 동일하다. Step 30 임시 스키마 **0개**를 별도 SQL로 확인했다. 실제 외부 API를 호출하거나 운영 수집 로그·볼륨을 변경하지 않았다. DB는 기존 DBeaver용 `127.0.0.1:5433` 포트로 계속 실행 중이다.
+- Step 30 완료를 막는 문제는 없다. 기존 Jest VM Modules·`pg` 경고와 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
+
+핵심 코드 읽는 순서: `packages/shared/src/meta.ts` → `region.repository.ts` → `meta.controller.ts`·`meta.module.ts` → `meta-regions.integration.spec.ts` → `api-exception.filter.ts`의 DB 연결 오류 분류.
+
+## 35. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 31: 분야·자격 코드 메타 API**다. Step 31~57은 시작하지 않았다. 현행 지역 메타 API까지 완료했으며 분야 고유값 조회는 Step 28, 취업·학력 공식 서버 코드표는 Step 29에서 준비했다. 실제 정책 **3,390건**·지역 **537건**·운영 로그를 보존했다.
+
+Step 30 추천 커밋 메시지: `feat: 지역 선택 목록 API 구현`.

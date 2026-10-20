@@ -2,7 +2,7 @@
 
 > 저장 위치: `docs/mvp-1/PLAN.md`  
 > 기준: `docs/PRD.md`(PRD v0.8), `docs/ARCHITECTURE.md`(v0.3), `docs/mvp-1/SPEC.md`(v0.4), `docs/AGENT_RULES.md`  
-> 상태: **Step 1~29 완료 · Step 30~57 미착수** · 작성일: 2026-10-16
+> 상태: **Step 1~30 완료 · Step 31~57 미착수** · 작성일: 2026-10-16
 
 ## 목차
 
@@ -268,8 +268,8 @@
 
 ### Step 30. 지역 선택 메타 API
 
-- [ ] `MetaModule`의 `RegionRepository`로 현행 지역과 부모 관계를 조회한다.
-- [ ] `GET /api/v1/meta/regions`에 코드·이름·상위 관계를 반환한다.
+- [x] `MetaModule`의 `RegionRepository`로 현행 지역과 부모 관계를 조회한다.
+- [x] `GET /api/v1/meta/regions`에 코드·이름·상위 관계를 반환한다.
 
 **검증/완료:** 폐지 코드가 선택 목록에서 빠지고 현행 구·상위 시 관계가 조회된다. **커밋:** `feat: 지역 선택 목록 API 구현`.
 

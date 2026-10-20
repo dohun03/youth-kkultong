@@ -1,7 +1,7 @@
 import { Catch, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import { STATUS_CODES } from 'node:http';
-import { CannotExecuteNotConnectedError, QueryFailedError } from 'typeorm';
+import { CannotExecuteNotConnectedError, QueryFailedError, TypeORMError } from 'typeorm';
 
 // HTTP 503으로 처리할 PostgreSQL·네트워크 연결 오류 코드.
 const connectionErrorCodes = new Set([
@@ -25,6 +25,8 @@ function isDatabaseUnavailable(error: unknown): boolean {
     return true;
   }
   return error instanceof CannotExecuteNotConnectedError
+    // 연결 풀이 종료된 PostgreSQL 드라이버가 실제 조회 시 발생시키는 오류
+    || (cause instanceof TypeORMError && cause.message === 'Driver not Connected')
     || (cause instanceof Error && connectionErrorMessages.has(cause.message));
 }
 

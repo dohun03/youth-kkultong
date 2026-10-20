@@ -1,4 +1,13 @@
 import { Module } from '@nestjs/common';
+import { DatabaseModule } from '../../database/database.module';
+import { MetaController } from './meta.controller';
+import { RegionRepository } from './region.repository';
 
-@Module({})
+/** 지역 조회와 사용자 조건 선택용 메타 API를 등록하는 모듈 */
+@Module({
+  imports: [DatabaseModule],
+  controllers: [MetaController],
+  providers: [RegionRepository],
+  exports: [RegionRepository],
+})
 export class MetaModule {}

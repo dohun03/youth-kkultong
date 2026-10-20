@@ -5,7 +5,7 @@ import { NestFactory } from '@nestjs/core';
 import { createPolicySearchSchema } from '@youth-kkultong/shared/policy-search.schema';
 import type { PolicySearchRequest } from '@youth-kkultong/shared';
 import request from 'supertest';
-import { CannotExecuteNotConnectedError, QueryFailedError } from 'typeorm';
+import { CannotExecuteNotConnectedError, QueryFailedError, TypeORMError } from 'typeorm';
 import { z } from 'zod';
 import { ZodValidationPipe } from '../src/common/zod-validation.pipe';
 import { configureApplication } from '../src/main';
@@ -39,6 +39,7 @@ class ValidationController {
     if (kind === 'http-internal') throw new HttpException(secret, 500);
     if (kind === 'rate-limit') throw new HttpException(secret, 429);
     if (kind === 'disconnected') throw new CannotExecuteNotConnectedError();
+    if (kind === 'driver-disconnected') throw new TypeORMError('Driver not Connected');
     if (kind === 'pool-closed') throw new Error('Cannot use a pool after calling end on the pool');
     if (kind === 'pool-timeout') throw new Error('timeout exceeded when trying to connect');
     if (kind === 'unexpected') throw new Error(secret);
@@ -125,7 +126,7 @@ describe('NestJS 요청 검증·공통 오류 HTTP 통합', () => {
 
   it.each([
     'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', '08006', '53300', '57P01', '57P03',
-    'disconnected', 'http-unavailable', 'terminated', 'terminated-unexpectedly',
+    'disconnected', 'driver-disconnected', 'http-unavailable', 'terminated', 'terminated-unexpectedly',
     'connection-timeout', 'client-closed', 'pool-closed', 'pool-timeout',
   ])(
     'DB 연결 장애·명시적 서비스 불가는 503으로 응답한다: %s', async (kind) => {
