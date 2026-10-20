@@ -1,0 +1,15 @@
+# Windows DBeaver 등 로컬 DB 도구가 기존 DB 볼륨을 조회할 때만 함께 적용한다.
+# 실행: docker compose -f compose.yaml -f compose.local.yaml up -d db
+services:
+  db:
+    ports:
+      - "127.0.0.1:5433:5432"
+    # 내부 전용 네트워크만 연결하면 Docker Desktop에서 포트가 공개되지 않는다.
+    # 공유 app 네트워크 대신 DB만 연결하는 로컬 접속용 네트워크를 사용한다.
+    networks:
+      - database
+      - db_local
+
+networks:
+  db_local:
+    driver: bridge

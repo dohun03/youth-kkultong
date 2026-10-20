@@ -213,6 +213,8 @@ youth-kkultong/
 
 환경변수의 비밀값은 `.env` 또는 운영 비밀 저장소로 전달하며 Git에 커밋하지 않는다. TypeORM의 `synchronize`는 `false`로 고정하고 스키마 변경은 Migration으로 관리한다.
 
+로컬 DBeaver 검수에는 `docker compose -f compose.yaml -f compose.local.yaml up -d db`로 기존 DB의 `5432` 포트를 호스트 `127.0.0.1:5433`에 연결한다. 내부 전용 네트워크만 연결된 DB는 Docker Desktop에서 포트가 공개되지 않아, 이 로컬 설정에서만 DB 전용 `db_local` 네트워크를 추가한다. 공유 `app` 네트워크에는 DB를 연결하지 않으며, 같은 DB 볼륨과 `database` 네트워크를 유지한다. 기본 Compose 구성은 변경하지 않는다. DBeaver에는 호스트 `127.0.0.1`, 포트 `5433`, DB·사용자 `youth_kkultong`, `.env`의 `POSTGRES_PASSWORD`를 입력한다.
+
 ## 8. 검증 기준과 설계 결정
 
 - 정책 재수집 후 `(source, external_id)` 중복이 0건이어야 한다.

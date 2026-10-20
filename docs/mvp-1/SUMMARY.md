@@ -1202,8 +1202,46 @@ docker --config /tmp/youth-kkultong-docker-config compose stop db
 
 핵심 코드 읽는 순서: `apps/api/test/ingestion-success.integration.spec.ts`의 `initialPolicies` → `createService`·`expectImport` → T-20·T-21과 혼합·201건 사례. 실제 처리 흐름은 기존 `apps/api/src/modules/ingestion/services/ingestion.service.ts`의 `importPolicies`를 따른다.
 
-## 30. 다음 작업을 위한 상태
+## 30. 실제 온통청년 API 전체 수집·DB 보존·DBeaver 연결 검증
 
-다음 요청 대상은 **Step 27: 수집 실패·동시 실행 통합 테스트**다. Step 27~57은 시작하지 않았다. Step 12~26에서 수집·저장·로그·잠금·CLI와 성공 경로의 전체 수집·재수집 검증을 완료했다. 실제 온통청년 전체 수집은 아직 실행하지 않았으며 개발 정책 테이블은 0건이다. 실제 수집 실행 방법과 로그 위치는 Step 25 기록을 따른다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+사용자가 실제 API 전체 수집과 저장 데이터·로그 보존, 단계별 결과 보고, Windows DBeaver 접속을 추가 요청했다. Step 27을 진행한 것은 아니며 커밋하지 않았다. 최초 확인에서는 `YOUTH_CENTER_API_KEY`가 없어 중단했고, 사용자가 `.env`에 설정한 뒤 재개했다. 비밀값은 출력하거나 문서에 기록하지 않았다.
+
+### 실제 실행 결과
+
+- 실행: 기존 운영 API 이미지의 독립 CLI에서 `npm run import:policies --workspace apps/api`. 실제 온통청년 API를 호출했으며 모의 응답·테스트 스키마·임시 정책을 사용하지 않았다. 시작 전 적용된 Migration 2개와 `public.policies` 0건을 확인했다.
+- 실행 ID: `d7cc935c-09cb-4d38-9304-31b51e8abd16`. 한국 시간 **2026-10-20 16:04:11.059~16:08:17.156**, 소요 **246.097초**. CLI 종료 코드 **0**, 최종 파일 상태 **SUCCESS**, `saved=true`.
+- 실제 응답 기준 **3,390건·68페이지**를 수집했다. 기본 페이지 크기는 50건이고 마지막 페이지는 40건이다. 8·58페이지에서 각각 HTTP 500이 한 번 발생했으나 해당 페이지의 두 번째 시도에서 성공했다. 전체 HTTP 요청은 **70회**, DB 저장 시도는 **1회**다. 인증·구조·전체 검증·변환·해시·저장의 최종 실패는 없었다.
+- 수집 중 실제 DB에서 전용 연결 PID 72의 Advisory Lock과 열린 트랜잭션 없음, 정책 0건을 확인했다. 모든 페이지 검증·변환·해시 이후 16:08:15.891에 저장 시도를 기록하고, 최대 200건씩 **17개 묶음(200건 × 16 + 190건)**을 전체 트랜잭션 하나로 처리했다. 결과는 **NEW=3390 / CHANGED=0 / UNCHANGED=0**이다. DB의 행 생성 트랜잭션 ID(`xmin`)도 전체에서 1개였다.
+- 저장 후 3,390건 전체의 `raw_json`을 기존 변환·해시 함수에 다시 넣고 실제 DB 컬럼·내용 해시와 대조했다. **정규화 값 불일치 0건, 해시 불일치 0건, 잘못된 원본 JSON 0건, `(source, external_id)` 중복 0건**이다. 최종 로그 기록 후 수집 잠금 0개, PID 72 연결 잔존 0개를 확인했다. 실제 원본 JSON은 정책 테이블에 보존했다.
+
+### 데이터와 로그 보존
+
+- 실제 정책은 **`youth_kkultong` DB의 `public.policies` 3,390건**으로 유지한다. 기존 `youth-kkultong_db_data` 볼륨을 계속 사용했고 DBeaver 포트 설정에 따른 DB 컨테이너 재생성 후에도 같은 볼륨·3,390건을 확인했다. 데이터·테이블·볼륨을 삭제하거나 초기화하지 않았다. DB는 사용자가 바로 조회할 수 있도록 **실행 중**으로 둔다.
+- 로그 원본은 `youth-kkultong_ingestion_logs` 볼륨의 **`/app/logs/policies-import.jsonl`**에 74줄로 보존한다. `RUN_STARTED` → `PAGE_ATTEMPT` 70회 → `SAVE_ATTEMPT` → `WORK_FINISHED` → `RUN_FINISHED`가 기록됐다. 마지막 행은 `SUCCESS`, `saved=true`, 확정 신규 3,390건이다.
+- IDE에서 바로 읽을 수 있도록 저장소 루트 **`logs/policies-import.jsonl`**에도 읽기용 복사본을 만들었다. 이 파일은 이번 실행 시점의 복사본이며 Docker 로그 원본과 자동 동기화하지 않는다. 파일 권한 `0600`·Git 제외·인증키 미포함을 확인했다. 이후 수집 로그의 원본은 계속 Docker 볼륨에 추가된다.
+
+### Windows DBeaver 연결
+
+- 기본 Compose의 DB는 내부 전용 네트워크여서 호스트 포트를 사용할 수 없다. 사용자가 요청한 로컬 조회용 `compose.local.yaml`을 추가해 **`127.0.0.1:5433 → DB:5432`**를 연결했다. 내부 전용 네트워크만으로는 포트 설정이 실제 공개되지 않아 DB만 참여하는 `db_local` 브리지 네트워크를 함께 구성했다. 공유 `app` 네트워크에 DB를 연결하는 방식은 자동 승인 검토에서 접근 범위 확대를 이유로 거절되어 적용하지 않았고, DB 전용 네트워크 대안으로 해결했다.
+- Windows PowerShell의 실제 TCP 연결과 WSL의 PostgreSQL 클라이언트에서 비밀번호 인증·SQL 조회가 모두 성공했다. 적용된 포트가 `127.0.0.1:5433`, `db_local`의 컨테이너가 DB 하나뿐이고 원래 `database` 네트워크가 유지되는 것도 확인했다. DBeaver GUI 자체는 조작하지 않았다.
+- DBeaver에서 새 PostgreSQL 연결을 만들고 **Host=`127.0.0.1`, Port=`5433`, Database=`youth_kkultong`, Username=`youth_kkultong`, Password=로컬 `.env`의 `POSTGRES_PASSWORD`**를 입력한다. 연결 테스트 후 `Schemas → public → Tables → policies`에서 데이터를 조회한다. 컨테이너 IP나 WSL IP를 입력할 필요는 없다.
+- 같은 로컬 구성을 유지한 재기동과 직접 DB 조회 명령은 다음과 같다. `up`은 아래처럼 두 파일을 함께 지정해야 DBeaver 포트 설정을 유지한다.
+
+```bash
+docker compose -f compose.yaml -f compose.local.yaml up -d db
+docker compose exec db psql -U youth_kkultong -d youth_kkultong
+```
+
+```sql
+SELECT count(*) FROM public.policies;
+SELECT external_id, title, view_count, created_at FROM public.policies ORDER BY external_id LIMIT 20;
+SELECT source, external_id, count(*) FROM public.policies GROUP BY source, external_id HAVING count(*) > 1;
+```
+
+실제 실행에서는 앞 Step들과 같은 `/tmp/youth-kkultong-docker-config` 설정을 사용했다. Docker Desktop의 포트 전달 방식은 [Docker 공식 문서](https://docs.docker.com/desktop/features/networking/), 접속 항목은 [DBeaver PostgreSQL 공식 문서](https://dbeaver.com/docs/dbeaver/Database-driver-PostgreSQL/)와 대조했다. `compose.local.yaml`·`.env.example`·`ARCHITECTURE`를 실제 로컬 접속 구성과 맞췄다. 제품 수집 코드·DB 스키마·Migration·패키지는 변경하지 않았다. Compose 구성 확인, 실제 전체 수집, 전체 행 검증, 포트·인증·SQL 검증, `git diff --check`를 수행했다. 이전 Step 26의 테스트·문서 변경도 미커밋 상태로 유지한다.
+
+## 31. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 27: 수집 실패·동시 실행 통합 테스트**다. Step 27~57은 시작하지 않았다. Step 12~26의 구현·성공 경로 테스트에 더해, 실제 온통청년 전체 수집을 완료했고 개발 정책 테이블 **3,390건**과 운영 로그를 보존했다. DB는 DBeaver용 `127.0.0.1:5433` 포트를 적용해 실행 중이다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
 
 Step 26 추천 커밋 메시지: `test: 정책 수집과 재수집 정상 경로 검증`.
