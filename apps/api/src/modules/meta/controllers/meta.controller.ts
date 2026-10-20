@@ -1,6 +1,8 @@
 import { Controller, Get, Inject } from '@nestjs/common';
-import type { RegionOption } from '@youth-kkultong/shared';
+import type { EligibilityCodesResponse, RegionOption } from '@youth-kkultong/shared';
 import { DataSource } from 'typeorm';
+import { PolicyRepository } from '../../policies/repositories/policy.repository';
+import { JOB_OPTIONS, SCHOOL_OPTIONS } from '../eligibility-codes';
 import { RegionRepository } from '../repositories/region.repository';
 
 /** 조건 선택에 필요한 메타 데이터 제공 API */
@@ -9,12 +11,24 @@ export class MetaController {
   constructor(
     @Inject(DataSource) private readonly dataSource: DataSource,
     @Inject(RegionRepository) private readonly regionRepository: RegionRepository,
+    @Inject(PolicyRepository) private readonly policyRepository: PolicyRepository,
   ) {}
 
-  /** 현행 지역의 코드·이름·시도 그룹·직접 상위 관계 목록을 반환 */
+  /** 현행 지역의 관계 목록을 반환 */
   @Get('regions')
   getRegions(): Promise<RegionOption[]> {
-    // 조회 오류는 공통 예외 필터가 처리
     return this.regionRepository.findActive(this.dataSource.manager);
+  }
+
+  /** 카테고리 문자열 배열로 반환 (묶음 분야도 저장된 문자열 그대로) */
+  @Get('categories')
+  getCategories(): Promise<string[]> {
+    return this.policyRepository.findCategories(this.dataSource.manager);
+  }
+
+  /** 검증된 서버 코드표의 취업·학력 선택지를 DB 조회 없이 반환 */
+  @Get('eligibility-codes')
+  getEligibilityCodes(): EligibilityCodesResponse {
+    return { jobCodes: JOB_OPTIONS, schoolCodes: SCHOOL_OPTIONS };
   }
 }

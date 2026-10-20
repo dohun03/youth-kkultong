@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~30 완료, Step 31~57 미착수**
+최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~31 완료, Step 32~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1386,8 +1386,37 @@ git diff --check
 
 핵심 코드 읽는 순서: `meta/meta.module.ts` → `meta/controllers/meta.controller.ts` → `meta/repositories/region.repository.ts` → `policies/policies.module.ts` → `policies/services/policies-write.service.ts` → `policies/repositories/policy.repository.ts`.
 
-## 36. 다음 작업을 위한 상태
+## 36. Step 31 구현·검증 결과
 
-다음 요청 대상은 **Step 31: 분야·자격 코드 메타 API**다. Step 31~57은 시작하지 않았다. 현행 지역 메타 API까지 완료했으며 분야 고유값 조회는 Step 28, 취업·학력 공식 서버 코드표는 Step 29에서 준비했다. 실제 정책 **3,390건**·지역 **537건**·운영 로그를 보존했다.
+작업 규칙·PLAN Step 31·SPEC의 분야·자격 메타 조회·공용 타입 기준과 선행 Step 완료 상태를 확인했다. 폴더 정리는 `465373c` (`refactor: 메타와 정책 모듈의 파일을 역할별 폴더로 정리`)로 커밋 완료된 상태이며 착수 시 변경사항은 없었다. 선행 누락·설계 충돌 없이 Step 31만 진행했고 이번 변경은 커밋하지 않았다.
 
-Step 30 구현은 커밋 완료했으며, 폴더 정리는 `refactor: 메타와 정책 모듈의 파일을 역할별 폴더로 정리`로 커밋한다.
+### 구현과 실제 결정사항
+
+- `MetaModule`에서 기존 `PoliciesModule`을 가져오고 내보내진 `PolicyRepository`를 주입한다. `GET /api/v1/meta/categories`는 Step 28의 `findCategories`를 통해 실제 DB 분야 고유값을 문자열 배열로 반환한다. 중복·NULL·빈 문자열·공백뿐인 값을 제외하고 DB 정렬 순서를 유지한다. `금융･복지･문화`, `참여･기반` 같은 저장 문자열은 하나의 선택지로 유지하며 기호·공백을 임의로 정규화하거나 분리하지 않는다. 정책이 없으면 `200`과 빈 배열이다.
+- `GET /api/v1/meta/eligibility-codes`는 Step 29의 `JOB_OPTIONS`·`SCHOOL_OPTIONS`를 `{ jobCodes, schoolCodes }`로 반환한다. 각 배열은 공식 순서의 `{ code, label }` 10개이고 `0013010`·`0049010` 제한 없음 선택지도 포함한다. DB 조회·실제 외부 API 호출은 하지 않는다.
+- `EligibilityCodeOption`을 서버 파일에서 공용 `packages/shared/src/meta.ts`로 옮기고 `EligibilityCodesResponse`를 추가해 내보냈다. 실제 코드값·한국어 명칭은 계속 서버에만 두며 서버 자료도 공용 타입을 참조한다. SPEC 4.2에 분야 배열·문자열 보존·자격 응답 필드를 구체화했다. DB 스키마·Migration·패키지·판정 규칙 변경은 없고, 기존 모듈 책임을 유지했다.
+- 별도 서비스나 Repository를 중복 추가하지 않고 기존 메타 Controller와 조회 메서드를 연결했다. DB 조회 오류는 기존 공통 필터를 통해 500/503을 반환하며 빈 배열로 숨기지 않는다. 앱이 실행 중인 상태에서 DB 연결이 끊겨도 정적 자격 코드표는 200으로 응답한다. DB 초기화가 필요한 기존 앱 기동 방식은 그대로다.
+
+### 실행 방법과 실제 검증
+
+실제 `AppModule`·`MetaModule`·공통 설정을 사용하고 DB 연결 대상만 `step31_test_<임의값>` 스키마로 교체했다. 정책 쓰기는 해당 임시 스키마에만 수행하며 종료 시 앱·연결·스키마를 정리한다.
+
+```bash
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f compose.local.yaml -f /tmp/youth-kkultong-step24-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" --volume "$PWD/packages/shared/src:/app/packages/shared/src:ro" api npm test
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+git diff --check
+```
+
+- 신규 DB·HTTP 통합 테스트 **12개**, 전체 회귀 테스트 **36개 모음·802개 통과**. 빈 분야·고유값·DB 변경 반영·묶음 분야명 및 서로 다른 가운뎃점 보존·공식 원본 기대값과 자격 응답 일치·자격 조회의 DB 미접근·접두사·HTTP 방식·내부 오류 500·실제 연결 종료 503과 정적 코드표 200을 확인했다. 기존 지역 메타 API도 전체 회귀에서 통과했다.
+- 공용·API·웹 **타입 검사 통과**, API **빌드 통과**, `git diff --check` **통과**. 웹·운영 Docker 이미지 빌드와 운영 재배포는 수행하지 않았다.
+- 테스트 전후 `public.policies` **3,390건**·전체 행/시각 MD5 **`46a965ded0407e47a7af9816cd3e7b6e`**, `public.regions` **537건**·전체 행 MD5 **`a51e60bd1ddaa0f13f1830ccbf751da2`**로 동일하다. Step 31 임시 스키마 **0개**를 별도 SQL로 확인했다. 운영 로그·볼륨·기존 DB 컨테이너·DBeaver 포트는 변경하지 않았다.
+- Step 31 완료를 막는 문제는 없다. 기존 Jest VM Modules·`pg` 경고와 고아 컨테이너 안내는 변경하지 않았다. SPEC_SUMMARY 파일은 없다.
+
+핵심 코드 읽는 순서: `packages/shared/src/meta.ts` → `meta/controllers/meta.controller.ts` → `meta/meta.module.ts` → `policies/repositories/policy.repository.ts`의 `findCategories` → `meta-options.integration.spec.ts`.
+
+## 37. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 32: 신청 상태 계산 순수 함수**다. Step 32~57은 시작하지 않았다. 지역·분야·취업·학력 선택용 메타 API를 완료했다. 실제 정책 **3,390건**·지역 **537건**·운영 로그를 보존했다.
+
+Step 31 추천 커밋 메시지: `feat: 정책 분야와 자격 선택 목록 API 구현`.

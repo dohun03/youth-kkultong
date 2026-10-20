@@ -2,7 +2,7 @@
 
 > 저장 위치: `docs/mvp-1/PLAN.md`  
 > 기준: `docs/PRD.md`(PRD v0.8), `docs/ARCHITECTURE.md`(v0.3), `docs/mvp-1/SPEC.md`(v0.4), `docs/AGENT_RULES.md`  
-> 상태: **Step 1~30 완료 · Step 31~57 미착수** · 작성일: 2026-10-16
+> 상태: **Step 1~31 완료 · Step 32~57 미착수** · 작성일: 2026-10-16
 
 ## 목차
 
@@ -275,8 +275,8 @@
 
 ### Step 31. 분야·자격 코드 메타 API
 
-- [ ] `GET /api/v1/meta/categories`를 실제 정책 대분류 고유값 조회로 제공한다.
-- [ ] `GET /api/v1/meta/eligibility-codes`를 Step 29 코드표의 코드·한국어 명칭으로 제공한다.
+- [x] `GET /api/v1/meta/categories`를 실제 정책 대분류 고유값 조회로 제공한다.
+- [x] `GET /api/v1/meta/eligibility-codes`를 Step 29 코드표의 코드·한국어 명칭으로 제공한다.
 
 **검증/완료:** DB 분야 값과 코드표 응답이 일치하고 공용 응답 계약을 따른다. **커밋:** `feat: 정책 분야와 자격 선택 목록 API 구현`.
 

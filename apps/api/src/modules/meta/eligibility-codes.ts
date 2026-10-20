@@ -1,8 +1,4 @@
-/** 취업·학력 선택지 하나의 공식 코드와 한국어 표시명 */
-export interface EligibilityCodeOption {
-  readonly code: string;
-  readonly label: string;
-}
+import type { EligibilityCodeOption } from '@youth-kkultong/shared';
 
 // 온통청년 공식 API코드정보.xlsx의 '코드정보' 시트(jobCd·schoolCd)를 대조함.
 // 원본 출처·SHA-256과 대조 결과는 docs/mvp-1/SUMMARY.md의 Step 29에 기록.

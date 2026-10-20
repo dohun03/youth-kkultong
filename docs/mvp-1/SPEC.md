@@ -213,9 +213,11 @@ Content-Type: application/json
 - 상세의 긴 설명과 자격 안내는 API 원본에서 매핑된 값을 표시한다. 필요한 추가 필드는 원본 객체를 이용할 수 있다.
 - 링크가 비어 있거나 유효한 HTTP(S) URL이 아니면 목록에서 제거하고, 모든 링크가 없으면 화면에 **‘링크 없음’**을 표시한다.
 - 카테고리는 실제 `policies.category`의 고유값에서 제공한다.
+- 분야 응답은 `string[]`이며 NULL·빈 문자열·공백뿐인 값은 제외하고 DB 값의 오름차순으로 반환한다. `금융･복지･문화` 같은 분야명 전체를 하나의 선택지로 유지하며 결과가 없으면 빈 배열이다.
 - 지역은 `MetaModule`의 `RegionRepository`를 통해 `regions` 테이블에서 현행 코드·지역명·상위 관계를 조회한다.
 - 지역 응답은 공용 `RegionOption[]`(`packages/shared/src/meta.ts`)이며 각 항목은 `code`, `name`, `provinceName`, `parentCode`를 담는다. 직접 상위 코드가 없으면 `parentCode=null`이며 코드 오름차순으로 반환한다.
 - 취업·학력은 검증된 **서버 코드표**에서 코드·표시명을 읽어 제공한다. 메타 응답의 형태는 공용 타입으로 관리한다.
+- 자격 코드 응답은 공용 `EligibilityCodesResponse`(`packages/shared/src/meta.ts`)이며 `jobCodes`, `schoolCodes`에 각각 `{ code, label }` 배열을 담는다. 공식 코드표 순서와 제한 없음 선택지를 포함하며 코드값은 문자열로 유지한다.
 
 **공통 오류:** `400` 요청값 오류, `404` 정책 없음, `500` 내부 오류, `503` DB 연결 불가. 오류 응답은 `{ "code": "...", "message": "..." }` 형식으로 통일한다.
 
