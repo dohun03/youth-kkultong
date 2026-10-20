@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-20 (Asia/Seoul) · **Step 1~28 완료, Step 29~57 미착수**
+최종 확인일: 2026-10-20 (Asia/Seoul) · **Step 1~29 완료, Step 30~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1308,8 +1308,40 @@ git diff --check
 
 핵심 코드 읽는 순서: `policy.repository.ts`의 `PolicyCandidate` → `findCandidates` → `findById`·`findCategories` → `policies.module.ts` → `policy-read.integration.spec.ts`.
 
-## 33. 다음 작업을 위한 상태
+## 33. Step 29 구현·검증 결과
 
-다음 요청 대상은 **Step 29: 취업·학력 코드표 검증과 제공**이다. Step 29~57은 시작하지 않았다. 정책 읽기 Repository까지 완료했으며 검색·상세·메타 API 연결은 해당 후속 Step에서 진행한다. 실제 정책 **3,390건**과 운영 로그는 보존했고 DB는 DBeaver용 `127.0.0.1:5433` 포트로 실행 중이다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+사용자 요청에 따라 Step 28의 코드·테스트·문서 5개 파일을 `697ceee` (`feat: 정책 조회 전용 Repository 메서드 구성`)로 커밋한 뒤 Step 29만 진행했다. 작업 규칙·PLAN Step 29·SPEC의 코드표·입력 검증·제한 없음 기준과 Step 28 완료 기록을 확인했다. 선행 작업 누락이나 설계 충돌은 없었다.
 
-Step 28 추천 커밋 메시지: `feat: 정책 조회 전용 Repository 메서드 구성`.
+### 구현과 실제 결정사항
+
+- `apps/api/src/modules/meta/eligibility-codes.ts`에 공식 취업 선택지 `JOB_OPTIONS` 10개, 학력 선택지 `SCHOOL_OPTIONS` 10개를 서버 자료로 정의했다. 각 항목은 문자열 `code`와 한국어 `label`이며 앞자리 0·공백·문장 부호를 공식 원본과 동일하게 보존한다. TypeScript에서는 읽기 전용 목록·항목으로 제공한다.
+- `JOB_UNRESTRICTED_CODE='0013010'`, `SCHOOL_UNRESTRICTED_CODE='0049010'`을 따로 정의해 '기타'·미확인 코드와 구분했다. 공식 표시명은 `제한없음`이다. 점수·태그 판정은 후속 매칭 Step에서 구현한다.
+- 공식 엑셀의 `코드정보` 시트에서 `jobCd`, `schoolCd`를 Python 표준 라이브러리 `zipfile`·XML 파서로 직접 추출했다. 그룹별 10건·코드 중복 없음과 기존 `docs/api-research/local/official-codes.json`의 코드·표시명 전체 일치를 확인했다. 일부 실제 응답에서 관측되지 않은 코드도 공식 표에 있으면 유지한다.
+- 원본과 독립적으로 추출한 기대값 20개·출처·검증일·원본 SHA-256을 `test/fixtures/eligibility-codes.official.json`으로 보관했다. 조사 폴더는 Git 제외 대상이므로 테스트가 로컬 조사 자료나 네트워크에 의존하지 않도록 했다. 기존 요청 스키마에 이 서버 표를 전달했을 때 전체 20개 선택지가 허용되고 미확인·다른 그룹·잘못된 형식이 거부되는지 검증했다. 실제 검색 API 연결은 후속 Step 범위다.
+- 메타 API 제공은 Step 31 범위이므로 이번에는 컨트롤러·공용 응답 타입·DB·Migration·새 패키지를 추가하지 않았다. SPEC·제품 동작·모듈 경계 변경 없이 PLAN·SUMMARY에 결과를 반영했다.
+
+### 출처 대조
+
+원본은 기존 조사에서 확보한 [온통청년 공식 API 코드정보](https://www.youthcenter.go.kr/downloadform/API%EC%BD%94%EB%93%9C%EC%A0%95%EB%B3%B4.xlsx)의 로컬 파일 `docs/api-research/official/API코드정보.xlsx`이며, SHA-256은 **`81cd89ddc7bd49dfa9e53dec4f093bc8372d241505b5e8374cbfaf018245a5ef`**이다. **2026-10-20은 로컬 원본 대조일**이며 이번 Step에서 원격 최신본을 다시 내려받은 것은 아니다. 공식 코드의 업무 의미를 추가로 추측하거나 기존 보수적 판정 규칙을 바꾸지 않았다.
+
+### 실제 검증
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/eligibility-codes.spec.ts test/policy-search-validation.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+git diff --check
+```
+
+- 공식 엑셀 직접 추출·기존 조사 JSON 대조: **취업 10개·학력 10개 일치, 중복·누락 0개**.
+- 신규 코드표 테스트 **31개**, 기존 검색 요청 검증 **60개**, 합계 **2개 모음·91개 통과**. 원본 기대값·명칭·순서·중복·제한 없음 구분·전체 코드 허용·잘못된 입력 거부를 확인했다.
+- 공용·API·웹 **타입 검사 통과**, API **빌드 통과**, `git diff --check` **통과**.
+- DB·HTTP 통합 테스트 및 웹·운영 Docker 이미지 빌드는 미실행이다. 정적 서버 코드표와 그 단위 테스트만 추가한 범위이며 DB·네트워크·기존 제품 실행 경로를 변경하지 않았다. DB에 접속하거나 실제 정책·수집 로그·컨테이너를 변경하지 않았다. Step 29 완료를 막는 문제는 없다.
+
+핵심 코드 읽는 순서: `meta/eligibility-codes.ts` → `test/fixtures/eligibility-codes.official.json` → `test/eligibility-codes.spec.ts`.
+
+## 34. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 30: 지역 선택 메타 API**다. Step 30~57은 시작하지 않았다. 취업·학력 공식 서버 코드표는 Step 29에서 완료했으며 분야·자격 코드 메타 API 연결은 Step 31에서 진행한다. 공식 지역 시드는 Step 9에서 완료했다. 실제 정책 **3,390건**과 운영 로그는 기존 상태로 보존하며, Step 29에서는 DB와 컨테이너를 조작하지 않았다.
+
+Step 29 추천 커밋 메시지: `feat: 취업 학력 공식 코드표 구성`.

@@ -1,0 +1,91 @@
+{
+  "sourceUrl": "https://www.youthcenter.go.kr/downloadform/API%EC%BD%94%EB%93%9C%EC%A0%95%EB%B3%B4.xlsx",
+  "sourceFile": "docs/api-research/official/API코드정보.xlsx",
+  "sourceSha256": "81cd89ddc7bd49dfa9e53dec4f093bc8372d241505b5e8374cbfaf018245a5ef",
+  "sheet": "코드정보",
+  "verifiedOn": "2026-10-20",
+  "jobCd": [
+    {
+      "code": "0013001",
+      "label": "재직자"
+    },
+    {
+      "code": "0013002",
+      "label": "자영업자"
+    },
+    {
+      "code": "0013003",
+      "label": "미취업자"
+    },
+    {
+      "code": "0013004",
+      "label": "프리랜서"
+    },
+    {
+      "code": "0013005",
+      "label": "일용근로자"
+    },
+    {
+      "code": "0013006",
+      "label": "(예비)창업자"
+    },
+    {
+      "code": "0013007",
+      "label": "단기근로자"
+    },
+    {
+      "code": "0013008",
+      "label": "영농종사자"
+    },
+    {
+      "code": "0013009",
+      "label": "기타"
+    },
+    {
+      "code": "0013010",
+      "label": "제한없음"
+    }
+  ],
+  "schoolCd": [
+    {
+      "code": "0049001",
+      "label": "고졸 미만"
+    },
+    {
+      "code": "0049002",
+      "label": "고교 재학"
+    },
+    {
+      "code": "0049003",
+      "label": "고졸 예정"
+    },
+    {
+      "code": "0049004",
+      "label": "고교 졸업"
+    },
+    {
+      "code": "0049005",
+      "label": "대학 재학"
+    },
+    {
+      "code": "0049006",
+      "label": "대졸 예정"
+    },
+    {
+      "code": "0049007",
+      "label": "대학 졸업"
+    },
+    {
+      "code": "0049008",
+      "label": "석·박사"
+    },
+    {
+      "code": "0049009",
+      "label": "기타"
+    },
+    {
+      "code": "0049010",
+      "label": "제한없음"
+    }
+  ]
+}
