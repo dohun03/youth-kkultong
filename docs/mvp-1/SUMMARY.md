@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-20 (Asia/Seoul) · **Step 1~24 완료, Step 25~57 미착수**
+최종 확인일: 2026-10-20 (Asia/Seoul) · **Step 1~25 완료, Step 26~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1121,8 +1121,59 @@ docker --config /tmp/youth-kkultong-docker-config compose stop db
 
 핵심 코드 읽는 순서: `apps/api/src/modules/ingestion/services/ingestion.service.ts`의 `importPolicies` → `ingestion-log.service.ts`의 `write` → `ingestion-lock.service.ts`의 `finally` → `apps/api/test/ingestion-run.integration.spec.ts`.
 
-## 28. 다음 작업을 위한 상태
+## 28. Step 25 구현·검증 결과
 
-다음 요청 대상은 **Step 25: 수동 수집 CLI 연결**이다. Step 25~57은 시작하지 않았다. Step 12~24에서 전체 수집 실행 메서드, 단계별 결과 로그, 중복 실행 잠금·공통 정리, 변환·해시·전체 트랜잭션 묶음 저장과 제한적 DB 재시도를 구현·검증했다. `npm run import:policies` 명령과 CLI 종료 코드는 아직 없다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+작업 규칙을 먼저 읽고 PLAN Step 25, SPEC 5.1~5.4, Step 24의 완료 기록과 실제 수집 서비스를 대조했다. 선행 작업 누락이나 설계 충돌은 없었고 착수 시 작업 트리는 깨끗했다. Step 25의 CLI 연결·검증만 진행했으며 커밋은 실행하지 않았다.
 
-Step 24 추천 커밋 메시지: `feat: 정책 수집 오류 로그와 자원 정리 통합`.
+### 구현과 실제 결정사항
+
+- `apps/api/src/import-policies.ts`에서 `NestFactory.createApplicationContext(AppModule)`으로 웹 API와 같은 모듈·DB 설정을 사용한다. HTTP 서버나 포트를 열지 않고 `IngestionService.importPolicies`를 한 번 호출한다. 수집·검증·변환·해시·저장·잠금·로그의 기존 업무 규칙은 유지한다.
+- API 작업공간에 `import:policies`를 추가하고 루트 명령도 해당 작업공간으로 연결했다. 기존 Migration·시드처럼 빌드된 JavaScript를 실행하므로 로컬에서는 API를 먼저 빌드한다. 운영 API 이미지에는 빌드 결과와 명령이 함께 포함되며 TypeScript 실행 도구나 새 패키지를 요구하지 않는다.
+- 종료 코드는 **성공 `0`, 최종 실패 `1`, 중복 실행 `2`**다. 성공은 신규/변경/동일 건수를, 중복은 실행을 건너뛴 사실을 출력한다. 수집 서비스가 잠금·전용 연결을 반환한 뒤 `app.close()`로 연결 풀까지 닫고 최종 메시지를 출력한다. 컨텍스트 종료가 실패하면 성공·중복 결과 대신 실패 메시지와 코드 `1`을 반환한다.
+- `process.exit()`로 강제 종료하지 않고 `process.exitCode`를 설정한다. `abortOnError=false`로 NestJS 초기화 오류도 CLI에서 처리한다. NestJS 로그 수준은 `warn`만 허용해 원본 초기화 오류·스택의 노출을 막고 기존 `FILE_LOG_FAILED` 경고는 유지한다. CLI의 오류 메시지에는 원본 예외·SQL·접속 URL·인증키를 넣지 않는다. 확정 뒤 정리에 실패할 수도 있으므로 실패 메시지에서 데이터가 롤백됐다고 단정하지 않는다.
+- 공개 API·DB 스키마·Migration·외부 패키지·설계 의미는 변경하지 않았다. PLAN 완료 표시와 이 SUMMARY만 갱신했으며 종료 코드·실행 방법은 구현 세부 결정으로 기록한다.
+
+### 실행 방법
+
+로컬에서는 루트 `.env` 또는 실행 환경에 `DATABASE_URL`·`YOUTH_CENTER_API_KEY`를 설정하고 DB와 Migration을 준비한 뒤 실행한다.
+
+```bash
+npm run build --workspace apps/api
+npm run import:policies
+# API 작업공간을 직접 지정해도 같은 CLI를 실행한다.
+npm run import:policies --workspace apps/api
+```
+
+Compose에서는 API 이미지 빌드·DB Migration 준비 후 같은 이미지의 별도 컨테이너로 실행할 수 있다. 기존 API 서버를 다시 시작하거나 교체하지 않는다.
+
+```bash
+docker compose run --rm api npm run import:policies --workspace apps/api
+```
+
+테스트는 Step 24의 Docker 설정·테스트 이미지·로그 격리를 재사용했다. Docker 명령의 설정과 테스트 오버레이는 앞 절의 실행 방법을 따른다.
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/import-policies.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+docker --config /tmp/youth-kkultong-docker-config compose build api
+docker --config /tmp/youth-kkultong-docker-config compose -f compose.yaml -f /tmp/youth-kkultong-step24-test.compose.yaml run --rm --no-deps --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" api npm test
+```
+
+### 실제 검증과 남은 문제
+
+- 신규 단위 테스트 **8개**, 실제 PostgreSQL 17 + NestJS 컨텍스트 통합 테스트 **3개** 통과. 정상·중복·수집/초기화/서비스 조회 실패, 정상·실패·중복 후 컨텍스트 종료 실패를 확인했다. 원본 예외를 출력하지 않고 종료 코드와 결과 메시지를 구분한다.
+- 실제 컨텍스트에서 잠금 → 모의 API → 정책 저장 → 작업 결과 기록 → 잠금 해제 → 연결 반환 → 최종 기록 → 연결 풀 종료 → 결과 출력 순서를 확인했다. API 실패 후 잠금 재획득, 중복 실행 시 API 미호출·파일 기록, 컨텍스트 종료 후 `DataSource.isInitialized=false`도 확인했다.
+- 최초 통합 테스트의 Migration 연결에 검증 스키마 검색 경로가 빠져 기존 테이블 생성이 거부됐다. 테이블을 변경하지 않았으며 검증 연결의 `search_path`를 지정해 격리를 바로잡았다. QueryRunner 감시 함수의 매개변수 타입 오류도 수정한 뒤 최종 타입 검사와 전체 테스트를 통과했다.
+- 실제 DB·HTTP 포함 전체 회귀 테스트: **29개 모음·724개 모두 통과**. `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`: **공용·API·웹 통과**. `npm run build --workspace apps/api`: **공용 선행 빌드·API 빌드 통과**. `docker compose build api`: **통과**. 웹 소스 변경이 없어 Next.js 배포 빌드는 재실행하지 않았다.
+- 운영 API 이미지의 별도 임시 컨테이너에서 루트·API 작업공간의 **실제 npm 자식 프로세스 8회**를 실행했다. 각 위치에서 성공 `0`, API 최종 실패 `1`, 다른 DB 연결의 잠금으로 인한 중복 `2`, 환경변수 초기화 실패 `1`을 반환하고 자연 종료했다. 출력의 인증키·DB URL 제외, 파일의 최종 상태, 반복 성공 후 정책 중복 없음도 통과했다. 외부 API만 임시 사전 로딩 스크립트로 대체했고 NestJS 컨텍스트·잠금·저장·연결 종료는 실제 실행했다.
+- 테스트 쓰기는 매번 새 이름의 검증 스키마·임시 로그에 한정했고 종료 시 제거했다. 실제 외부 API는 호출하지 않았으며 개발 정책과 운영 로그 볼륨은 유지했다. 검증을 위해 시작한 DB는 다시 정지하고 기존 볼륨을 유지했다. 기존 API·웹 서비스는 교체하거나 기동하지 않았다.
+- `git diff --check`: **통과**. Step 25 완료를 막는 불일치는 없다. 기존 `pg`·Jest 경고·개발 의존성 점검 과제·고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
+
+핵심 코드 읽는 순서: `apps/api/src/import-policies.ts` → `apps/api/src/modules/ingestion/services/ingestion.service.ts`의 `importPolicies` → `apps/api/test/import-policies.spec.ts` → `apps/api/test/import-policies.integration.spec.ts`.
+
+## 29. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 26: 수집 성공 시나리오 통합 테스트**다. Step 26~57은 시작하지 않았다. Step 12~25에서 전체 수집 실행, 단계별 결과 로그, 중복 실행 잠금·공통 정리, 변환·해시·전체 트랜잭션 저장·제한적 DB 재시도와 수동 CLI를 구현·검증했다. 수집 운영 전 `YOUTH_CENTER_API_KEY` 설정과 기존 개발 도구의 후속 검토는 남아 있다. 공식 지역 시드는 Step 9에서 완료했으며 취업·학력 공식 코드표는 Step 29에서 준비한다.
+
+Step 25 추천 커밋 메시지: `feat: 정책 수동 수집 명령 연결`.

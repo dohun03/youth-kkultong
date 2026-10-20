@@ -21,7 +21,8 @@
     "test": "npm run test --workspace apps/api",
     "migration:run": "npm run migration:run --workspace apps/api",
     "migration:show": "npm run migration:show --workspace apps/api",
-    "seed:regions": "npm run seed:regions --workspace apps/api"
+    "seed:regions": "npm run seed:regions --workspace apps/api",
+    "import:policies": "npm run import:policies --workspace apps/api"
   },
   "devDependencies": {
     "typescript": "6.0.2"
