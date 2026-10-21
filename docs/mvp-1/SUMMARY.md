@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~32 완료, Step 33~57 미착수**
+최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~33 완료, Step 34~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1443,8 +1443,34 @@ git diff --check
 
 핵심 코드 읽는 순서: `policies/application-status.ts` → `application-status.spec.ts` → 기존 `youth-center-policy.transform.ts`의 `readApplicationDates`.
 
-## 38. 다음 작업을 위한 상태
+## 38. Step 33 구현·검증 결과
 
-다음 요청 대상은 **Step 33: 나이 조건 판정**이다. Step 33~57은 시작하지 않았다. Step 32의 여섯 가지 상태 계산 함수를 완료했으며 검색·상세 API 연결은 후속 Step에 남아 있다.
+사용자 요청으로 Step 32의 코드·테스트·문서 4개 파일을 `bdfdd2f` (`feat: 날짜 기준 신청 상태 계산 구현`)로 먼저 커밋했다. 사용자 변경 주석도 그대로 포함했다. 작업 규칙·PLAN Step 33·SPEC 7.1~7.2와 T-02~T-05·선행 완료 상태·실제 코드 및 ARCHITECTURE의 매칭 책임을 대조했고 설계 충돌이나 선행 누락은 없었다. Step 33만 진행했으며 이번 변경은 커밋하지 않았다.
 
-Step 32 추천 커밋 메시지: `feat: 날짜 기준 신청 상태 계산 구현`.
+### 구현과 실제 결정사항
+
+- 설계에 예정된 `matching` 폴더에 `age-match.ts`를 추가했다. `checkAge(policy, age)`는 최소·최대 나이만 받아 `MATCHED`(부합), `EXCLUDED`(나이 항목 불일치), `UNKNOWN`(확인 필요), `NOT_PROVIDED`(사용자 미입력)를 반환하는 순수 함수다. 이 결과는 서버 내부 타입이며 API 계약에는 추가하지 않았다. DB·외부 호출·현재 시각 조회·입력 수정은 하지 않는다.
+- 정책 구간은 SPEC 그대로 정수 `1 <= ageMin <= ageMax <= 120`만 유효하다. 양 끝 나이를 포함하며, 같은 나이만 허용하는 구간도 판정한다. `0~0`, 한쪽 또는 양쪽 NULL, 음수·0, 역전, 121·999 등의 비정상 상한, 소수·비유한 수는 `UNKNOWN`이다. 수집에서 빈 문자열·공백이 NULL로 변환되는 기존 동작도 연결해 검증했다.
+- 사용자 나이가 `undefined`면 정책 구간과 무관하게 `NOT_PROVIDED`로 먼저 반환한다. 미입력을 확인 필요나 불일치로 섞지 않아 후속 종합 판정에서 점수·태그·제외를 건너뛸 수 있다. 사용자 나이는 기존 요청 스키마가 먼저 검증하지만 내부에서 1~120 정수 이외의 값으로 호출해도 `RangeError`로 드러낸다.
+- `EXCLUDED`는 나이 항목의 불일치 결과이며 최종 목록 제외를 직접 수행하지 않는다. 추가 자격·참여 제한 설명이 있을 때 제외를 보류하는 T-04와 최종 점수·태그 처리는 계획된 Step 37의 책임으로 남겼다. NestJS 모듈 등록·서비스·새 패키지를 미리 추가하지 않았다.
+- API·DB·Migration·공용 타입·SPEC 변경 없이 PLAN 완료 표시와 SUMMARY를 갱신했다. SPEC_SUMMARY 파일은 없다.
+
+### 실행 방법과 실제 검증
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/age-match.spec.ts test/youth-center-eligibility-transform.spec.ts test/policy-search-validation.spec.ts test/application-status.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+git diff --check
+```
+
+- 신규 나이 판정 테스트 **55개**, 기존 수집 자격·기간 변환·검색 입력 검증·신청 상태 계산을 포함해 **4개 모음·248개 모두 통과**. T-02·T-03의 나이 항목 결과, T-05, 경계 나이·단일 나이 구간·사용자 미입력·오류 입력·수집 변환 연계·추가 설명과 항목 판정의 분리·입력 불변성을 확인했다.
+- 공용·API·웹 **타입 검사 통과**, API **빌드 통과**, `git diff --check` **통과**. DB·HTTP 변경이 없는 순수 함수 작업이므로 전체 DB·HTTP 통합 테스트와 운영 Docker 이미지 빌드·재배포는 수행하지 않았다. DB·운영 로그·컨테이너·볼륨을 변경하지 않았다.
+
+핵심 코드 읽는 순서: `matching/age-match.ts` → `age-match.spec.ts` → 기존 `youth-center-policy.transform.ts`의 `readAge`.
+
+## 39. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 34: 취업 조건 판정**이다. Step 34~57은 시작하지 않았다. 나이 항목 순수 함수를 완료했으며 종합 제외·점수·태그는 Step 37, 검색·상세 API 연결은 후속 Step 범위다.
+
+Step 33 추천 커밋 메시지: `feat: 정책 나이 조건 판단 구현`.
