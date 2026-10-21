@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~39 완료, Step 40~57 미착수**
+최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~40 완료, Step 41~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1626,8 +1626,34 @@ git diff --check
 
 핵심 코드 읽는 순서: `policies/policy-search-candidates.ts` → `policy-search-candidates.spec.ts` → 기존 `policies/application-status.ts`·`matching/evaluate-policy.ts`.
 
-## 45. 다음 작업을 위한 상태
+## 45. Step 40 구현·검증 결과
 
-다음 요청 대상은 **Step 40: 정렬·페이지네이션 결과 조립**이다. Step 40~57은 시작하지 않았다. 검색 후보의 상태·분야·마감·자격 필터 조합을 완료했으며 전체 정렬 후 페이지 분리와 검색·상세 API 연결은 후속 Step 범위다.
+사용자 요청으로 Step 39의 코드·테스트·문서 4개 파일을 `962ae81` (`feat: 정책 검색 필터와 매칭 처리 연결`)로 먼저 커밋했다. 작업 규칙·PLAN Step 40·SPEC 3장·4.1·8.1~8.2와 T-01·T-22·선행 완료 상태·실제 후보 필터와 정렬 함수를 대조했고 충돌이나 선행 누락은 없었다. Step 40만 진행했으며 이번 변경은 커밋하지 않았다.
 
-Step 39 추천 커밋 메시지: `feat: 정책 검색 필터와 매칭 처리 연결`.
+### 구현과 실제 결정사항
+
+- `policies/policy-search-response.ts`에 `buildPolicySearchResponse(candidates, request)`를 추가했다. Step 39에서 필터·판정을 통과한 전체 후보와 검증된 요청을 받아 기존 `sortPolicies`로 모두 정렬한 다음 페이지를 나누고 공용 `PolicySearchResponse`를 반환하는 순수 함수다. DB·외부 API·현재 시각에 접근하거나 입력을 수정하지 않는다.
+- 사용자 나이·취업·학력·지역 중 하나라도 입력되면 기본 `recommended`, 없으면 `popular`다. 분야만 지정하거나 마감 포함만 지정한 경우·빈 조건 객체·모든 조건 필드가 `undefined`인 경우는 조건 없음이다. 조건 없는 맞춤순 요청은 `popular`로 전환하고 실제 적용값을 `appliedSort`에 반영한다. 수동 인기순·마감순·최신순은 조건 유무와 무관하게 유지한다.
+- 페이지 기본값은 1, 크기는 20이며 최대 50이다. 전체 필터·정렬 후 총건수와 `Math.ceil(total / limit)`로 페이지 수를 계산한다. 결과 0건이면 `totalPages=0`, 초과 페이지는 요청 페이지·총건수를 유지한 빈 목록이다. 초과 여부를 먼저 확인해 매우 큰 유효 페이지 번호에서도 불필요한 오프셋 곱셈을 피한다. 잘못된 내부 페이지·크기는 임의 보정하지 않고 `RangeError`로 드러낸다.
+- 카드 필드는 명시적으로 옮겨 내부 외부 ID·조건·추가 설명 플래그를 응답에 섞지 않는다. 신청기간 원문은 `applicationPeriodText`에 그대로, 누락된 지원 요약은 공용 문자열 타입에 맞춰 빈 문자열로 반환한다. 기간 원문 NULL은 유지한다. 태그 배열도 복사해 응답 변경이 입력 후보에 영향을 주지 않게 했다.
+- API·DB·Migration·패키지·공용 타입·SPEC 변경 없이 PLAN 완료 표시와 SUMMARY를 갱신했다. 실제 요청 검증·DB 후보 조회·검색 HTTP 진입점 연결은 예정된 Step 41에 남겼다. SPEC_SUMMARY 파일은 없다.
+
+### 실행 방법과 실제 검증
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/policy-search-response.spec.ts test/policy-search-candidates.spec.ts test/sort-policies.spec.ts test/application-status.spec.ts test/evaluate-policy.spec.ts test/region-match.spec.ts test/school-match.spec.ts test/job-match.spec.ts test/age-match.spec.ts test/policy-search-validation.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+git diff --check
+```
+
+- 신규 응답 조립 테스트 **38개**, 관련 회귀를 포함해 **10개 모음·487개 모두 통과**. T-01의 조건별 기본 정렬과 인기순 전환, 수동 정렬 유지, 기본 20건·크기 1/50 경계·마지막 페이지·배수 건수·0건·큰 초과 페이지를 확인했다. T-22는 실제 후보 필터·점수·정렬을 연결해 분야·마감·나이로 제외한 뒤 전역 정렬의 21~40번째를 반환하는지 검증했다. 카드 필드·NULL·태그 보존, 잘못된 페이지 검증, 입력 불변성과 태그 배열 독립성도 확인했다.
+- 공용·API·웹 **타입 검사 통과**, API **빌드 통과**, `git diff --check` **통과**. DB·HTTP 변경이 없는 순수 함수 조합이므로 전체 DB·HTTP 통합 테스트와 운영 Docker 이미지 빌드·재배포는 수행하지 않았다. DB·운영 로그·컨테이너·볼륨은 변경하지 않았다.
+
+핵심 코드 읽는 순서: `policies/policy-search-response.ts` → `policy-search-response.spec.ts` → 기존 `policies/policy-search-candidates.ts`·`matching/sort-policies.ts`.
+
+## 46. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 41: 정책 검색 API 연결**이다. Step 41~57은 시작하지 않았다. 조회된 후보의 필터·판정·정렬·페이지 분리·공용 응답 조립까지 완료했으며 DB 조회·요청 검증·검색 API의 실제 연결은 다음 Step 범위다.
+
+Step 40 추천 커밋 메시지: `feat: 정렬 후 정책 페이지네이션 결과 구성`.
