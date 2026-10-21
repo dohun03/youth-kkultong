@@ -9,7 +9,7 @@ export function buildPolicySearchResponse(
 ): PolicySearchResponse {
   const page = request.page ?? 1;
   const limit = request.limit ?? 20;
-  // 요청 스키마가 먼저 검증하지만 내부에서도 잘못된 페이지를 정상 결과로 숨기지 않는다.
+  // 잘못된 page, limit 검증
   if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(limit) || limit < 1 || limit > 50) {
     throw new RangeError('페이지는 1 이상 정수, 페이지 크기는 1~50 사이 정수여야 합니다.');
   }

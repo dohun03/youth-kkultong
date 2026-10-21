@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~40 완료, Step 41~57 미착수**
+최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~41 완료, Step 42~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1652,8 +1652,39 @@ git diff --check
 
 핵심 코드 읽는 순서: `policies/policy-search-response.ts` → `policy-search-response.spec.ts` → 기존 `policies/policy-search-candidates.ts`·`matching/sort-policies.ts`.
 
-## 46. 다음 작업을 위한 상태
+## 46. Step 41 구현·검증 결과
 
-다음 요청 대상은 **Step 41: 정책 검색 API 연결**이다. Step 41~57은 시작하지 않았다. 조회된 후보의 필터·판정·정렬·페이지 분리·공용 응답 조립까지 완료했으며 DB 조회·요청 검증·검색 API의 실제 연결은 다음 Step 범위다.
+사용자 요청으로 Step 40의 코드·테스트·문서 4개 파일을 `b2a3fc0` (`feat: 정렬 후 정책 페이지네이션 결과 구성`)로 먼저 커밋했다. 작업 규칙·PLAN Step 41·SPEC 3~4장·기존 검증기·모듈 의존 관계·지역 및 정책 Repository를 확인했고 선행 누락이나 명세 충돌은 없었다. Step 41만 진행했으며 이번 변경은 커밋하지 않았다. 작업 중 사용자가 수정한 후보 조합·응답 조립 파일의 주석은 그대로 보존했다.
 
-Step 40 추천 커밋 메시지: `feat: 정렬 후 정책 페이지네이션 결과 구성`.
+### 구현과 실제 결정사항
+
+- `policies/controllers/policies.controller.ts`와 `policies/services/policies-search.service.ts`를 추가했다. `POST /api/v1/policies/search`는 생성 작업의 기본 201 대신 명시적 200으로 공용 `PolicySearchResponse`를 반환한다. 기존 상태·필터·종합 판정·정렬·페이지 조립 함수를 연결했으며 이 규칙들을 중복 구현하지 않았다.
+- 요청 시작 시 한국 오늘 날짜를 한 번 정하고 `RegionRepository.findActive`로 현행 지역·부모 관계를 한 번 읽는다. 같은 조회 결과로 공용 `createPolicySearchSchema`의 지역 허용 목록과 매칭용 조회표를 준비한다. 취업·학력은 기존 공식 코드표를 사용한다. 공통 `ZodValidationPipe`를 재사용해 자료형·범위·폐지 지역·미확인 코드 검증 실패를 고정된 400으로 반환하며 이때 정책 후보는 조회하지 않는다. 지역 허용 목록이 필요하므로 입력 검증 전 지역 SELECT는 수행한다.
+- 검증 성공 시 `PolicyRepository.findCandidates`로 경량 후보를 한 번 읽고 순수 함수 흐름을 실행한다. 정상 검색의 SQL은 후보 수와 무관하게 지역 SELECT 1회·정책 SELECT 1회이며 조건 원문을 DB나 로그에 저장하지 않는다. 서비스가 요청·메타 자료를 인스턴스 필드에 보관하거나 캐시하지 않는다. DB 연결 오류·내부 오류는 기존 공통 필터의 503·500으로 전달한다.
+- `PoliciesModule`이 기존 `MetaModule`에서 내보낸 지역 저장소를 사용하도록 연결했다. 메타 분야 조회의 기존 역방향 참조는 양쪽 `forwardRef`로 지연 등록하고 Repository는 원래 소유 모듈에 한 번씩 등록한다. 모듈 경계·새 패키지·DB·Migration·공용 응답 계약 변경은 없다. ARCHITECTURE의 메타 분야 조회 설명을 실제 Repository 사용과 맞추고 검색의 지역 조회·모듈 연결을 기록했다. SPEC과 SPEC_SUMMARY는 변경하지 않았다(SPEC_SUMMARY 파일 없음).
+
+### 실행 환경과 실제 검증
+
+처음에는 Docker Desktop이 꺼져 Docker 명령을 사용할 수 없었다. 로컬 PostgreSQL 18 임시 기동도 실행 환경의 소켓 제한으로 실패했고 제품 DB로 사용하지 않았다. 사용자가 Docker Desktop을 켠 후 기존 `youth-kkultong-db-1` PostgreSQL 17 컨테이너만 `docker start`로 시작했다. DB 설정·볼륨·DBeaver 포트는 바꾸지 않았다. 기존 테스트 이미지와 소스 읽기 전용 마운트를 사용하며 테스트 로그는 별도 `/tmp/youth-kkultong-step41-test-logs`에 격리했다.
+
+새 통합 테스트는 실제 `AppModule`을 사용하고 DB 연결만 `step41_test_<임의값>` 스키마로 교체한다. 테스트 스키마에만 Migration·공식 지역 시드·정책을 저장하며 종료 시 앱·연결·스키마를 정리한다.
+
+```bash
+docker compose -f compose.yaml -f compose.local.yaml -f /tmp/youth-kkultong-step41-test.compose.yaml run --rm --no-deps --pull never --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" --volume "$PWD/packages/shared/src:/app/packages/shared/src:ro" api npm test
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+git diff --check
+```
+
+- 신규 DB·HTTP 통합 테스트 **32개**, 전체 회귀 **46개 모음·1,261개 모두 통과**. 정상 200·3.5점과 공용 카드, 분야·마감·자격 필터, 추가 자격·참여 제한 설명의 제외 보류와 공백 처리, 지역 불일치 유지, DB 지역 폐지의 다음 요청 반영, 전체 정렬 후 페이지 분리, 조건 없는 맞춤순 전환을 확인했다. 잘못된 자료형·범위·코드·JSON은 공통 400이고 정책 조회가 없으며 잘못된 접두사·방식은 404다. 실제 연결 종료 503과 내부 오류 500도 검증했다.
+- 사용자 조건 미저장은 검색 중 실제 SQL이 SELECT뿐인 것, SQL·매개변수에 입력 표식이 없는 것, 정책 전체 행 지문 불변, 수집 파일 로그 호출 없음·파일 내용 불변, 기본 Logger 호출 없음으로 확인했다. 초기 개인정보 검사 테스트의 ORM 순환 참조 직렬화 오류는 검사 대상을 SQL·매개변수로 한정해 수정한 뒤 전체 회귀에서 통과했다.
+- 공용·API·웹 **타입 검사 통과**, API **빌드 통과**, `git diff --check` **통과**. 운영 Docker 이미지 재빌드·API 및 웹 재배포는 하지 않았다. 기존 VM Modules·고아 컨테이너 안내는 변경하지 않았다.
+- 테스트 전후 `public.policies` **3,390건**·전체 행 JSON MD5 **`02575d9d37be7670ec17d32181b1f902`**, `public.regions` **537건**·전체 행 JSON MD5 **`9321528ac6944aff3cfb0c706feebd70`**로 모두 동일했다. `step41_test_%` 임시 스키마 **0개**를 별도 SQL로 확인했다. 운영 로그·볼륨은 변경하지 않았고 기존 DB 컨테이너는 실행 상태로 유지했다.
+
+핵심 코드 읽는 순서: `policies/controllers/policies.controller.ts` → `policies/services/policies-search.service.ts` → `policy-search.integration.spec.ts` → `policies.module.ts`·`meta.module.ts`.
+
+## 47. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 42: 정책 상세 조회 API**다. Step 42~57은 시작하지 않았다. 검색 API는 요청 검증·DB 조회·상태·매칭·정렬·페이지 응답까지 연결해 통합 검증했다. 기존 API 컨테이너의 실행 이미지에는 아직 배포하지 않았다.
+
+Step 41 추천 커밋 메시지: `feat: 정책 검색 API 제공`.

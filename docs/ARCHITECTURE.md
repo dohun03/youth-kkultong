@@ -83,7 +83,7 @@ flowchart LR
 | `MetaModule` | DB의 지역 목록(`RegionRepository`)·정책 분야 목록, 서버에 정의한 취업·학력 코드표 제공 |
 | `DatabaseModule` | 공통 TypeORM 연결 설정·Migration·지역 시드 실행 기반 |
 
-`IngestionModule`은 `PoliciesModule`이 외부로 제공하는 정책 저장 서비스를 호출한다. 정책의 저장·수정은 `PoliciesModule`에서 한곳으로 모으고, 각 Repository는 소속 도메인 모듈 안에서 관리한다. `MetaModule`의 분야 목록은 `PoliciesModule`의 조회 서비스를 이용한다. `DatabaseModule`은 DB 연결과 Migration 중심으로 유지한다.
+`IngestionModule`은 `PoliciesModule`이 외부로 제공하는 정책 저장 서비스를 호출한다. 정책의 저장·수정은 `PoliciesModule`에서 한곳으로 모으고, 각 Repository는 소속 도메인 모듈 안에서 관리한다. `MetaModule`의 분야 목록은 `PoliciesModule`이 내보내는 `PolicyRepository`를 이용한다. 정책 검색 서비스는 `MetaModule`이 내보내는 `RegionRepository`로 현행 코드와 부모 관계를 한 번 조회해 요청 검증·지역 판정에 재사용한다. 두 모듈의 상호 참조는 NestJS `forwardRef`(지연 참조)로 연결하며 Repository를 중복 등록하지 않는다. `DatabaseModule`은 DB 연결과 Migration 중심으로 유지한다.
 
 `MatchingModule`의 핵심은 **순수 함수**로 작성한다. 입력은 정규화된 정책과 사용자 조건, 출력은 제외 여부·점수·일치/확인 태그다. DB나 HTTP 호출 없이 테스트할 수 있어야 한다.
 
