@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~36 완료, Step 37~57 미착수**
+최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~37 완료, Step 38~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1548,8 +1548,34 @@ git diff --check
 
 핵심 코드 읽는 순서: `matching/region-match.ts` → `region-match.spec.ts` → 기존 `meta/repositories/region.repository.ts`의 `findActive`.
 
-## 42. 다음 작업을 위한 상태
+## 42. Step 37 구현·검증 결과
 
-다음 요청 대상은 **Step 37: 종합 제외·점수·태그 계산**이다. Step 37~57은 시작하지 않았다. 나이·취업·학력·지역 항목의 순수 함수를 완료했으며 검색·상세 API 연결은 후속 Step 범위다.
+사용자 요청으로 Step 36의 코드·테스트·문서 4개 파일을 `94bfc17` (`feat: 정책 지역 연관성 판단 구현`)로 먼저 커밋했다. 사용자가 다듬은 지역 판정 주석도 그대로 포함했다. 작업 규칙·PLAN Step 37·SPEC 7.1~7.3과 T-02~T-11·선행 완료 상태·실제 항목별 순수 함수와 경량 정책 후보를 대조했고 충돌이나 선행 누락은 없었다. Step 37만 진행했으며 이번 변경은 커밋하지 않았다.
 
-Step 36 추천 커밋 메시지: `feat: 정책 지역 연관성 판단 구현`.
+### 구현과 실제 결정사항
+
+- `matching/evaluate-policy.ts`에 `evaluatePolicy(policy, conditions, activeRegions)`를 추가했다. 기존 나이·취업·학력·지역 판정 함수를 실제 호출해 `{ excluded, score, tags }`를 반환하는 순수 함수다. 입력은 경량 정책 후보와 호환되는 자격 조건·`hasExtraText`, 공용 `UserConditions`, 기존 현행 지역 조회표다. 긴 추가 설명 원문을 다시 읽거나 DB·외부 API·시각에 접근하지 않는다.
+- 나이·취업·학력 중 하나라도 `EXCLUDED`이고 `hasExtraText=false`면 최종 제외한다. 추가 자격·참여 제한 설명이 있다는 기존 Repository의 `hasExtraText=true`면 제외를 보류하고 `EXTRA_REVIEW`와 불일치 항목의 `AGE_REVIEW`·`JOB_REVIEW`·`SCHOOL_REVIEW`를 반환한다. 해당 설명은 존재 여부만 사용하며 내용을 임의 해석하지 않는다.
+- 명확한 `MATCHED`만 나이·취업·학력 각 1점을 주고 지역 함수의 0/0.5점을 합산한다. 점수 범위는 0~3.5점이다. 미입력·제한 없음·확인 필요에는 가점이나 감점이 없고, 추가 설명이나 다른 항목의 확인 필요가 있어도 이미 확인된 부합 점수는 유지한다. 제한 없음은 부합 태그도 만들지 않는다.
+- 태그는 나이·취업·학력 부합 → 추가 조건 → 나이·취업·학력 확인 → 지역 순서로 일정하게 조합한다. 사용자 조건이 없거나 모든 필드가 `undefined`면 정책의 추가 설명·불명확한 조건과 무관하게 `excluded=false`, `score=0`, `tags=[]`다. 지역만 입력한 경우 다른 항목을 점수·확인 태그에 포함하지 않는다.
+- 기존 항목별 검증 오류는 숨기지 않고 그대로 전달한다. 함수는 정책·사용자 조건·지역 조회표를 수정하지 않으며 호출마다 새로운 결과와 태그 배열을 만든다. API·DB·Migration·패키지·공용 타입·SPEC 변경 없이 PLAN과 SUMMARY를 갱신했다. SPEC_SUMMARY 파일은 없다.
+
+### 실행 방법과 실제 검증
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/evaluate-policy.spec.ts test/region-match.spec.ts test/region-seed.spec.ts test/school-match.spec.ts test/job-match.spec.ts test/age-match.spec.ts test/eligibility-codes.spec.ts test/youth-center-eligibility-transform.spec.ts test/policy-search-validation.spec.ts test/application-status.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+git diff --check
+```
+
+- 신규 종합 판정 테스트 **33개**, 관련 회귀를 포함해 **10개 모음·508개 모두 통과**. T-02~T-11의 종합 결과, 최대 3.5점, 항목 간 AND 제외, 추가 설명에 따른 여러 불일치의 확인 전환, 확인된 가점 유지, 제한 없음·누락·미입력, 조건별 점수·태그, 검증 오류 전달, 입력 불변성과 결과 배열의 독립성을 확인했다. 실제 검색 목록의 제외 반영은 후속 Step에서 연결한다.
+- 공용·API·웹 **타입 검사 통과**, API **빌드 통과**, `git diff --check` **통과**. DB·HTTP 변경이 없는 순수 함수 조합이므로 전체 DB·HTTP 통합 테스트와 운영 Docker 이미지 빌드·재배포는 수행하지 않았다. DB·운영 로그·컨테이너·볼륨은 변경하지 않았다.
+
+핵심 코드 읽는 순서: `matching/evaluate-policy.ts` → `evaluate-policy.spec.ts` → 기존 항목별 `age-match.ts`·`job-match.ts`·`school-match.ts`·`region-match.ts`.
+
+## 43. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 38: 목록 정렬 순수 함수**다. Step 38~57은 시작하지 않았다. 항목별 판정과 종합 제외·점수·태그를 완료했으며 검색·상세 API 연결은 후속 Step 범위다.
+
+Step 37 추천 커밋 메시지: `feat: 정책 조건 종합 판단과 일치 점수 계산`.
