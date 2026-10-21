@@ -5,13 +5,14 @@ import { PolicyRepository } from './repositories/policy.repository';
 import { MetaModule } from '../meta/meta.module';
 import { PoliciesController } from './controllers/policies.controller';
 import { PoliciesSearchService } from './services/policies-search.service';
+import { PoliciesDetailService } from './services/policies-detail.service';
 
 /** 정책 조회 클래스와 저장 서비스를 등록하는 모듈 */
 @Module({
   // 메타의 분야 조회는 정책 저장소를, 정책 검색은 메타의 지역 저장소를 사용한다.
   imports: [DatabaseModule, forwardRef(() => MetaModule)],
   controllers: [PoliciesController],
-  providers: [PolicyRepository, PoliciesWriteService, PoliciesSearchService],
+  providers: [PolicyRepository, PoliciesWriteService, PoliciesSearchService, PoliciesDetailService],
   exports: [PolicyRepository, PoliciesWriteService],
 })
 export class PoliciesModule {}

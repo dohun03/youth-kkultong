@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~41 완료, Step 42~57 미착수**
+최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~42 완료, Step 43~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1683,8 +1683,39 @@ git diff --check
 
 핵심 코드 읽는 순서: `policies/controllers/policies.controller.ts` → `policies/services/policies-search.service.ts` → `policy-search.integration.spec.ts` → `policies.module.ts`·`meta.module.ts`.
 
-## 47. 다음 작업을 위한 상태
+## 47. Step 42 구현·검증 결과
 
-다음 요청 대상은 **Step 42: 정책 상세 조회 API**다. Step 42~57은 시작하지 않았다. 검색 API는 요청 검증·DB 조회·상태·매칭·정렬·페이지 응답까지 연결해 통합 검증했다. 기존 API 컨테이너의 실행 이미지에는 아직 배포하지 않았다.
+사용자 요청으로 Step 41의 코드·사용자 주석 수정·통합 테스트·문서 10개 파일을 `5ec8ac1` (`feat: 정책 검색 API 제공`)로 먼저 커밋했다. 작업 규칙·PLAN Step 42·SPEC 3장·4.2·7.2와 T-23·선행 완료 상태·기존 상세 Repository 및 공용 타입을 대조했고 충돌이나 선행 누락은 없었다. Step 42만 진행했으며 이번 변경은 커밋하지 않았다.
 
-Step 41 추천 커밋 메시지: `feat: 정책 검색 API 제공`.
+### 구현과 실제 결정사항
+
+- 기존 `PoliciesController`에 `GET /api/v1/policies/:id`를 추가하고 `PoliciesDetailService`를 등록했다. 공통 Zod 검증기로 UUID를 검사해 DB 접근 전에 400, 기존 `PolicyRepository.findById`가 정책을 찾지 못하면 404를 반환한다. 정상 결과는 공용 `PolicyDetail`이며 원본 JSON·해시·내부 저장 시각은 응답에 섞지 않는다.
+- 요청 시점의 한국 날짜로 신청 상태를 계산한다. 상세 GET은 사용자 조건을 받지 않으므로 점수 0·빈 태그를 반환하고, 마감이나 검색 조건 불일치로 상세 접근을 막지 않는다. 긴 설명·지원 본문·신청기간 원문·추가 자격·참여 제한의 줄바꿈과 공백을 보존한다.
+- 나이는 저장된 최소·최대 수치로 표시하고 양쪽 NULL이면 NULL, 한쪽 누락은 빈 쪽을 유지한다. `0~0`·역전 등을 제한 없음으로 바꾸지 않는다. 취업·학력은 공식 코드표의 명칭, 지역은 DB의 공식 명칭으로 표시하며 미확인 코드는 그대로 둔다. `RegionRepository.findByCodes`를 추가해 필요한 지역을 한 번에 조회하며 과거 정책의 폐지 코드 명칭도 보존한다. 지역 정보가 없으면 해당 조회는 생략한다.
+- 신청·참고 1·참고 2의 원래 순서로 HTTP(S) 절대 URL만 반환한다. 앞뒤 공백은 제거하고 비 HTTP(S)·빈 값·형식 오류·내부 공백/제어문자는 제외한다. 링크를 실제 호출하지 않으며 모두 빠지면 `links=[]`다(T-23).
+- 목록과 상세에서 실제로 공유하는 카드 변환을 `policies/policy-card.ts`의 `toPolicyCard`로 분리하고 기존 검색 응답도 같은 변환을 사용하도록 연결했다. 상세 지원 요약은 PostgreSQL `LEFT(..., 200)`과 동일한 유니코드 문자 단위로 잘라 이모지에서도 목록·상세가 일치한다. 누락된 요약은 빈 문자열이다.
+- 새 상세 경로로 `GET /policies/search`도 `:id` 검증에 들어가므로 UUID 오류 400으로 검증한다. 기존 검색 통합 테스트의 해당 기대값을 이 경로 동작과 SPEC의 UUID 규칙에 맞춰 수정했다. 검색 POST 계약과 동작은 유지했다.
+- DB·Migration·패키지·공용 응답 타입·모듈 경계 변경은 없다. SPEC 4.2에 기존 상세 필드의 표시 방식·사용자 조건 미입력·요약 문자 기준을 구체화하고 PLAN·SUMMARY를 갱신했다. SPEC_SUMMARY 파일은 없다.
+
+### 실행 환경과 실제 검증
+
+기존 PostgreSQL 17 컨테이너와 Step 41의 테스트 이미지·로그 격리를 재사용했다. 신규 통합 테스트는 실제 앱을 실행하고 DB만 `step42_test_<임의값>` 스키마로 교체한다. 해당 스키마에만 Migration·지역 시드·검증 정책을 저장하고 종료 시 앱·연결·스키마를 정리한다.
+
+```bash
+docker compose -f compose.yaml -f compose.local.yaml -f /tmp/youth-kkultong-step41-test.compose.yaml run --rm --no-deps --pull never --volume "$PWD/apps/api/src:/app/apps/api/src:ro" --volume "$PWD/apps/api/test:/app/apps/api/test:ro" --volume "$PWD/packages/shared/src:/app/packages/shared/src:ro" api npm test
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+git diff --check
+```
+
+- 신규 상세 DB·HTTP 통합 테스트 **30개**, 전체 회귀 **47개 모음·1,291개 모두 통과**. 정상 상세 계약·원문 보존, UUID 400과 DB 미접근, 없는 정책 404, 마감·나이 불일치 정책 직접 조회, 모호한 기간, 공식·미확인·폐지 코드 표시, 누락 정보와 링크 없음, 14가지 부적절한 링크 및 유효 링크 혼합을 검증했다. 단일·묶음 조회 횟수, SQL SELECT만 실행, Unicode 요약과 전체 본문, 요청 날짜에 따른 상태 변경, 조회수·저장 시각 불변, 내부 오류 500·실제 연결 종료 503도 확인했다.
+- 공용·API·웹 **타입 검사 통과**, API **빌드 통과**, `git diff --check` **통과**. 운영 이미지 재빌드·API 및 웹 재배포는 하지 않았다.
+- 테스트 전후 기존 `public.policies` **3,390건**·전체 행 JSON MD5 **`02575d9d37be7670ec17d32181b1f902`**, `public.regions` **537건**·전체 행 JSON MD5 **`9321528ac6944aff3cfb0c706feebd70`**로 모두 동일했다. `step42_test_%` 임시 스키마 **0개**를 별도 SQL로 확인했다. 기존 DB 컨테이너·설정·볼륨·운영 로그는 변경하지 않았다.
+
+핵심 코드 읽는 순서: `policies/controllers/policies.controller.ts`의 `detail` → `policies/services/policies-detail.service.ts` → `policies/policy-card.ts` → `policy-detail.integration.spec.ts`.
+
+## 48. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 43: 정책 목록 API 연결**이다. Step 43~57은 시작하지 않았다. 검색·상세 API를 실제 DB·HTTP까지 통합 검증했으며 기존 실행 이미지에는 아직 배포하지 않았다. 다음 Step부터 Next.js 화면 작업 범위다.
+
+Step 42 추천 커밋 메시지: `feat: 정책 상세 조회 API 구현`.

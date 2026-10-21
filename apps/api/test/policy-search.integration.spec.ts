@@ -174,8 +174,8 @@ describe('정책 검색 API 통합', () => {
     await request(app.getHttpServer()).post(path).send({}).expect(404);
   });
 
-  it('GET 검색은 제공하지 않는다', async () => {
-    await request(app.getHttpServer()).get('/api/v1/policies/search').expect(404);
+  it('GET의 search 문자열은 상세 UUID가 아니므로 400이다', async () => {
+    await request(app.getHttpServer()).get('/api/v1/policies/search').expect(400);
   });
 
   it('정상·오류 요청의 사용자 조건을 DB나 파일·기본 로그에 기록하지 않는다', async () => {

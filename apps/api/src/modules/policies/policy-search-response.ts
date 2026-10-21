@@ -1,6 +1,7 @@
 import type { PolicySearchRequest, PolicySearchResponse, SortKey } from '@youth-kkultong/shared';
 import { sortPolicies } from '../matching/sort-policies';
 import type { MatchedPolicyCandidate } from './policy-search-candidates';
+import { toPolicyCard } from './policy-card';
 
 /** 전체 후보를 정렬한 뒤 페이지를 나누고 공용 목록 카드·페이지 정보로 조립한다. */
 export function buildPolicySearchResponse(
@@ -30,19 +31,7 @@ export function buildPolicySearchResponse(
 
   return {
     // 내부 조건·ID·추가 설명 플래그는 노출하지 않고 공용 카드 필드만 명시적으로 옮긴다.
-    items: pageItems.map((policy) => ({
-      id: policy.id,
-      title: policy.title,
-      category: policy.category,
-      subcategory: policy.subcategory,
-      benefitPreview: policy.benefitPreview ?? '',
-      applicationStatus: policy.applicationStatus,
-      applicationPeriodText: policy.applicationPeriodRaw,
-      applicationEndDate: policy.applicationEndDate,
-      viewCount: policy.viewCount,
-      score: policy.score,
-      tags: [...policy.tags],
-    })),
+    items: pageItems.map(toPolicyCard),
     pagination: { page, limit, total, totalPages },
     appliedSort,
   };
