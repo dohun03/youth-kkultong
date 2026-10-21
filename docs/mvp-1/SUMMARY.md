@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-22 (Asia/Seoul) · **Step 1~43 완료, Step 44~57 미착수**
+최종 확인일: 2026-10-22 (Asia/Seoul) · **Step 1~44 완료, Step 45~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1745,8 +1745,39 @@ git diff --check
 
 핵심 코드 읽는 순서: `apps/web/app/policies/page.tsx`의 조회/상태 처리 → 같은 파일의 목록 렌더링 → `apps/web/test/policies-list.e2e.mjs` → `apps/web/app/globals.css`.
 
-## 49. 다음 작업을 위한 상태
+## 49. Step 44 구현·검증 결과
 
-다음 요청 대상은 **Step 44: 정책 카드 컴포넌트**다. Step 44~57은 시작하지 않았다. Step 43 완료를 막는 문제는 없으며 목록 연결과 기본 오류 안내까지 검증했다. 브라우저 테스트 재실행에는 실행 중인 웹·실제 데이터가 있는 API와 Playwright/Chromium 환경이 필요하다. 기존 웹 실행 명령의 standalone 안내와 Compose 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
+사용자 요청으로 검증된 Step 43의 코드·테스트·문서 5개 파일을 `20e4e71` (`feat: 정책 목록 화면과 검색 API 연결`)로 먼저 커밋했다. 작업 규칙·PLAN Step 44·SPEC 3~4장·6장·7.3·8.3과 선행 완료 기록·공용 타입·목록 화면을 대조했고 명세 충돌이나 선행 누락은 없었다. Step 44만 진행했으며 이번 변경은 커밋하지 않았다.
 
-Step 43 추천 커밋 메시지: `feat: 정책 목록 화면과 검색 API 연결`.
+### 구현과 실제 결정사항
+
+- `apps/web/app/policies/policy-card.tsx`에 공용 `PolicyCard` 데이터를 받는 표시 컴포넌트를 추가하고 목록에서 사용한다. 분야·중분류·정책명·지원 요약·신청 상태·신청기간·조회수를 카드 하나에 표시한다. 신청 상태 6종과 일치/확인 태그 9종은 API 코드와 한국어 표시 문구를 분리했다.
+- 지원 요약은 HTML 표시·스크립트/스타일 본문·불필요한 공백을 정리하고 유니코드 문자 기준 120자 이내(생략 기호 포함)로 표시한다. 빈 혜택·분야·기간·NULL 조회수에는 확인 문구를 보여주며 조회수 0은 `0회`로 구분한다. 카드와 원문은 React의 텍스트 출력으로 표시하며 HTML을 실행하지 않는다.
+- 기간은 API 기간 원문을 우선하며 줄바꿈을 보존한다. 원문이 없으면 확인된 종료일, 상시 상태, 확인 필요 안내 순서로 표시한다. `UNKNOWN` 상태와 복수 기간 원문도 함께 보여주고 브라우저에서 날짜·자격·점수를 다시 판정하지 않는다.
+- API가 반환한 일치·확인 태그를 각각 다른 표시로 보여준다. 사용자 조건 입력 UI는 후속 Step 범위이며 이번 검증에서는 검색 응답으로 받은 태그의 표시를 확인했다. 점수 강조·신청 자격 확정 문구는 추가하지 않았고 카드마다 공식 신청처 확인 안내를 한 번 표시한다.
+- 카드 본문을 하나의 Next.js 링크로 구성해 제목·본문 클릭과 키보드 선택으로 `/policies/[id]`에 이동한다. 상세 화면은 예정된 Step 51 범위라 경로 연결까지만 구현·검증했으며 현재 그 경로의 본문은 404다. 미구현 상세 화면의 사전 요청은 끈다.
+- 긴 제목·분야·기간과 여러 태그가 좁은 화면에서도 줄바꿈되도록 카드 스타일을 추가했다. API 계약·DB·Migration·패키지·공용 타입·모듈 경계·SPEC 변경은 없고 PLAN과 SUMMARY를 갱신했다. SPEC_SUMMARY 파일은 없다.
+
+### 실행 환경과 실제 검증
+
+사용자가 실행한 기존 API·웹·DB 컨테이너는 유지하고, 이번 웹 빌드만 `127.0.0.1:3001`에 임시 실행해 기존 4000 포트 API와 연결했다. Step 43의 Playwright·임시 Chromium 라이브러리를 재사용했다. 검증 브라우저의 한글 글꼴 누락은 `/tmp/youth-step44-fonts.conf`를 통해 Windows의 기존 글꼴을 해당 프로세스에서만 읽도록 해결했으며 프로젝트·시스템 글꼴 설치는 변경하지 않았다.
+
+```bash
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+NEXT_TELEMETRY_DISABLED=1 npm run build --workspace apps/web
+NEXT_TELEMETRY_DISABLED=1 node node_modules/next/dist/bin/next start apps/web --hostname 127.0.0.1 --port 3001
+FONTCONFIG_FILE=/tmp/youth-step44-fonts.conf WEB_TEST_URL=http://127.0.0.1:3001 LD_LIBRARY_PATH=/tmp/youth-step43-browser-libs/root/usr/lib/x86_64-linux-gnu PLAYWRIGHT_MODULE=/home/leenohoon/youth-kkultong-before/node_modules/.pnpm/playwright@1.64.0/node_modules/playwright/index.mjs node --test apps/web/test/policies-list.e2e.mjs
+git diff --check
+```
+
+- 공용·API·웹 **타입 검사 통과**, 웹 프로덕션 **빌드 통과**. 기존 브라우저 검증 9개와 카드 검증 6개를 합친 **15개 모두 통과**. 실제 DB 첫 페이지·기본 요청·오류/재시도 회귀, 상태 6종·태그 9종·점수 비강조, 빈 값·조회수 0, 모호한 기간 원문, HTML·공백 정리·이모지 120자 요약, 긴 문구/태그의 모바일 너비, 키보드 상세 경로 이동을 검증했다.
+- 한글 글꼴을 적용한 실제 정책 목록을 데스크톱 1280px·모바일 375px에서 캡처해 확인했다. 해당 환경에서도 15개 테스트가 모두 통과했다. 이미지와 글꼴 설정은 `/tmp`에만 두었다.
+- 읽기 전용 SQL로 검증 전후 기존 `public.policies` **3,390건**, 전체 행·시각 MD5 **`46a965ded0407e47a7af9816cd3e7b6e`**가 동일함을 확인했다. 외부 수집 API·DB 쓰기·Migration·시드는 실행하지 않았다. 이번 3001 포트 검증용 웹은 종료하고 사용자 실행 컨테이너는 유지했다. 운영 이미지 재빌드·재배포는 하지 않았다.
+
+핵심 코드 읽는 순서: `apps/web/app/policies/policy-card.tsx` → `apps/web/app/policies/page.tsx`의 카드 사용 → `apps/web/app/globals.css` → `apps/web/test/policies-list.e2e.mjs`의 카드 검증.
+
+## 50. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 45: 카테고리와 마감 포함 필터**다. Step 45~57은 시작하지 않았다. Step 44 완료를 막는 문제는 없다. 상세 본문은 Step 51, 실제 조건 입력에 따른 태그 확인은 조건 UI 구현 Step에서 이어간다. 기존 실행 중인 웹 이미지에는 Step 44 변경이 반영되지 않았으므로 사용자가 화면에서 보려면 웹을 다시 빌드해야 한다. 브라우저 테스트는 실행 중인 웹·실제 데이터가 있는 API와 Playwright/Chromium 환경이 필요하다.
+
+Step 44 추천 커밋 메시지: `feat: 정책 카드와 조건 확인 태그 표시`.

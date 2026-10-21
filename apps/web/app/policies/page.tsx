@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { PolicySearchRequest, PolicySearchResponse } from '@youth-kkultong/shared';
+import { PolicyCard } from './policy-card';
 
 /** 로딩·실패·정상 응답을 구분해 API 오류를 빈 목록으로 표시하지 않는다. */
 type ListState =
@@ -90,13 +91,11 @@ export default function PoliciesPage() {
             <ul className="policy-list">
               {state.response.items.map((policy) => (
                 <li key={policy.id}>
-                  <h2>{policy.title}</h2>
-                  <p>{policy.benefitPreview || '지원 내용은 추후 상세 안내에서 확인할 수 있어요.'}</p>
+                  <PolicyCard policy={policy} />
                 </li>
               ))}
             </ul>
           )}
-          <p className="page-description">최종 신청 자격 및 접수 여부는 공식 신청처에서 확인하세요.</p>
         </section>
       )}
     </main>
