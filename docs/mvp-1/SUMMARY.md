@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~33 완료, Step 34~57 미착수**
+최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~34 완료, Step 35~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1469,8 +1469,34 @@ git diff --check
 
 핵심 코드 읽는 순서: `matching/age-match.ts` → `age-match.spec.ts` → 기존 `youth-center-policy.transform.ts`의 `readAge`.
 
-## 39. 다음 작업을 위한 상태
+## 39. Step 34 구현·검증 결과
 
-다음 요청 대상은 **Step 34: 취업 조건 판정**이다. Step 34~57은 시작하지 않았다. 나이 항목 순수 함수를 완료했으며 종합 제외·점수·태그는 Step 37, 검색·상세 API 연결은 후속 Step 범위다.
+사용자 요청으로 Step 33의 코드·테스트·문서 4개 파일을 `e7e2322` (`feat: 정책 나이 조건 판단 구현`)로 먼저 커밋했다. 사용자가 다듬은 나이 판정 주석은 그대로 포함했다. 작업 규칙·PLAN Step 34·SPEC 7.1~7.2와 T-07·T-08·선행 완료 상태·기존 나이 함수 및 공식 취업 코드표를 대조했고 충돌이나 선행 누락은 없었다. Step 34만 진행했으며 이번 변경은 커밋하지 않았다.
 
-Step 33 추천 커밋 메시지: `feat: 정책 나이 조건 판단 구현`.
+### 구현과 실제 결정사항
+
+- `matching/job-match.ts`에 `checkJob(policy, jobCode)` 순수 함수를 추가했다. 정책의 정규화된 취업 코드 목록과 사용자 선택 코드만 받아 `MATCHED`·`EXCLUDED`·`UNKNOWN`·`NOT_PROVIDED`·`UNRESTRICTED`를 반환한다. 결과는 서버 내부 타입이며 DB·외부 API·시각에 접근하거나 입력 배열을 수정하지 않는다.
+- 기존 `JOB_OPTIONS`와 `JOB_UNRESTRICTED_CODE`를 재사용했다. 앞자리 0을 유지한 문자열로 정확히 비교하고, `기타`도 공식 유효 코드로 처리한다. 사용자 코드가 없으면 정책과 무관하게 `NOT_PROVIDED`, 공식 코드표 밖의 사용자 값은 기존 요청 검증과 별도로 내부에서도 `RangeError`로 드러낸다.
+- 정책 목록이 NULL·빈 배열이면 `UNKNOWN`이다. 목록에 `0013010` 제한 없음이 있으면 다른 코드·미확인 값과 섞여 있어도 OR 규칙에 따라 `UNRESTRICTED`로 구분한다. 이 결과는 부합 가점 대상인 `MATCHED`와 달라 후속 종합 판정에서 점수·일치 태그를 만들지 않을 수 있다.
+- 제한 없음이 없을 때 확인된 사용자 코드가 하나라도 존재하면 미확인·빈 토큰이 함께 있어도 `MATCHED`다(T-07). 일치 코드가 없으면 모든 정책 코드가 공식 코드표에 있는 경우에만 `EXCLUDED`, 하나라도 미확인·빈 토큰·다른 분류 코드가 있으면 `UNKNOWN`이다(T-08). 정규화는 기존 수집 단계의 책임으로 유지했다.
+- `EXCLUDED`는 취업 항목의 불일치 결과다. 추가 자격·참여 제한 설명에 따른 최종 제외 보류와 점수·태그는 예정된 Step 37에 남겼다. 학력 판정(Step 35)은 진행하지 않았다. API·DB·Migration·패키지·공용 타입·SPEC 변경 없이 PLAN과 SUMMARY를 갱신했다. SPEC_SUMMARY 파일은 없다.
+
+### 실행 방법과 실제 검증
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/job-match.spec.ts test/age-match.spec.ts test/eligibility-codes.spec.ts test/youth-center-eligibility-transform.spec.ts test/policy-search-validation.spec.ts test/application-status.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+git diff --check
+```
+
+- 신규 취업 판정 테스트 **64개**, 관련 회귀를 포함해 **6개 모음·343개 모두 통과**. 단일·복수·중복 코드, 일치 코드의 순서, 미확인·빈 토큰 혼합, 제한 없음 우선, 사용자 미입력, 잘못된 사용자 값, 공식 원본 기대값의 전체 취업 코드, 실제 수집 변환과의 연결, 입력 불변성을 확인했다.
+- 공용·API·웹 **타입 검사 통과**, API **빌드 통과**, `git diff --check` **통과**. DB·HTTP 변경이 없는 순수 함수 작업이므로 전체 DB·HTTP 통합 테스트와 운영 Docker 이미지 빌드·재배포는 수행하지 않았다. DB·운영 로그·컨테이너·볼륨은 변경하지 않았다.
+
+핵심 코드 읽는 순서: `matching/job-match.ts` → `job-match.spec.ts` → 기존 `meta/eligibility-codes.ts`의 취업 코드표.
+
+## 40. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 35: 학력 조건 판정**이다. Step 35~57은 시작하지 않았다. 나이·취업 항목의 순수 함수를 완료했으며 종합 제외·점수·태그는 Step 37, 검색·상세 API 연결은 후속 Step 범위다.
+
+Step 34 추천 커밋 메시지: `feat: 취업 상태 조건 판단 구현`.
