@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~38 완료, Step 39~57 미착수**
+최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~39 완료, Step 40~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1600,8 +1600,34 @@ git diff --check
 
 핵심 코드 읽는 순서: `matching/sort-policies.ts` → `sort-policies.spec.ts` → 기존 `policies/application-status.ts`와 `matching/evaluate-policy.ts`.
 
-## 44. 다음 작업을 위한 상태
+## 44. Step 39 구현·검증 결과
 
-다음 요청 대상은 **Step 39: 정책 검색 후보·필터 조합**이다. Step 39~57은 시작하지 않았다. 신청 상태·항목별 판정·종합 제외·점수·태그·네 가지 정렬 함수를 완료했으며 검색·상세 API 연결은 후속 Step 범위다.
+사용자 요청으로 Step 38의 코드·테스트·문서 4개 파일을 `0f0d1c6` (`feat: 정책 맞춤 인기 마감 최신 정렬 구현`)로 먼저 커밋했다. 작업 규칙·PLAN Step 39·SPEC 1장·4.1·6~8장·선행 완료 상태·경량 후보 조회와 기존 상태·종합 판정 함수를 대조했고 충돌이나 선행 누락은 없었다. Step 39만 진행했으며 이번 변경은 커밋하지 않았다.
 
-Step 38 추천 커밋 메시지: `feat: 정책 맞춤 인기 마감 최신 정렬 구현`.
+### 구현과 실제 결정사항
+
+- `policies/policy-search-candidates.ts`에 `buildSearchCandidates(candidates, request, today, activeRegions)`를 추가했다. 기존 Repository에서 조회한 `PolicyCandidate[]`와 검증된 검색 요청, 요청에서 한 번 정한 한국 오늘 날짜, 현행 지역 조회표를 받는 순수 조합 함수다. 기존 신청 상태·종합 판정 함수를 실제 호출하며 DB 조회를 중복하거나 사용자 조건을 저장·기록하지 않는다.
+- 각 후보에 신청 상태 계산 → 분야 정확 일치 및 마감 필터 → 종합 판정 → 명확한 불일치 제외 → 상태·점수·태그를 붙인 새 후보 반환 순서로 처리한다. 분야가 생략되거나 빈 문자열이면 전체이며 다른 문자열은 공백·문장 부호까지 원래 값 그대로 비교한다. 분야·마감 필터를 통과하지 못한 정책에는 사용자 조건 판정을 실행하지 않는다.
+- 기본 목록은 `CLOSED`만 제외한다. `includeClosed=true`면 마감도 자격 판정 대상으로 포함하되 다른 필터·명확한 자격 불일치는 그대로 적용한다. 예정·상시·기간 확인 필요는 기본 목록에서도 남고, 지역 불일치·폐지 지역은 기존 규칙대로 제외 없이 가점·태그만 반영한다. 추가 설명이 있는 구조화 조건 불일치도 확인 태그와 함께 유지한다.
+- 반환 타입 `MatchedPolicyCandidate`는 경량 후보에 `applicationStatus`·`score`·`tags`를 붙인 서버 내부 자료다. 제외된 후보와 `excluded` 플래그는 반환하지 않는다. 입력 후보·요청·조회표는 변경하지 않고 새 객체와 독립된 태그 배열을 만든다. 상태·판정 오류는 빈 정상 결과로 숨기지 않는다.
+- 정렬이나 페이지 분리는 하지 않고 통과한 전체 후보를 입력 순서대로 반환한다. DB 조회·API 호출의 실제 진입점 연결은 후속 단계에 남겼다. 기존 모듈·Repository·순수 함수, API 계약·DB·Migration·패키지·공용 타입·SPEC 변경 없이 PLAN과 SUMMARY를 갱신했다. SPEC_SUMMARY 파일은 없다.
+
+### 실행 방법과 실제 검증
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/policy-search-candidates.spec.ts test/sort-policies.spec.ts test/application-status.spec.ts test/evaluate-policy.spec.ts test/region-match.spec.ts test/school-match.spec.ts test/job-match.spec.ts test/age-match.spec.ts test/policy-search-validation.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+git diff --check
+```
+
+- 신규 후보·필터 조합 테스트 **25개**, 관련 회귀를 포함해 **9개 모음·449개 모두 통과**. 기본 마감 제외·마감 포함·미래 날짜의 명시적 마감, 나머지 다섯 상태 유지, 분야 정확 일치·빈 분야·없는 분야, 상태 계산과 사전 필터 후 종합 판정 순서, 추가 설명·확인 필요·제한 없음·지역 불일치 유지, 마감 포함 시 자격 제외 유지, 한국 자정의 상태 변경을 확인했다. 55개 후보를 정렬·페이지 분리 없이 유지하고 빈 결과·입력 불변성·태그 배열 독립성·오류 전달도 검증했다.
+- 공용·API·웹 **타입 검사 통과**, API **빌드 통과**, `git diff --check` **통과**. DB·HTTP 변경이 없는 순수 함수 조합이므로 전체 DB·HTTP 통합 테스트와 운영 Docker 이미지 빌드·재배포는 수행하지 않았다. DB·운영 로그·컨테이너·볼륨은 변경하지 않았다.
+
+핵심 코드 읽는 순서: `policies/policy-search-candidates.ts` → `policy-search-candidates.spec.ts` → 기존 `policies/application-status.ts`·`matching/evaluate-policy.ts`.
+
+## 45. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 40: 정렬·페이지네이션 결과 조립**이다. Step 40~57은 시작하지 않았다. 검색 후보의 상태·분야·마감·자격 필터 조합을 완료했으며 전체 정렬 후 페이지 분리와 검색·상세 API 연결은 후속 Step 범위다.
+
+Step 39 추천 커밋 메시지: `feat: 정책 검색 필터와 매칭 처리 연결`.
