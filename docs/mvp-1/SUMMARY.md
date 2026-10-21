@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~35 완료, Step 36~57 미착수**
+최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~36 완료, Step 37~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1521,8 +1521,35 @@ git diff --check
 
 핵심 코드 읽는 순서: `matching/school-match.ts` → `school-match.spec.ts` → 기존 `meta/eligibility-codes.ts`의 학력 코드표.
 
-## 41. 다음 작업을 위한 상태
+## 41. Step 36 구현·검증 결과
 
-다음 요청 대상은 **Step 36: 지역 연관성 점수 판정**이다. Step 36~57은 시작하지 않았다. 나이·취업·학력 항목의 순수 함수를 완료했으며 종합 제외·점수·태그는 Step 37, 검색·상세 API 연결은 후속 Step 범위다.
+사용자 요청으로 당시 전체 변경 5개 파일을 `f363be0` (`feat: 학력 조건 판단 구현`)으로 먼저 커밋했다. 학력 주석을 취업 함수와 맞춘 수정과 사용자의 나이 주석 띄어쓰기 수정도 포함했다. 작업 규칙·PLAN Step 36·SPEC 2.2·7.1~7.2와 T-09~T-11·선행 완료 상태·실제 지역 엔티티와 조회·공식 시드 자료를 대조했고 충돌이나 선행 누락은 없었다. Step 36만 진행했으며 이번 변경은 커밋하지 않았다.
 
-Step 35 추천 커밋 메시지: `feat: 학력 조건 판단 구현`.
+### 구현과 실제 결정사항
+
+- `matching/region-match.ts`에 `checkRegion(policy, regionCode, activeRegions)` 순수 함수를 추가했다. 정책 지역 코드·선택 지역·공식 현행 코드의 부모 조회표만 받고 `{ score: 0 | 0.5, tags }`를 반환한다. 지역 결과에는 제외 필드 자체를 두지 않았다. DB·외부 API·시각에 접근하거나 입력 자료를 변경하지 않는다.
+- 호출자는 기존 `RegionRepository.findActive`의 현행 목록으로 `Map<code, { parentCode }>`를 한 번 준비해 여러 정책에 재사용할 수 있다. 함수에서 정책마다 DB를 조회하거나 제품 실행 시 시드 JSON을 직접 읽지 않는다. 실제 검색 처리 연결은 후속 Step 범위다.
+- 사용자 지역 또는 공식 `parentCode` 사슬로 확인된 상위 지역이 정책 목록에 있으면 `score=0.5`, `REGION_RELATED`를 반환한다(T-10). 구→시→시도처럼 저장된 관계만 따라가고 코드 앞자리·지역 이름·형제 지역·사용자 지역의 하위 지역으로 관련성을 추정하지 않는다. 여러 코드가 일치하거나 중복되어도 0.5점 한 번만 준다.
+- 사용자 미입력은 점수 0·빈 태그다. 현행 코드끼리 다른 지역이면 점수 0·빈 태그로 유지한다(T-09). 정책 NULL·빈 목록·폐지·미확인·빈 토큰은 `REGION_REVIEW`와 점수 0으로 보류한다(T-11). 미확인 값이 섞여 있어도 확인된 관련 코드가 있으면 관련 가점을 우선한다. 사용자가 현행 5자리 코드가 아닌 값을 내부에서 넘기면 `RangeError`로 드러낸다.
+- 조회표의 부모 누락·순환 참조는 무한 반복이나 관계 추측 대신 확인 필요로 반환하되, 이미 확인된 코드와의 일치는 유지한다. 총점·다른 항목과의 태그 조합은 예정된 Step 37에서 처리한다. 기존 나이·취업·학력·메타 조회 코드는 변경하지 않았다.
+- API·DB·Migration·패키지·공용 타입·SPEC 변경 없이 PLAN 완료 표시와 SUMMARY를 갱신했다. SPEC_SUMMARY 파일은 없다.
+
+### 실행 방법과 실제 검증
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/region-match.spec.ts test/region-seed.spec.ts test/school-match.spec.ts test/job-match.spec.ts test/age-match.spec.ts test/eligibility-codes.spec.ts test/youth-center-eligibility-transform.spec.ts test/policy-search-validation.spec.ts test/application-status.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+git diff --check
+```
+
+- 신규 지역 판정 테스트 **48개**, 관련 회귀를 포함해 **9개 모음·475개 모두 통과**. 실제 공식 현행·폐지 코드 스냅샷으로 동일 지역·상위 시·시도·불일치·형제·하위 지역·같은 이름의 폐지 코드·미확인 혼합·중복 가점 방지·미입력을 검증했다. 인위적인 부모 관계로 접두사 추정 금지와 부모 누락·순환 방어를 확인하고 실제 수집 변환 연결·입력 불변성도 검증했다. T-09~T-11의 함수 결과는 확인했으며 실제 검색 목록 유지 연결은 후속 Step에서 검증한다.
+- 공용·API·웹 **타입 검사 통과**, API **빌드 통과**, `git diff --check` **통과**. DB·HTTP 변경이 없는 순수 함수 작업이므로 전체 DB·HTTP 통합 테스트와 운영 Docker 이미지 빌드·재배포는 수행하지 않았다. DB·운영 로그·컨테이너·볼륨은 변경하지 않았다.
+
+핵심 코드 읽는 순서: `matching/region-match.ts` → `region-match.spec.ts` → 기존 `meta/repositories/region.repository.ts`의 `findActive`.
+
+## 42. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 37: 종합 제외·점수·태그 계산**이다. Step 37~57은 시작하지 않았다. 나이·취업·학력·지역 항목의 순수 함수를 완료했으며 검색·상세 API 연결은 후속 Step 범위다.
+
+Step 36 추천 커밋 메시지: `feat: 정책 지역 연관성 판단 구현`.
