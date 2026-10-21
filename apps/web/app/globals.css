@@ -23,6 +23,52 @@ a:focus-visible {
   outline-offset: 5px;
 }
 
+button:focus-visible {
+  outline: 3px solid #926200;
+  outline-offset: 5px;
+}
+
+.retry-button {
+  margin-top: 20px;
+  padding: 10px 20px;
+  border: 1px solid #926200;
+  border-radius: 8px;
+  background: #fff4d4;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.list-summary {
+  color: #6b665b;
+}
+
+.policy-list {
+  display: grid;
+  gap: 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.policy-list li {
+  padding: 24px;
+  border: 1px solid #e8e4da;
+  border-radius: 16px;
+  background: #fff;
+  overflow-wrap: anywhere;
+}
+
+.policy-list h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.policy-list p {
+  margin: 12px 0 0;
+  color: #6b665b;
+  white-space: pre-line;
+}
+
 .container {
   width: min(100% - 40px, 960px);
   margin-inline: auto;

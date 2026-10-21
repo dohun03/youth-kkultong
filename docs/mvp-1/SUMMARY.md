@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~42 완료, Step 43~57 미착수**
+최종 확인일: 2026-10-22 (Asia/Seoul) · **Step 1~43 완료, Step 44~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1714,8 +1714,39 @@ git diff --check
 
 핵심 코드 읽는 순서: `policies/controllers/policies.controller.ts`의 `detail` → `policies/services/policies-detail.service.ts` → `policies/policy-card.ts` → `policy-detail.integration.spec.ts`.
 
-## 48. 다음 작업을 위한 상태
+## 48. Step 43 구현·검증 결과
 
-다음 요청 대상은 **Step 43: 정책 목록 API 연결**이다. Step 43~57은 시작하지 않았다. 검색·상세 API를 실제 DB·HTTP까지 통합 검증했으며 기존 실행 이미지에는 아직 배포하지 않았다. 다음 Step부터 Next.js 화면 작업 범위다.
+작업 규칙·PLAN Step 43·SPEC 3~4장·8.3·T-01·T-28·Step 42 완료 기록과 실제 웹·API 코드를 확인했다. 선행 누락이나 명세 충돌은 없었으며, 깨끗한 작업 트리에서 Step 43만 진행했다. 이번 변경은 커밋하지 않았다.
 
-Step 42 추천 커밋 메시지: `feat: 정책 상세 조회 API 구현`.
+### 구현과 실제 결정사항
+
+- `/policies`를 브라우저 동작 컴포넌트로 연결해 기존 Next.js `rewrites` 경로인 `/api/v1/policies/search`로 POST 요청을 보낸다. 공용 `PolicySearchRequest`·`PolicySearchResponse` 타입을 사용한다.
+- 요청은 `page=1`, `limit=20`, `includeClosed=false`이며 사용자 조건과 정렬을 보내지 않는다. API의 기존 기본값에 따라 마감 제외·인기순 첫 페이지를 받고 정책 제목·지원 요약·전체 건수·현재/전체 페이지를 표시한다. 점수·일치 태그를 강조하지 않으며 입력 조건을 저장하거나 기록하지 않는다.
+- 로딩·정상 응답·오류를 별도 상태로 관리한다. 정상 0건일 때만 빈 결과를 표시하며 HTTP 오류·네트워크 실패·JSON 해석 실패·15초 응답 지연에는 오류 안내와 다시 시도 버튼을 표시한다. 오류 응답 원문을 노출하지 않는다. 페이지를 떠나거나 요청을 교체하면 타이머와 요청을 정리하고 이전 응답으로 화면을 바꾸지 않는다.
+- 기존 화면 스타일을 유지하며 목록과 다시 시도 버튼에 필요한 스타일을 추가했다. 긴 제목 줄바꿈·빈 지원 요약 대체 문구·공식 신청처 확인 안내를 제공한다. 완성된 카드 컴포넌트·상태/태그·상세 이동·필터·정렬/페이지 이동 UI는 각각 후속 Step 범위다.
+- API 계약·DB·Migration·공용 타입·패키지·인프라·SPEC 변경은 없다. PLAN 완료 표시와 SUMMARY를 갱신했다. SPEC_SUMMARY 파일은 없다.
+
+### 실행 환경과 실제 검증
+
+기존 DB 컨테이너와 Step 41 테스트 이미지에 이번 API 빌드 결과를 읽기 전용으로 연결해 검증용 API를 실행했다. 웹은 이번 프로덕션 빌드를 임시 실행했으며 기존 운영 이미지를 재빌드하거나 재배포하지 않았다. 새 브라우저 검증 파일은 Node.js 기본 테스트 실행기와 이미 설치된 Playwright를 사용한다. 프로젝트에 테스트 패키지를 추가하지 않았으며 `PLAYWRIGHT_MODULE`로 기존 설치 경로를 지정했다.
+
+```bash
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+NEXT_TELEMETRY_DISABLED=1 npm run build --workspace apps/web
+LD_LIBRARY_PATH=/tmp/youth-step43-browser-libs/root/usr/lib/x86_64-linux-gnu PLAYWRIGHT_MODULE=/home/leenohoon/youth-kkultong-before/node_modules/.pnpm/playwright@1.64.0/node_modules/playwright/index.mjs node --test apps/web/test/policies-list.e2e.mjs
+git diff --check
+```
+
+- 공용·API·웹 **타입 검사 통과**, API·웹 **빌드 통과**, Chromium 브라우저 테스트 **9개 모두 통과**. 실제 DB 검색 결과와 화면의 첫 20건·순서·전체 건수·페이지 수를 대조하고 `/` → `/policies`, 기본 요청 본문·마감 제외·점수 0을 확인했다. 로딩·정상 0건, HTTP 400/500/503·내부 메시지 비노출, 연결 실패 후 재시도, 깨진 JSON, 15초 시간 초과, 모바일 긴 제목·빈 요약·HTML 텍스트 비실행도 검증했다.
+- 초기 웹 빌드는 샌드박스 내 TypeScript 하위 프로세스 출력 해석에서 실패했으며 같은 명령을 샌드박스 밖에서 실행해 통과했다. Chromium의 시스템 라이브러리 3개가 없어 Ubuntu 패키지를 `/tmp/youth-step43-browser-libs`에 다운로드·추출하고 해당 실행에만 라이브러리 경로를 지정했다. 시스템 설치나 프로젝트 의존성 변경은 없다.
+- 최초 브라우저 테스트는 Next.js 자체 접근성 알림까지 오류 요소로 선택해 실패했다. 선택 범위를 `main` 내부로 한정해 실제 목록 오류만 검사하도록 수정한 뒤 전체 9개를 통과했다.
+- 테스트 전후 기존 `public.policies` **3,390건**, 전체 행·시각의 MD5 지문 **`46a965ded0407e47a7af9816cd3e7b6e`**로 동일했다. 읽기 전용 검색만 호출했으며 실제 외부 수집 API·Migration·시드·DB 데이터 변경은 실행하지 않았다. 검증용 API·웹은 종료하고 기존 DB 컨테이너·포트·볼륨은 유지했다.
+
+핵심 코드 읽는 순서: `apps/web/app/policies/page.tsx`의 조회/상태 처리 → 같은 파일의 목록 렌더링 → `apps/web/test/policies-list.e2e.mjs` → `apps/web/app/globals.css`.
+
+## 49. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 44: 정책 카드 컴포넌트**다. Step 44~57은 시작하지 않았다. Step 43 완료를 막는 문제는 없으며 목록 연결과 기본 오류 안내까지 검증했다. 브라우저 테스트 재실행에는 실행 중인 웹·실제 데이터가 있는 API와 Playwright/Chromium 환경이 필요하다. 기존 웹 실행 명령의 standalone 안내와 Compose 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
+
+Step 43 추천 커밋 메시지: `feat: 정책 목록 화면과 검색 API 연결`.
