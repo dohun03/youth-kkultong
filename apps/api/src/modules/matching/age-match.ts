@@ -1,6 +1,6 @@
 import type { Policy } from '../policies/entities/policy.entity';
 
-/** 나이 항목의 부합·불일치·확인필요·미입력을 구분. 최종 제외 여부는 종합 판정에서 정한다. */
+/** 나이 항목의 부합·불일치·확인 필요·미입력을 구분. 최종 제외 여부는 종합 판정에서 정한다. */
 export type AgeMatchResult = 'MATCHED' | 'EXCLUDED' | 'UNKNOWN' | 'NOT_PROVIDED';
 
 /** 정책의 최소·최대 나이 */

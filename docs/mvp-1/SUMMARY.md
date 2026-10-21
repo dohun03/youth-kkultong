@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~34 완료, Step 35~57 미착수**
+최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~35 완료, Step 36~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1495,8 +1495,34 @@ git diff --check
 
 핵심 코드 읽는 순서: `matching/job-match.ts` → `job-match.spec.ts` → 기존 `meta/eligibility-codes.ts`의 취업 코드표.
 
-## 40. 다음 작업을 위한 상태
+## 40. Step 35 구현·검증 결과
 
-다음 요청 대상은 **Step 35: 학력 조건 판정**이다. Step 35~57은 시작하지 않았다. 나이·취업 항목의 순수 함수를 완료했으며 종합 제외·점수·태그는 Step 37, 검색·상세 API 연결은 후속 Step 범위다.
+작업 규칙·PLAN Step 35·SPEC 7.1~7.2와 T-06·선행 완료 상태·실제 취업 판정과 학력 코드표를 대조했다. Step 34는 이전 사용자 요청에 따라 `8507803` (`feat: 취업 상태 조건 판단 구현`)으로 커밋되어 있었고 착수 시 변경사항은 없었다. 충돌이나 선행 누락 없이 Step 35만 진행했으며 이번 변경은 커밋하지 않았다.
 
-Step 34 추천 커밋 메시지: `feat: 취업 상태 조건 판단 구현`.
+### 구현과 실제 결정사항
+
+- `matching/school-match.ts`에 `checkSchool(policy, schoolCode)` 순수 함수를 추가했다. 기존 취업 함수와 같은 방식으로 `MATCHED`·`EXCLUDED`·`UNKNOWN`·`NOT_PROVIDED`·`UNRESTRICTED`를 반환한다. 정책의 정규화된 학력 코드 목록과 사용자 선택 코드만 사용하며 DB·외부 API·시각에 접근하거나 입력 배열을 변경하지 않는다.
+- 기존 `SCHOOL_OPTIONS`·`SCHOOL_UNRESTRICTED_CODE`를 사용한다. 앞자리 0과 공식 `기타` 코드를 유지하고 정확한 코드 일치만 판정한다. 학력의 서열을 추정해 대졸자를 고졸 코드에 자동 부합시키거나 재학·졸업을 같은 조건으로 보지 않는다.
+- 사용자 미입력은 정책과 무관하게 `NOT_PROVIDED`, 정책 NULL·빈 목록은 `UNKNOWN`이다. 공식 학력 코드표 밖의 사용자 값은 요청 검증과 별도로 내부에서도 `RangeError`로 드러낸다. 학력 목록에 취업 코드·빈 토큰·미확인 코드가 섞였더라도 유효한 사용자 코드가 하나라도 일치하면 `MATCHED`, 전부 불일치할 때는 전체 코드가 유효한 경우에만 `EXCLUDED`다.
+- 목록에 제한 없음 `0049010`이 있으면 다른 코드·미확인 값이 섞여 있어도 OR 규칙으로 `UNRESTRICTED`다. T-06의 제한 없음을 부합 가점 대상인 `MATCHED`와 구분했다. 실제 점수 0·일치 태그 미생성과 추가 설명에 따른 최종 제외 보류는 예정된 Step 37에서 조합한다.
+- 기존 취업·나이 함수는 수정하지 않았다. API·DB·Migration·패키지·공용 타입·SPEC 변경 없이 PLAN 완료 표시와 SUMMARY를 갱신했다. SPEC_SUMMARY 파일은 없다.
+
+### 실행 방법과 실제 검증
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/school-match.spec.ts test/job-match.spec.ts test/age-match.spec.ts test/eligibility-codes.spec.ts test/youth-center-eligibility-transform.spec.ts test/policy-search-validation.spec.ts test/application-status.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+git diff --check
+```
+
+- 신규 학력 판정 테스트 **67개**, 관련 회귀를 포함해 **7개 모음·410개 모두 통과**. 제한 없음, 단일·복수·중복·순서가 다른 코드, 미확인·빈 토큰·취업 코드 혼합, 공식 원본 기대값의 전체 학력 코드, 사용자 미입력·잘못된 값, 학력 서열 미추정, 실제 수집 변환과의 연결, 추가 설명과 항목 판정의 분리, 입력 불변성을 확인했다.
+- 공용·API·웹 **타입 검사 통과**, API **빌드 통과**, `git diff --check` **통과**. DB·HTTP 변경이 없는 순수 함수 작업이므로 전체 DB·HTTP 통합 테스트와 운영 Docker 이미지 빌드·재배포는 수행하지 않았다. DB·운영 로그·컨테이너·볼륨은 변경하지 않았다.
+
+핵심 코드 읽는 순서: `matching/school-match.ts` → `school-match.spec.ts` → 기존 `meta/eligibility-codes.ts`의 학력 코드표.
+
+## 41. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 36: 지역 연관성 점수 판정**이다. Step 36~57은 시작하지 않았다. 나이·취업·학력 항목의 순수 함수를 완료했으며 종합 제외·점수·태그는 Step 37, 검색·상세 API 연결은 후속 Step 범위다.
+
+Step 35 추천 커밋 메시지: `feat: 학력 조건 판단 구현`.
