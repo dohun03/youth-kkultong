@@ -2,7 +2,7 @@
 
 > 저장 위치: `docs/mvp-1/PLAN.md`  
 > 기준: `docs/PRD.md`(PRD v0.8), `docs/ARCHITECTURE.md`(v0.3), `docs/mvp-1/SPEC.md`(v0.4), `docs/AGENT_RULES.md`  
-> 상태: **Step 1~37 완료 · Step 38~57 미착수** · 작성일: 2026-10-16
+> 상태: **Step 1~38 완료 · Step 39~57 미착수** · 작성일: 2026-10-16
 
 ## 목차
 
@@ -328,8 +328,8 @@
 
 ### Step 38. 목록 정렬 순수 함수
 
-- [ ] `recommended(맞춤순)`, `popular(인기순)`, `deadline(마감순)`, `newest(최신순)` 비교 규칙을 구현한다.
-- [ ] 점수 동점 시 마감 임박·조회수 순위와 최종 고정 동점 기준을 적용한다.
+- [x] `recommended(맞춤순)`, `popular(인기순)`, `deadline(마감순)`, `newest(최신순)` 비교 규칙을 구현한다.
+- [x] 점수 동점 시 마감 임박·조회수 순위와 최종 고정 동점 기준을 적용한다.
 
 **검증/완료:** SPEC T-16·T-17 및 순서 고정·NULL 정렬 테스트가 통과한다. **커밋:** `feat: 정책 맞춤 인기 마감 최신 정렬 구현`.
 

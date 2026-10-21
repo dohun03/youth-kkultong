@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~37 완료, Step 38~57 미착수**
+최종 확인일: 2026-10-21 (Asia/Seoul) · **Step 1~38 완료, Step 39~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1574,8 +1574,34 @@ git diff --check
 
 핵심 코드 읽는 순서: `matching/evaluate-policy.ts` → `evaluate-policy.spec.ts` → 기존 항목별 `age-match.ts`·`job-match.ts`·`school-match.ts`·`region-match.ts`.
 
-## 43. 다음 작업을 위한 상태
+## 43. Step 38 구현·검증 결과
 
-다음 요청 대상은 **Step 38: 목록 정렬 순수 함수**다. Step 38~57은 시작하지 않았다. 항목별 판정과 종합 제외·점수·태그를 완료했으며 검색·상세 API 연결은 후속 Step 범위다.
+사용자 요청으로 Step 37의 코드·테스트·문서 4개 파일을 `06dc2e7` (`feat: 정책 조건 종합 판단과 일치 점수 계산`)로 먼저 커밋했다. 사용자가 다듬은 종합 판정 주석과 타입 표현도 그대로 포함했다. 작업 규칙·PLAN Step 38·SPEC 8.2와 T-16·T-17·선행 완료 상태·경량 정책 후보의 날짜·조회수 타입을 대조했고 충돌이나 선행 누락은 없었다. Step 38만 진행했으며 이번 변경은 커밋하지 않았다.
 
-Step 37 추천 커밋 메시지: `feat: 정책 조건 종합 판단과 일치 점수 계산`.
+### 구현과 실제 결정사항
+
+- `matching/sort-policies.ts`에 `sortPolicies(policies, sort)` 순수 함수를 추가했다. 경량 후보와 호환되는 정렬 필드에 검색 시점의 `applicationStatus`·`score`를 받은 뒤 새 배열로 정렬한다. 제네릭 타입으로 제목·태그 등 추가 필드도 유지하며 원본 배열·정책·Date 객체를 수정하지 않는다. DB·외부 API·현재 시각에 접근하지 않는다.
+- 맞춤순은 점수 DESC → `CLOSING_SOON` 우선 → 조회수 DESC, 인기순은 조회수 DESC, 최신순은 원본 최초 등록일 DESC를 적용한다. 점수·상태·조회수가 다른 정렬의 우선순위를 침범하지 않는다. 기본 정렬 선택과 조건 없는 맞춤순의 인기순 전환은 계획된 Step 40의 책임으로 남겼다.
+- 마감순은 `OPEN`·`CLOSING_SOON`을 같은 그룹으로 묶어 종료일 ASC → `UPCOMING` 시작일 ASC → `ALWAYS_OPEN` → `UNKNOWN` → `CLOSED` 순서다. 접수 중은 마감 임박 여부를 별도로 우선하지 않고, 나머지 그룹에 남아 있는 날짜로 추가 순위를 추정하지 않는다. 유효한 `YYYY-MM-DD` 문자열을 그대로 비교하며 상태는 호출자가 검색 날짜로 계산해 전달한다.
+- 모든 정렬의 공통 동점 기준은 원본 최초 등록일 DESC → `externalId` ASC → `id` ASC다. 조회수·등록일이 NULL이면 해당 비교에서 뒤로 보낸다. 마감순의 비교 날짜가 NULL이어도 같은 그룹의 날짜가 있는 정책 뒤로 보내며 이후 공통 동점 기준을 유지한다. ID는 앞자리 0을 유지한 문자열 순서로 비교한다.
+- API·DB·Migration·패키지·공용 타입·SPEC 변경 없이 PLAN 완료 표시와 SUMMARY를 갱신했다. 정렬 전 후보 필터 조합(Step 39), 정렬 후 페이지네이션(Step 40), 검색 API 연결은 진행하지 않았다. SPEC_SUMMARY 파일은 없다.
+
+### 실행 방법과 실제 검증
+
+```bash
+npm run test --workspace apps/api -- --runTestsByPath test/sort-policies.spec.ts test/application-status.spec.ts test/evaluate-policy.spec.ts test/region-match.spec.ts test/school-match.spec.ts test/job-match.spec.ts test/age-match.spec.ts
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+git diff --check
+```
+
+- 신규 정렬 테스트 **38개**, 신청 상태·종합 판정·항목별 판정 회귀를 포함해 **7개 모음·364개 모두 통과**. 네 정렬의 우선순위, T-16·T-17, 마감순 상태 그룹·비교 날짜, NULL 조회수·등록일·날짜, 원본 등록일·외부 ID·내부 ID의 동점 해소, 입력 순서 독립성, 빈 배열·단일 정책·추가 필드 보존과 입력 불변성을 확인했다. 실제 상태 계산 함수를 날짜별로 호출해 검색 시점에 따라 맞춤순의 마감 임박 우선순위가 바뀌는 것도 검증했다.
+- 공용·API·웹 **타입 검사 통과**, API **빌드 통과**, `git diff --check` **통과**. DB·HTTP 변경이 없는 순수 함수 작업이므로 전체 DB·HTTP 통합 테스트와 운영 Docker 이미지 빌드·재배포는 수행하지 않았다. DB·운영 로그·컨테이너·볼륨은 변경하지 않았다.
+
+핵심 코드 읽는 순서: `matching/sort-policies.ts` → `sort-policies.spec.ts` → 기존 `policies/application-status.ts`와 `matching/evaluate-policy.ts`.
+
+## 44. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 39: 정책 검색 후보·필터 조합**이다. Step 39~57은 시작하지 않았다. 신청 상태·항목별 판정·종합 제외·점수·태그·네 가지 정렬 함수를 완료했으며 검색·상세 API 연결은 후속 Step 범위다.
+
+Step 38 추천 커밋 메시지: `feat: 정책 맞춤 인기 마감 최신 정렬 구현`.
