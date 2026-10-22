@@ -235,3 +235,102 @@ test('2페이지 오류 후 재시도는 요청한 페이지를 유지한다', a
     assert.deepEqual(requested, [1, 2, 2]);
   });
 });
+
+test('실제 목록 카드에서 상세로 이동해 원문과 자격·기간·공식 링크를 표시한다', async () => {
+  const first = (await search()).items[0];
+  const expected = await (await fetch(`${api}/api/v1/policies/${first.id}`)).json();
+  await withPage(async (page) => {
+    await page.goto(`${base}/policies`);
+    await page.locator('.policy-card-link').first().click();
+    await page.waitForURL(`**/policies/${first.id}`);
+    await page.locator('.detail-heading h1').waitFor();
+    assert.equal(await page.locator('h1').textContent(), expected.title);
+    assert.equal(await page.locator('#benefit-title + p').textContent(), expected.benefitText?.trim() ? expected.benefitText : '공식 신청처에서 확인해 주세요.');
+    assert.equal(await page.locator('#description-title + p').textContent(), expected.description?.trim() ? expected.description : '공식 신청처에서 확인해 주세요.');
+    assert.deepEqual(await page.locator('.policy-facts dd').allTextContents(), [expected.ageRangeText, expected.jobConditionText, expected.schoolConditionText, expected.regionText].map((value) => value?.trim() ? value : '공식 신청처에서 확인해 주세요.'));
+    assert.equal(await page.getByText('최종 신청 자격 및 접수 여부는 공식 신청처에서 확인하세요.', { exact: true }).count(), 1);
+    assert.equal(await page.locator('.detail-links a').count(), expected.links.length);
+    await page.getByRole('link', { name: '목록으로 돌아가기' }).click();
+    await page.waitForURL(`${base}/policies`);
+    await page.locator('.policy-card').first().waitFor();
+  });
+});
+
+test('없는 정책과 UUID 오류는 통신 오류와 구분해 안내한다', async () => {
+  await withPage(async (page) => {
+    for (const id of ['00000000-0000-4000-8000-000000000000', 'invalid-id']) {
+      await page.goto(`${base}/policies/${id}`);
+      await page.getByRole('heading', { name: '정책을 찾을 수 없습니다' }).waitFor();
+      assert.equal(await page.getByRole('button', { name: '다시 시도', exact: true }).count(), 0);
+    }
+  });
+});
+
+test('상세의 긴 원문·줄바꿈·링크 없음·악성 링크를 모바일에서도 안전하게 표시한다', async () => {
+  const first = (await search()).items[0];
+  const fixture = await (await fetch(`${api}/api/v1/policies/${first.id}`)).json();
+  await withPage(async (page) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    const raw = '<script>window.injected=true</script>\n' + '긴 원문 설명'.repeat(80);
+    await page.route(`**/api/v1/policies/${first.id}`, (route) => route.fulfill({ json: {
+      ...fixture, benefitText: raw, description: raw, applicationPeriodText: '1차 신청\n2차 신청',
+      links: [{ label: '신청', url: 'javascript:alert(1)' }, { label: '참고', url: 'data:text/html,unsafe' }],
+    } }));
+    await page.goto(`${base}/policies/${first.id}`);
+    await page.getByText('링크 없음', { exact: true }).waitFor();
+    assert.equal(await page.locator('#benefit-title + p').textContent(), raw);
+    assert.equal(await page.locator('#period-title + p').textContent(), '1차 신청\n2차 신청');
+    assert.equal(await page.locator('.detail-links a').count(), 0);
+    assert.equal(await page.evaluate(() => window.injected), undefined);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+  });
+});
+
+test('신청·참고 링크를 opener 없이 새 탭으로 열며 실제 외부 네트워크는 호출하지 않는다', async () => {
+  const first = (await search()).items[0];
+  const fixture = await (await fetch(`${api}/api/v1/policies/${first.id}`)).json();
+  await withPage(async (page) => {
+    await page.route(`**/api/v1/policies/${first.id}`, (route) => route.fulfill({ json: {
+      ...fixture, links: [{ label: '신청', url: 'https://example.org/apply' }, { label: '참고', url: 'http://example.org/info' }],
+    } }));
+    await page.context().route('**://example.org/**', (route) => route.fulfill({ contentType: 'text/html', body: '<h1>공식 신청처 테스트</h1>' }));
+    await page.goto(`${base}/policies/${first.id}`);
+    const link = page.locator('.detail-links a').first();
+    await link.waitFor();
+    assert.equal(await link.getAttribute('target'), '_blank');
+    assert.equal(await link.getAttribute('rel'), 'noopener noreferrer');
+    const opened = page.context().waitForEvent('page');
+    await link.click();
+    const popup = await opened;
+    await popup.waitForLoadState('domcontentloaded');
+    assert.equal(popup.url(), 'https://example.org/apply');
+    assert.equal(await popup.evaluate(() => window.opener), null);
+    await popup.close();
+  });
+});
+
+test('상세 HTTP 오류·깨진 JSON·연결 실패·시간 초과를 안내하고 재시도한다', async () => {
+  const first = (await search()).items[0];
+  const fixture = await (await fetch(`${api}/api/v1/policies/${first.id}`)).json();
+  for (const failure of [500, 503, 'json', 'network', 'timeout']) {
+    await withPage(async (page) => {
+      if (failure === 'timeout') await page.clock.install();
+      let calls = 0;
+      await page.route(`**/api/v1/policies/${first.id}`, (route) => {
+        if (++calls > 1) return route.fulfill({ json: fixture });
+        if (failure === 'timeout') return;
+        if (failure === 'network') return route.abort('failed');
+        if (failure === 'json') return route.fulfill({ contentType: 'application/json', body: '{' });
+        return route.fulfill({ status: failure, json: { message: '비공개 상세 오류' } });
+      });
+      const request = page.waitForRequest(`**/api/v1/policies/${first.id}`);
+      await page.goto(`${base}/policies/${first.id}`);
+      await request;
+      if (failure === 'timeout') await page.clock.fastForward(15_001);
+      await page.getByRole('button', { name: '다시 시도', exact: true }).click();
+      await page.locator('.detail-heading h1').waitFor();
+      assert.equal(await page.locator('h1').textContent(), fixture.title);
+      assert.equal(await page.getByText('비공개 상세 오류').count(), 0);
+    });
+  }
+});

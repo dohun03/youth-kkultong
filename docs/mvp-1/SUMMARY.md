@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-22 (Asia/Seoul) · **Step 1~50 완료, Step 51~57 미착수**
+최종 확인일: 2026-10-22 (Asia/Seoul) · **Step 1~51 완료, Step 52~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1880,6 +1880,19 @@ git diff --check
 
 검증: `NEXT_TELEMETRY_DISABLED=1 npm run typecheck` 통과. `docker compose -f compose.yaml -f compose.local.yaml build web`의 프로덕션 빌드 통과 후 `up -d --no-deps --force-recreate --wait --wait-timeout 60 web`으로 웹을 재생성했다. 기존 Playwright·임시 Chromium 라이브러리·Windows 한글 글꼴 환경으로 `node --test apps/web/test/*.e2e.mjs`를 실행해 **36개 모두 통과**했다. `git diff --check` 통과. API·DB 스키마·Migration·공용 계약·패키지 변경은 없으며 웹을 3000 포트에서 실행 상태로 유지했다.
 
-## 56. 다음 작업을 위한 상태
+## 56. Step 51 구현·검증 결과
 
-다음 대상은 **Step 51: 정책 상세 페이지 UI**다. Step 51~57은 미착수다. 현재 Step 완료를 막는 문제는 없다. 이번 사용자 요청은 Step 51까지이며 이후 단계는 별도 요청을 기다린다.
+사용자가 Step 47~51의 순차 구현·검증·단계별 커밋을 승인했다. PLAN·SPEC의 관련 계약과 선행 구현을 대조하고 Step 51 범위만 진행했다.
+
+- `/policies/[id]`에서 상세 API를 조회해 정책명·분야·상태·조회수·지원 내용·설명·나이/취업/학력/지역 자격·추가 자격·참여 제한·신청기간·신청/참고 링크를 구분해 표시한다. 원문 줄바꿈과 텍스트를 보존하고 HTML로 실행하지 않는다.
+- 카드와 상세의 신청 상태 문구를 `policy-labels.ts`에서 공유한다. 없는 정책/잘못된 UUID는 찾을 수 없음 안내, 통신 오류·JSON 오류·15초 지연은 오류와 재시도, 누락 자료는 확인 문구, 링크가 없으면 '링크 없음'으로 표시한다.
+- HTTP(S) 절대 URL만 화면에 연결하고 `target=_blank`, `rel=noopener noreferrer`로 새 탭을 연다. 공식 신청처 확인 안내는 상세에 한 번 표시한다. 사용자 조건을 상세 GET에 전달하지 않는다.
+- 실제 목록→상세→목록 흐름과 API 원문/자격을 대조하고, 모바일 긴 원문·줄바꿈·악성 링크 제외·없는 정책·오류/재시도·새 탭 opener 차단을 검증했다. 외부 링크 검증은 네트워크를 대체해 실제 신청처는 호출하지 않았다.
+- 읽는 순서: `policies/[id]/page.tsx`의 조회 상태 → 상세 구획/링크 → `policy-labels.ts` → `policy-exploration.e2e.mjs`의 상세 검증. 입력의 새로고침/상세 복귀 유지 기능은 계획대로 Step 52에 남긴다.
+- 최종 목록·상세를 1280px/375px에서 캡처해 배치와 가로 넘침 없음을 확인했다. 일련의 작업 전후 `public.policies`는 3,390건, 전체 행·시각 MD5 `46a965ded0407e47a7af9816cd3e7b6e`로 동일하다. 외부 수집 API·Migration·시드·DB 쓰기를 실행하지 않았고 API·DB 컨테이너와 볼륨을 유지했다. 최종 웹·API·DB가 모두 healthy다.
+
+검증: `NEXT_TELEMETRY_DISABLED=1 npm run typecheck` 통과. `docker compose -f compose.yaml -f compose.local.yaml build web`의 프로덕션 빌드 통과 후 `up -d --no-deps --force-recreate --wait --wait-timeout 60 web`으로 웹을 재생성했다. 기존 Playwright·임시 Chromium 라이브러리·Windows 한글 글꼴 환경으로 `node --test apps/web/test/*.e2e.mjs`를 실행해 **41개 모두 통과**했다. `git diff --check` 통과. API·DB 스키마·Migration·공용 계약·패키지 변경은 없으며 웹을 3000 포트에서 실행 상태로 유지했다.
+
+## 57. 다음 작업을 위한 상태
+
+다음 대상은 **Step 52: 선택 조건 세션 유지**다. Step 52~57은 미착수다. 현재 Step 완료를 막는 문제는 없다. 이번 사용자 요청은 Step 51까지이며 이후 단계는 별도 요청을 기다린다.
