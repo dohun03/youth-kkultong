@@ -114,3 +114,31 @@ test('지역 조회 실패 시 다른 탐색을 유지하고 재시도로 현행
     assert.equal(await page.locator('#region-0 option').count(), regions.filter((item) => item.parentCode === null).length + 1);
   });
 });
+
+test('네 정렬은 실제 응답 순서와 적용값을 표시하고 수동 정렬은 조건 변경에도 유지한다', async () => {
+  await withPage(async (page) => {
+    await page.goto(`${base}/policies`);
+    await expectResult(page, await search());
+    assert.equal(await page.locator('#policy-sort').inputValue(), 'popular');
+    assert.equal(await page.locator('#policy-sort option[value="recommended"]').isDisabled(), true);
+    await page.locator('#policy-age').fill('28');
+    await expectResult(page, await search({ conditions: { age: 28 } }));
+    assert.equal(await page.locator('#policy-sort').inputValue(), 'recommended');
+    for (const sort of ['deadline', 'newest', 'popular', 'recommended']) {
+      await page.selectOption('#policy-sort', sort);
+      await expectResult(page, await search({ conditions: { age: 28 }, sort }));
+      assert.equal(await page.locator('#policy-sort').inputValue(), sort);
+    }
+    await page.getByRole('button', { name: '나이 지우기' }).click();
+    await expectResult(page, await search({ sort: 'popular' }));
+    assert.equal(await page.locator('#policy-sort').inputValue(), 'popular');
+    assert.equal(await page.locator('#policy-sort option[value="recommended"]').isDisabled(), true);
+    await page.selectOption('#policy-sort', 'newest');
+    await expectResult(page, await search({ sort: 'newest' }));
+    await page.locator('#policy-age').fill('28');
+    await expectResult(page, await search({ sort: 'newest', conditions: { age: 28 } }));
+    await page.getByRole('button', { name: '나이 지우기' }).click();
+    await expectResult(page, await search({ sort: 'newest' }));
+    assert.equal(await page.locator('#policy-sort').inputValue(), 'newest');
+  });
+});

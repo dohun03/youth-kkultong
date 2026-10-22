@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-22 (Asia/Seoul) · **Step 1~48 완료, Step 49~57 미착수**
+최종 확인일: 2026-10-22 (Asia/Seoul) · **Step 1~49 완료, Step 50~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1859,6 +1859,16 @@ git diff --check
 
 검증: `NEXT_TELEMETRY_DISABLED=1 npm run typecheck` 통과. `docker compose -f compose.yaml -f compose.local.yaml build web`의 프로덕션 빌드 통과 후 `up -d --no-deps --force-recreate --wait --wait-timeout 60 web`으로 웹을 재생성했다. 기존 Playwright·임시 Chromium 라이브러리·Windows 한글 글꼴 환경으로 `node --test apps/web/test/*.e2e.mjs`를 실행해 **31개 모두 통과**했다. `git diff --check` 통과. API·DB 스키마·Migration·공용 계약·패키지 변경은 없으며 웹을 3000 포트에서 실행 상태로 유지했다.
 
-## 54. 다음 작업을 위한 상태
+## 54. Step 49 구현·검증 결과
 
-다음 대상은 **Step 49: 정렬 옵션 UI**다. Step 49~57은 미착수다. 현재 Step 완료를 막는 문제는 없다. 이번 사용자 요청은 Step 51까지이며 이후 단계는 별도 요청을 기다린다.
+사용자가 Step 47~51의 순차 구현·검증·단계별 커밋을 승인했다. PLAN·SPEC의 관련 계약과 선행 구현을 대조하고 Step 49 범위만 진행했다.
+
+- 맞춤순·인기순·마감순·최신순을 선택하고 실제 API `appliedSort`를 화면에 표시한다. 초기에는 조건 유무에 따른 서버 기본 정렬을 사용하며 수동 선택한 정렬만 요청에 명시한다.
+- 조건 없는 맞춤순은 비활성화하고, 마지막 조건을 지우면 맞춤순을 인기순으로 바꾼다. 인기·마감·최신순 수동 선택은 조건 추가·삭제에도 유지한다. 조건 제거 시 상태 전환 때문에 같은 검색이 중복 전송되지 않게 실제 요청 정렬값을 기준으로 조회한다.
+- 실제 DB의 네 정렬 결과·순서·선택값과 조건 추가·삭제 시의 자동/수동 정렬 동작을 검증했다. 읽는 순서: `page.tsx`의 정렬 상태/실제 요청값 → 정렬 컨트롤 → `policy-exploration.e2e.mjs`.
+
+검증: `NEXT_TELEMETRY_DISABLED=1 npm run typecheck` 통과. `docker compose -f compose.yaml -f compose.local.yaml build web`의 프로덕션 빌드 통과 후 `up -d --no-deps --force-recreate --wait --wait-timeout 60 web`으로 웹을 재생성했다. 기존 Playwright·임시 Chromium 라이브러리·Windows 한글 글꼴 환경으로 `node --test apps/web/test/*.e2e.mjs`를 실행해 **32개 모두 통과**했다. `git diff --check` 통과. API·DB 스키마·Migration·공용 계약·패키지 변경은 없으며 웹을 3000 포트에서 실행 상태로 유지했다.
+
+## 55. 다음 작업을 위한 상태
+
+다음 대상은 **Step 50: 페이지네이션 UI**다. Step 50~57은 미착수다. 현재 Step 완료를 막는 문제는 없다. 이번 사용자 요청은 Step 51까지이며 이후 단계는 별도 요청을 기다린다.

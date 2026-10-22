@@ -39,6 +39,16 @@ export default function PoliciesPage() {
   const [includeClosed, setIncludeClosed] = useState(false);
   const [ageInput, setAgeInput] = useState('');
   const age = parseAgeInput(ageInput);
+  const [sort, setSort] = useState<SortKey | undefined>();
+  const hasConditions = typeof age === 'number' || Boolean(jobCode || schoolCode || regionCode);
+  const selectedSort = sort === undefined ? (hasConditions ? 'recommended' : 'popular')
+    : sort === 'recommended' && !hasConditions ? 'popular' : sort;
+  const requestedSort = sort === undefined ? undefined : selectedSort;
+
+  useEffect(() => {
+    // 조건을 모두 지우면 수동 맞춤순도 인기순으로 전환한다. 다른 수동 정렬은 유지한다.
+    if (age !== null && !hasConditions && sort === 'recommended') setSort('popular');
+  }, [hasConditions, sort, age]);
 
   useEffect(() => {
     // 잘못된 나이는 전송하지 않는다. 이전 결과도 숨겨 현재 입력의 결과처럼 보이지 않게 한다.
@@ -52,6 +62,8 @@ export default function PoliciesPage() {
     async function loadPolicies(): Promise<void> {
       setState({ status: 'loading' });
       const request: PolicySearchRequest = { page: 1, limit: 20, includeClosed };
+      // 자동 기본 정렬은 서버가 결정하고, 사용자가 고른 정렬만 명시적으로 전송한다.
+      if (requestedSort !== undefined) request.sort = requestedSort;
       // '전체'일 때는 category 자체를 보내지 않고, 선택한 실제 분야명만 그대로 보낸다.
       if (category) request.category = category;
       // 선택 입력을 지우면 conditions도 생략한다. 나이는 URL·브라우저 저장소에 남기지 않는다.
@@ -88,7 +100,7 @@ export default function PoliciesPage() {
       clearTimeout(timeout);
       controller.abort();
     };
-  }, [attempt, category, includeClosed, age, jobCode, schoolCode, regionCode]);
+  }, [attempt, category, includeClosed, age, jobCode, schoolCode, regionCode, requestedSort]);
 
   return (
     <main className="container policies-page" id="main-content">
@@ -156,6 +168,20 @@ export default function PoliciesPage() {
           setState({ status: 'loading' });
           setRegionCode(code);
         }} />
+        <div className="condition-select">
+          <label htmlFor="policy-sort">정렬</label>
+          <select id="policy-sort" value={selectedSort} onChange={(event) => {
+            const value = event.target.value;
+            if (Object.hasOwn(sortLabels, value)) {
+              setState({ status: 'loading' });
+              setSort(value as SortKey);
+            }
+          }}>
+            {(['recommended', 'popular', 'deadline', 'newest'] as const).map((key) => (
+              <option key={key} value={key} disabled={key === 'recommended' && !hasConditions}>{sortLabels[key]}</option>
+            ))}
+          </select>
+        </div>
         {categories.status === 'loading' && <p className="filter-message" role="status">분야 선택지를 불러오는 중입니다.</p>}
         {categories.status === 'error' && (
           <div className="filter-message">
