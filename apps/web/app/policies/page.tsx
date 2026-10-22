@@ -5,6 +5,7 @@ import type { PolicySearchRequest, PolicySearchResponse, SortKey } from '@youth-
 import { PolicyCard } from './policy-card';
 import { EligibilityFilters } from './eligibility-filters';
 import { RegionFilter } from './region-filter';
+import { Pagination } from './pagination';
 import { isCategories, useMetaOptions } from './use-meta-options';
 
 /** 로딩·실패·정상 응답을 구분해 API 오류를 빈 목록으로 표시하지 않는다. */
@@ -31,6 +32,7 @@ function parseAgeInput(input: string): number | undefined | null {
 export default function PoliciesPage() {
   const [state, setState] = useState<ListState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
+  const [page, setPage] = useState(1);
   const { state: categories, retry: retryCategories } = useMetaOptions('/api/v1/meta/categories', isCategories);
   const [jobCode, setJobCode] = useState('');
   const [schoolCode, setSchoolCode] = useState('');
@@ -61,7 +63,7 @@ export default function PoliciesPage() {
     /** 필터를 바꿀 때마다 첫 페이지를 요청하며 조건에 따른 기본 정렬은 API가 결정한다. */
     async function loadPolicies(): Promise<void> {
       setState({ status: 'loading' });
-      const request: PolicySearchRequest = { page: 1, limit: 20, includeClosed };
+      const request: PolicySearchRequest = { page, limit: 20, includeClosed };
       // 자동 기본 정렬은 서버가 결정하고, 사용자가 고른 정렬만 명시적으로 전송한다.
       if (requestedSort !== undefined) request.sort = requestedSort;
       // '전체'일 때는 category 자체를 보내지 않고, 선택한 실제 분야명만 그대로 보낸다.
@@ -100,7 +102,7 @@ export default function PoliciesPage() {
       clearTimeout(timeout);
       controller.abort();
     };
-  }, [attempt, category, includeClosed, age, jobCode, schoolCode, regionCode, requestedSort]);
+  }, [attempt, category, includeClosed, age, jobCode, schoolCode, regionCode, requestedSort, page]);
 
   return (
     <main className="container policies-page" id="main-content">
@@ -118,7 +120,7 @@ export default function PoliciesPage() {
             disabled={categories.status !== 'success'}
             onChange={(event) => {
               setState({ status: 'loading' });
-              setCategory(event.target.value);
+              setPage(1); setCategory(event.target.value);
             }}
           >
             <option value="">전체</option>
@@ -133,7 +135,7 @@ export default function PoliciesPage() {
             checked={includeClosed}
             onChange={(event) => {
               setState({ status: 'loading' });
-              setIncludeClosed(event.target.checked);
+              setPage(1); setIncludeClosed(event.target.checked);
             }}
           />
           마감 포함
@@ -151,9 +153,13 @@ export default function PoliciesPage() {
               value={ageInput}
               aria-invalid={age === null}
               aria-describedby={age === null ? 'age-help age-error' : 'age-help'}
-              onChange={(event) => setAgeInput(event.target.value)}
+              onChange={(event) => {
+                const value = event.target.value;
+                if (parseAgeInput(value) !== age) setPage(1);
+                setAgeInput(value);
+              }}
             />
-            <button className="age-clear-button" type="button" disabled={ageInput === ''} onClick={() => setAgeInput('')}>
+            <button className="age-clear-button" type="button" disabled={ageInput === ''} onClick={() => { setPage(1); setAgeInput(''); }}>
               나이 지우기
             </button>
           </div>
@@ -162,11 +168,11 @@ export default function PoliciesPage() {
         </div>
         <EligibilityFilters jobCode={jobCode} schoolCode={schoolCode} onChange={(field, code) => {
           setState({ status: 'loading' });
-          if (field === 'jobCode') setJobCode(code); else setSchoolCode(code);
+          setPage(1); if (field === 'jobCode') setJobCode(code); else setSchoolCode(code);
         }} />
         <RegionFilter regionCode={regionCode} onChange={(code) => {
           setState({ status: 'loading' });
-          setRegionCode(code);
+          setPage(1); setRegionCode(code);
         }} />
         <div className="condition-select">
           <label htmlFor="policy-sort">정렬</label>
@@ -174,7 +180,7 @@ export default function PoliciesPage() {
             const value = event.target.value;
             if (Object.hasOwn(sortLabels, value)) {
               setState({ status: 'loading' });
-              setSort(value as SortKey);
+              setPage(1); setSort(value as SortKey);
             }
           }}>
             {(['recommended', 'popular', 'deadline', 'newest'] as const).map((key) => (
@@ -227,6 +233,12 @@ export default function PoliciesPage() {
               ))}
             </ul>
           )}
+          <Pagination page={state.response.pagination.page} totalPages={state.response.pagination.totalPages} onChange={(nextPage) => {
+            if (nextPage >= 1 && nextPage <= state.response.pagination.totalPages) {
+              setState({ status: 'loading' });
+              setPage(nextPage);
+            }
+          }} />
         </section>
       )}
     </main>

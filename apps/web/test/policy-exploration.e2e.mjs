@@ -142,3 +142,96 @@ test('네 정렬은 실제 응답 순서와 적용값을 표시하고 수동 정
     assert.equal(await page.locator('#policy-sort').inputValue(), 'newest');
   });
 });
+
+test('실제 첫·다음·이전·마지막 페이지의 순서·중복·경계를 검증한다', async () => {
+  await withPage(async (page) => {
+    const first = await search();
+    await page.goto(`${base}/policies`);
+    await expectResult(page, first);
+    const nav = page.getByRole('navigation', { name: '정책 목록 페이지' });
+    assert.equal(await nav.getByRole('button', { name: '이전', exact: true }).isDisabled(), true);
+    await nav.getByRole('button', { name: '다음', exact: true }).click();
+    const second = await search({ page: 2 });
+    await expectResult(page, second);
+    assert.equal(await nav.locator('[aria-current="page"]').textContent(), '2');
+    assert.equal(first.items.filter((item) => second.items.some((other) => other.id === item.id)).length, 0);
+    await nav.getByRole('button', { name: '이전', exact: true }).click();
+    await expectResult(page, first);
+    await nav.getByRole('button', { name: '마지막', exact: true }).click();
+    await expectResult(page, await search({ page: first.pagination.totalPages }));
+    assert.equal(await nav.getByRole('button', { name: '다음', exact: true }).isDisabled(), true);
+    assert.equal(await nav.getByRole('button', { name: '마지막', exact: true }).isDisabled(), true);
+    await nav.getByRole('button', { name: '처음', exact: true }).click();
+    await expectResult(page, first);
+  });
+});
+
+test('페이지 이동은 모든 조건·정렬을 유지하고 각 필터 변경은 1페이지로 돌아간다', async () => {
+  await withPage(async (page) => {
+    const requests = [];
+    await page.route('**/api/v1/policies/search', (route) => {
+      const body = route.request().postDataJSON(); requests.push(body);
+      return route.fulfill({ json: { items: [{ id: 'test', title: `요청 ${requests.length}`, category: null, subcategory: null, benefitPreview: '', applicationStatus: 'UNKNOWN', applicationPeriodText: null, applicationEndDate: null, viewCount: null, score: 0, tags: [] }], pagination: { page: body.page, limit: 20, total: 100, totalPages: 5 }, appliedSort: body.sort ?? (body.conditions ? 'recommended' : 'popular') } });
+    });
+    await page.goto(`${base}/policies`);
+    await page.locator('.policy-card').waitFor();
+    const change = async (action) => {
+      const response = page.waitForResponse('**/policies/search');
+      await action(); await response; await page.locator('.policy-card').waitFor();
+    };
+    const next = () => change(() => page.getByRole('button', { name: '다음', exact: true }).click());
+    await change(() => page.locator('#policy-age').fill('28'));
+    await change(() => page.selectOption('#jobCode', '0013001'));
+    await change(() => page.selectOption('#schoolCode', '0049001'));
+    await change(() => page.selectOption('#region-0', '11000'));
+    await change(() => page.selectOption('#policy-sort', 'newest'));
+    await next();
+    assert.deepEqual(requests.at(-1), { page: 2, limit: 20, includeClosed: false, sort: 'newest', conditions: { age: 28, jobCode: '0013001', schoolCode: '0049001', regionCode: '11000' } });
+    for (const action of [
+      () => page.selectOption('#policy-category', '주거'),
+      () => page.getByLabel('마감 포함').check(),
+      () => page.locator('#policy-age').fill('29'),
+      () => page.selectOption('#jobCode', ''),
+      () => page.selectOption('#schoolCode', ''),
+      () => page.selectOption('#region-0', ''),
+      () => page.selectOption('#policy-sort', 'deadline'),
+    ]) {
+      await change(action);
+      assert.equal(requests.at(-1).page, 1);
+      await next();
+      assert.equal(requests.at(-1).page, 2);
+    }
+  });
+});
+
+test('빈 결과에는 페이지 이동이 없고 한 페이지는 양끝 이동을 비활성화한다', async () => {
+  for (const total of [0, 1]) {
+    await withPage(async (page) => {
+      await page.route('**/policies/search', (route) => route.fulfill({ json: { items: [], pagination: { page: 1, limit: 20, total, totalPages: total }, appliedSort: 'popular' } }));
+      await page.goto(`${base}/policies`);
+      await page.locator('#empty-title').waitFor();
+      const nav = page.getByRole('navigation', { name: '정책 목록 페이지' });
+      if (total === 0) assert.equal(await nav.count(), 0);
+      else for (const name of ['처음', '이전', '다음', '마지막']) assert.equal(await nav.getByRole('button', { name, exact: true }).isDisabled(), true);
+    });
+  }
+});
+
+test('2페이지 오류 후 재시도는 요청한 페이지를 유지한다', async () => {
+  const fixture = await search();
+  await withPage(async (page) => {
+    let failed = false;
+    const requested = [];
+    await page.route('**/policies/search', (route) => {
+      const body = route.request().postDataJSON(); requested.push(body.page);
+      if (body.page === 2 && !failed) { failed = true; return route.fulfill({ status: 503, json: {} }); }
+      return route.fulfill({ json: { ...fixture, pagination: { ...fixture.pagination, page: body.page } } });
+    });
+    await page.goto(`${base}/policies`);
+    await page.locator('.policy-card').first().waitFor();
+    await page.getByRole('button', { name: '다음', exact: true }).click();
+    await page.getByRole('button', { name: '다시 시도', exact: true }).click();
+    await page.locator('.list-summary').filter({ hasText: '2 /' }).waitFor();
+    assert.deepEqual(requested, [1, 2, 2]);
+  });
+});

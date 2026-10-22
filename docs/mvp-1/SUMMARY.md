@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-22 (Asia/Seoul) · **Step 1~49 완료, Step 50~57 미착수**
+최종 확인일: 2026-10-22 (Asia/Seoul) · **Step 1~50 완료, Step 51~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1869,6 +1869,17 @@ git diff --check
 
 검증: `NEXT_TELEMETRY_DISABLED=1 npm run typecheck` 통과. `docker compose -f compose.yaml -f compose.local.yaml build web`의 프로덕션 빌드 통과 후 `up -d --no-deps --force-recreate --wait --wait-timeout 60 web`으로 웹을 재생성했다. 기존 Playwright·임시 Chromium 라이브러리·Windows 한글 글꼴 환경으로 `node --test apps/web/test/*.e2e.mjs`를 실행해 **32개 모두 통과**했다. `git diff --check` 통과. API·DB 스키마·Migration·공용 계약·패키지 변경은 없으며 웹을 3000 포트에서 실행 상태로 유지했다.
 
-## 55. 다음 작업을 위한 상태
+## 55. Step 50 구현·검증 결과
 
-다음 대상은 **Step 50: 페이지네이션 UI**다. Step 50~57은 미착수다. 현재 Step 완료를 막는 문제는 없다. 이번 사용자 요청은 Step 51까지이며 이후 단계는 별도 요청을 기다린다.
+사용자가 Step 47~51의 순차 구현·검증·단계별 커밋을 승인했다. PLAN·SPEC의 관련 계약과 선행 구현을 대조하고 Step 50 범위만 진행했다.
+
+- `pagination.tsx`로 처음·이전·주변 최대 5개 번호·다음·마지막 컨트롤을 제공한다. 현재 페이지에는 aria-current를 표시하고 처음/끝 경계를 비활성화한다. 0건에는 컨트롤을 숨긴다.
+- 페이지 이동은 분야·마감 포함·나이·취업·학력·지역·수동 정렬을 유지한다. 각 필터/정렬 변경은 1페이지로 돌아가며 페이지 요청 실패 후 재시도는 요청 페이지를 유지한다.
+- 실제 DB의 1/2/마지막 페이지를 비교해 순서·중복 없음·경계를 확인했다. 모든 필터별 페이지 초기화와 0/1페이지·2페이지 오류 재시도를 브라우저에서 검증했다.
+- 읽는 순서: `page.tsx`의 페이지 상태/필터 초기화 → `pagination.tsx` → `policy-exploration.e2e.mjs` 페이지 검증.
+
+검증: `NEXT_TELEMETRY_DISABLED=1 npm run typecheck` 통과. `docker compose -f compose.yaml -f compose.local.yaml build web`의 프로덕션 빌드 통과 후 `up -d --no-deps --force-recreate --wait --wait-timeout 60 web`으로 웹을 재생성했다. 기존 Playwright·임시 Chromium 라이브러리·Windows 한글 글꼴 환경으로 `node --test apps/web/test/*.e2e.mjs`를 실행해 **36개 모두 통과**했다. `git diff --check` 통과. API·DB 스키마·Migration·공용 계약·패키지 변경은 없으며 웹을 3000 포트에서 실행 상태로 유지했다.
+
+## 56. 다음 작업을 위한 상태
+
+다음 대상은 **Step 51: 정책 상세 페이지 UI**다. Step 51~57은 미착수다. 현재 Step 완료를 막는 문제는 없다. 이번 사용자 요청은 Step 51까지이며 이후 단계는 별도 요청을 기다린다.

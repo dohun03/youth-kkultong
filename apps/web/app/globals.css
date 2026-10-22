@@ -45,6 +45,15 @@ input:focus-visible {
   color: #6b665b;
 }
 
+.pagination { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 28px; }
+.pagination button {
+  padding: 8px 12px; border: 1px solid #b6b0a3; border-radius: 8px;
+  background: #fff; color: inherit; font: inherit; cursor: pointer;
+}
+.pagination button[aria-current="page"] { background: #fff0d1; border-color: #926200; font-weight: 700; }
+.pagination button:disabled { cursor: default; }
+.pagination button:disabled:not([aria-current]) { opacity: 0.45; }
+
 .condition-filters {
   display: flex;
   flex-wrap: wrap;
