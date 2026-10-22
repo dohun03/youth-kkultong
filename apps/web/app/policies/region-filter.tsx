@@ -1,10 +1,10 @@
 'use client';
 
 import type { RegionOption } from '@youth-kkultong/shared';
-import { useMetaOptions } from './use-meta-options';
+import type { MetaState } from './use-meta-options';
 
 /** 현행 지역 메타 응답의 필수 필드와 코드 형식을 확인한다. */
-function isRegions(value: unknown): value is RegionOption[] {
+export function isRegions(value: unknown): value is RegionOption[] {
   return Array.isArray(value) && value.every((item) => item && typeof item.code === 'string'
     && /^\d{5}$/.test(item.code) && typeof item.name === 'string' && item.name.trim().length > 0
     && typeof item.provinceName === 'string'
@@ -12,8 +12,7 @@ function isRegions(value: unknown): value is RegionOption[] {
 }
 
 /** 현행 지역의 실제 부모 관계를 따라 선택 단계를 표시하고 최종 선택 코드만 전달한다. */
-export function RegionFilter({ regionCode, onChange }: { regionCode: string; onChange: (code: string) => void }) {
-  const { state, retry } = useMetaOptions('/api/v1/meta/regions', isRegions);
+export function RegionFilter({ regionCode, onChange, state, retry }: { regionCode: string; onChange: (code: string) => void; state: MetaState<RegionOption[]>; retry: () => void }) {
   const regions = state.status === 'success' ? state.data : [];
   const byCode = new Map(regions.map((region) => [region.code, region]));
   const path: RegionOption[] = [];

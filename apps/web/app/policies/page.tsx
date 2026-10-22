@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import type { PolicySearchRequest, PolicySearchResponse, SortKey } from '@youth-kkultong/shared';
 import { PolicyCard } from './policy-card';
-import { EligibilityFilters } from './eligibility-filters';
-import { RegionFilter } from './region-filter';
+import { EligibilityFilters, isEligibility } from './eligibility-filters';
+import { RegionFilter, isRegions } from './region-filter';
 import { Pagination } from './pagination';
 import { isCategories, useMetaOptions } from './use-meta-options';
+import { useSessionExploration } from './use-session-exploration';
 
 /** 로딩·실패·정상 응답을 구분해 API 오류를 빈 목록으로 표시하지 않는다. */
 type ListState =
@@ -34,14 +35,48 @@ export default function PoliciesPage() {
   const [attempt, setAttempt] = useState(0);
   const [page, setPage] = useState(1);
   const { state: categories, retry: retryCategories } = useMetaOptions('/api/v1/meta/categories', isCategories);
-  const [jobCode, setJobCode] = useState('');
-  const [schoolCode, setSchoolCode] = useState('');
-  const [regionCode, setRegionCode] = useState('');
-  const [category, setCategory] = useState('');
-  const [includeClosed, setIncludeClosed] = useState(false);
+  const eligibility = useMetaOptions('/api/v1/meta/eligibility-codes', isEligibility);
+  const regions = useMetaOptions('/api/v1/meta/regions', isRegions);
+  const { conditions: saved, setConditions, ready } = useSessionExploration();
+  // 복원한 코드도 현재 선택지로 확인한다. 조회 실패 중에는 저장값을 보존하되 검색에서 제외한다.
+  const jobCode = eligibility.state.status === 'success' && eligibility.state.data.jobCodes.some((item) => item.code === saved.jobCode) ? saved.jobCode! : '';
+  const schoolCode = eligibility.state.status === 'success' && eligibility.state.data.schoolCodes.some((item) => item.code === saved.schoolCode) ? saved.schoolCode! : '';
+  const regionCode = regions.state.status === 'success' && regions.state.data.some((item) => item.code === saved.regionCode) ? saved.regionCode! : '';
+  const category = categories.status === 'success' && categories.data.includes(saved.category ?? '') ? saved.category! : '';
+  const includeClosed = saved.includeClosed ?? false;
+  const sort = saved.sort;
+  const restoringCodes = (Boolean(saved.jobCode || saved.schoolCode) && eligibility.state.status === 'loading')
+    || (Boolean(saved.regionCode) && regions.state.status === 'loading')
+    || (Boolean(saved.category) && categories.status === 'loading');
+  /** 선택 해제 시 필드 자체를 지워 다음 복원에서 이전 조건이 돌아오지 않게 한다. */
+  function updateCondition<K extends keyof typeof saved>(field: K, value: (typeof saved)[K]) {
+    setConditions((previous) => {
+      const next = { ...previous };
+      if (value === '' || value === undefined || value === false) delete next[field];
+      else next[field] = value;
+      return next;
+    });
+  }
+  useEffect(() => {
+    if (ready) setAgeInput(saved.age === undefined ? '' : String(saved.age));
+    // 최초 저장소 복원이 끝날 때만 입력칸을 채우고 이후의 오류 입력은 사용자가 고치게 둔다.
+  }, [ready]);
+  useEffect(() => {
+    // 메타 조회 성공 후에만 폐지·미확인 코드를 삭제한다. 통신 실패로 저장값을 잃지 않게 한다.
+    if (!ready) return;
+    setConditions((previous) => {
+      const next = { ...previous };
+      if (eligibility.state.status === 'success') {
+        if (previous.jobCode && !eligibility.state.data.jobCodes.some((item) => item.code === previous.jobCode)) delete next.jobCode;
+        if (previous.schoolCode && !eligibility.state.data.schoolCodes.some((item) => item.code === previous.schoolCode)) delete next.schoolCode;
+      }
+      if (categories.status === 'success' && previous.category && !categories.data.includes(previous.category)) delete next.category;
+      if (regions.state.status === 'success' && previous.regionCode && !regions.state.data.some((item) => item.code === previous.regionCode)) delete next.regionCode;
+      return Object.keys(next).length === Object.keys(previous).length ? previous : next;
+    });
+  }, [ready, categories, eligibility.state, regions.state, setConditions]);
   const [ageInput, setAgeInput] = useState('');
   const age = parseAgeInput(ageInput);
-  const [sort, setSort] = useState<SortKey | undefined>();
   const hasConditions = typeof age === 'number' || Boolean(jobCode || schoolCode || regionCode);
   const selectedSort = sort === undefined ? (hasConditions ? 'recommended' : 'popular')
     : sort === 'recommended' && !hasConditions ? 'popular' : sort;
@@ -49,12 +84,14 @@ export default function PoliciesPage() {
 
   useEffect(() => {
     // 조건을 모두 지우면 수동 맞춤순도 인기순으로 전환한다. 다른 수동 정렬은 유지한다.
-    if (age !== null && !hasConditions && sort === 'recommended') setSort('popular');
-  }, [hasConditions, sort, age]);
+    // 복원한 코드·나이를 확인한 뒤에만 저장된 맞춤순을 정리한다.
+    if (ready && !restoringCodes && age !== null && (saved.age === undefined || saved.age === age)
+      && !hasConditions && sort === 'recommended') updateCondition('sort', 'popular');
+  }, [hasConditions, sort, age, ready, restoringCodes, saved.age]);
 
   useEffect(() => {
     // 잘못된 나이는 전송하지 않는다. 이전 결과도 숨겨 현재 입력의 결과처럼 보이지 않게 한다.
-    if (age === null) return;
+    if (!ready || restoringCodes || age === null || (saved.age !== undefined && age !== saved.age)) return;
     const controller = new AbortController();
     let active = true;
     // 응답이 끝없이 지연되어도 오류 안내와 다시 시도 버튼을 보여준다.
@@ -68,7 +105,7 @@ export default function PoliciesPage() {
       if (requestedSort !== undefined) request.sort = requestedSort;
       // '전체'일 때는 category 자체를 보내지 않고, 선택한 실제 분야명만 그대로 보낸다.
       if (category) request.category = category;
-      // 선택 입력을 지우면 conditions도 생략한다. 나이는 URL·브라우저 저장소에 남기지 않는다.
+      // 선택 입력을 지우면 conditions도 생략한다. 개인 조건은 URL에 넣지 않고 POST 본문으로만 전송한다.
       const conditions: NonNullable<PolicySearchRequest['conditions']> = {};
       if (typeof age === 'number') conditions.age = age;
       if (jobCode) conditions.jobCode = jobCode;
@@ -102,7 +139,7 @@ export default function PoliciesPage() {
       clearTimeout(timeout);
       controller.abort();
     };
-  }, [attempt, category, includeClosed, age, jobCode, schoolCode, regionCode, requestedSort, page]);
+  }, [attempt, category, includeClosed, age, jobCode, schoolCode, regionCode, requestedSort, page, ready, restoringCodes, saved.age]);
 
   return (
     <main className="container policies-page policy-list-page" id="main-content">
@@ -121,7 +158,7 @@ export default function PoliciesPage() {
             disabled={categories.status !== 'success'}
             onChange={(event) => {
               setState({ status: 'loading' });
-              setPage(1); setCategory(event.target.value);
+              setPage(1); updateCondition('category', event.target.value);
             }}
           >
             <option value="">전체</option>
@@ -136,7 +173,7 @@ export default function PoliciesPage() {
             checked={includeClosed}
             onChange={(event) => {
               setState({ status: 'loading' });
-              setPage(1); setIncludeClosed(event.target.checked);
+              setPage(1); updateCondition('includeClosed', event.target.checked);
             }}
           />
           마감 포함
@@ -158,22 +195,24 @@ export default function PoliciesPage() {
                 const value = event.target.value;
                 if (parseAgeInput(value) !== age) setPage(1);
                 setAgeInput(value);
+                const parsed = parseAgeInput(value);
+                updateCondition('age', typeof parsed === 'number' ? parsed : undefined);
               }}
             />
-            <button className="age-clear-button" type="button" disabled={ageInput === ''} onClick={() => { setPage(1); setAgeInput(''); }}>
+            <button className="age-clear-button" type="button" disabled={ageInput === ''} onClick={() => { setPage(1); setAgeInput(''); updateCondition('age', undefined); }}>
               나이 지우기
             </button>
           </div>
           <p id="age-help">나이 없이도 볼 수 있어요.</p>
           {age === null && <p id="age-error" role="alert">만 나이는 1~120 사이의 정수로 입력해 주세요. 올바르게 입력하면 목록을 다시 조회합니다.</p>}
         </div>
-        <EligibilityFilters jobCode={jobCode} schoolCode={schoolCode} onChange={(field, code) => {
+        <EligibilityFilters state={eligibility.state} retry={eligibility.retry} jobCode={jobCode} schoolCode={schoolCode} onChange={(field, code) => {
           setState({ status: 'loading' });
-          setPage(1); if (field === 'jobCode') setJobCode(code); else setSchoolCode(code);
+          setPage(1); updateCondition(field, code);
         }} />
-        <RegionFilter regionCode={regionCode} onChange={(code) => {
+        <RegionFilter state={regions.state} retry={regions.retry} regionCode={regionCode} onChange={(code) => {
           setState({ status: 'loading' });
-          setPage(1); setRegionCode(code);
+          setPage(1); updateCondition('regionCode', code);
         }} />
         {categories.status === 'loading' && <p className="filter-message" role="status">분야 선택지를 불러오는 중입니다.</p>}
         {categories.status === 'error' && (
@@ -200,7 +239,7 @@ export default function PoliciesPage() {
             const value = event.target.value;
             if (Object.hasOwn(sortLabels, value)) {
               setState({ status: 'loading' });
-              setPage(1); setSort(value as SortKey);
+              setPage(1); updateCondition('sort', value as SortKey);
             }
           }}>
             {(['recommended', 'popular', 'deadline', 'newest'] as const).map((key) => (

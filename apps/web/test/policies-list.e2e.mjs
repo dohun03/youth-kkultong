@@ -108,9 +108,9 @@ test('실제 만 나이 입력은 맞춤순 결과·태그를 표시하고 삭�
     assert.match(await page.locator('.list-summary').textContent(), /맞춤순/);
     assert.equal(await page.locator('.tag-match').count(), matched.items.reduce((count, policy) => count + policy.tags.filter((tag) => !tag.endsWith('_REVIEW')).length, 0));
     assert.ok((await page.locator('.list-summary').textContent()).includes(matched.pagination.total.toLocaleString('ko-KR')));
-    // 개인 조건은 POST 본문에만 보내고 URL·브라우저 저장소에 기록하지 않는다.
+    // 개인 조건은 POST 본문과 탭 세션에만 사용하며 URL·localStorage에는 기록하지 않는다.
     assert.equal(new URL(page.url()).search, '');
-    assert.deepEqual(await page.evaluate(() => [sessionStorage.length, localStorage.length]), [0, 0]);
+    assert.deepEqual(await page.evaluate(() => [JSON.parse(sessionStorage.getItem('youth-kkultong:conditions')), localStorage.length]), [{ age: 28 }, 0]);
     await page.getByRole('button', { name: '나이 지우기' }).click();
     await expectTitles(page, initial.items);
     assert.match(await page.locator('.list-summary').textContent(), /인기순/);

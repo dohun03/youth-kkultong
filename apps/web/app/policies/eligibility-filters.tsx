@@ -1,7 +1,7 @@
 'use client';
 
 import type { EligibilityCodeOption, EligibilityCodesResponse } from '@youth-kkultong/shared';
-import { useMetaOptions } from './use-meta-options';
+import type { MetaState } from './use-meta-options';
 
 /** 코드와 표시명이 모두 있는 서버 선택지만 허용한다. */
 function isOptions(value: unknown): value is EligibilityCodeOption[] {
@@ -10,17 +10,16 @@ function isOptions(value: unknown): value is EligibilityCodeOption[] {
 }
 
 /** 취업·학력 응답이 공용 API 계약을 만족하는지 확인한다. */
-function isEligibility(value: unknown): value is EligibilityCodesResponse {
+export function isEligibility(value: unknown): value is EligibilityCodesResponse {
   return typeof value === 'object' && value !== null && 'jobCodes' in value && 'schoolCodes' in value
     && isOptions(value.jobCodes) && isOptions(value.schoolCodes);
 }
 
 /** 공식 취업·학력 선택지를 불러오고 확인된 코드 또는 미선택만 부모 화면에 전달한다. */
-export function EligibilityFilters({ jobCode, schoolCode, onChange }: {
-  jobCode: string; schoolCode: string;
+export function EligibilityFilters({ jobCode, schoolCode, onChange, state, retry }: {
+  jobCode: string; schoolCode: string; state: MetaState<EligibilityCodesResponse>; retry: () => void;
   onChange: (field: 'jobCode' | 'schoolCode', code: string) => void;
 }) {
-  const { state, retry } = useMetaOptions('/api/v1/meta/eligibility-codes', isEligibility);
   return (
     <fieldset className="condition-filters eligibility-filters">
       <legend className="sr-only">취업·학력 (선택)</legend>

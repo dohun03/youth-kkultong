@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-22 (Asia/Seoul) · **Step 1~51 완료, Step 52~57 미착수**
+최종 확인일: 2026-10-22 (Asia/Seoul) · **Step 1~52 완료, Step 53~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1930,6 +1930,51 @@ git diff --check
 - API와 웹을 새 이미지로 재생성하고 바로 확인할 수 있도록 실행 상태로 뒀다. 사용자 검수 후 명시적인 요청에 따라 목록 UI 변경을 하나의 커밋으로 묶는다. Step 52는 진행하지 않았다.
 - 읽는 순서: `policies/page.tsx` 필터/정렬 배치 → `policy-card.tsx` 소개/카드 → `globals.css` 목록 스타일 → API `policy.repository.ts`/`policy-card.ts`의 소개 미리보기 → 브라우저·API 회귀 테스트.
 
-## 61. 다음 작업을 위한 상태
+## 61. Step 52 선택 조건 세션 유지 (2026-10-22)
 
-다음 단계 대상은 **Step 52: 선택 조건 세션 유지**다. Step 52~57은 미착수다. 상세·목록 화면 추가 검수 요청을 반영했으며 `http://localhost:3000/policies`에서 바로 확인할 수 있다. 다음 단계는 별도 요청을 기다린다.
+작업 규칙 → PLAN Step 52 → SPEC 1장·3~4장·8.1·T-24 → 선행 완료 기록과 실제 목록/상세 코드를 확인했다. Step 51과 추가 검수 변경은 완료되어 있었고 명세 충돌은 없었다. Step 52만 구현했으며 커밋은 실행하지 않았다.
+
+- `use-session-conditions.ts`에서 나이·지역·취업·학력만 `sessionStorage`의 `youth-kkultong:conditions`에 보관한다. 최초 복원 전에 빈 초기값으로 덮어쓰거나 기본 검색을 먼저 보내지 않는다. 새로고침·상세의 목록 링크·브라우저 뒤로가기 후 네 조건과 맞춤 결과를 복원한다.
+- 유효한 1~120 정수 나이와 코드 형태만 읽고, 추가 필드·손상된 JSON·잘못된 자료형을 제거한다. 오류 상태의 나이 입력 문구는 저장하지 않는다. 선택을 해제하면 해당 필드를 삭제하고 모든 조건을 해제하면 전용 키를 제거한다. 다른 저장소 키에는 접근하지 않는다.
+- 취업·학력·지역 메타 조회를 목록 페이지에서 공유하고 기존 필터는 전달받은 조회 상태·재시도를 사용한다. 복원된 코드도 현재 메타 선택지와 대조한 뒤 검색에 넣는다. 폐지·미확인 코드는 메타 조회 성공 후 제거하며, 조회 실패 때는 저장값을 보존하되 검색에서 제외하고 재시도 성공 시 복원한다.
+- 저장소 읽기·쓰기·삭제 차단과 저장 공간 부족에도 메모리에서 조건 선택·해제·검색을 계속한다. 이때 새로고침 후 유지 여부는 브라우저 저장소 사용 가능 여부에 따른다. 저장소 오류나 개인 조건 원문을 로그로 출력하지 않는다.
+- 개인 조건의 네트워크 전달은 기존 검색 POST 본문에만 한정한다. URL query·상세 GET·localStorage·서버 DB·파일 로그에는 보관하지 않는다. 분야·마감 포함·수동 정렬·페이지는 이번 세션 저장 범위에 넣지 않았다. API 계약·DB 스키마·Migration·패키지·SPEC 변경은 없고 PLAN·SUMMARY만 갱신했다.
+
+### 검증
+
+```bash
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+docker compose -f compose.yaml -f compose.local.yaml build web
+docker compose -f compose.yaml -f compose.local.yaml up -d --no-deps --force-recreate --wait --wait-timeout 60 web
+FONTCONFIG_FILE=/tmp/youth-step46-fonts.conf LD_LIBRARY_PATH=/tmp/youth-step46-browser-libs/root/usr/lib/x86_64-linux-gnu PLAYWRIGHT_MODULE=/home/leenohoon/youth-kkultong-before/node_modules/.pnpm/playwright@1.64.0/node_modules/playwright/index.mjs node --test apps/web/test/*.e2e.mjs
+npm test --workspace apps/api -- --runTestsByPath test/policy-search.integration.spec.ts
+git diff --check
+```
+
+- 공용·API·웹 타입 검사, Docker 웹 프로덕션 빌드, 브라우저 **49개**, 검색 API 통합 **32개**, diff 검사가 모두 통과했다. 기존 45개 브라우저 회귀에 조건 저장/복원/해제·독립 탭·손상 자료/미확인 코드·저장소 차단·메타 실패/재시도 4개 시나리오를 추가했다. 네 조건 복원 후 최초 검색부터 올바른 POST 본문을 보내고 URL query와 상세 GET에 조건을 전달하지 않는 것도 확인했다.
+- 최초 브라우저 실행에서는 추가 탭을 만들 수 없는 Playwright 단축 컨텍스트 사용으로 테스트 하나가 실패했다. 명시적인 `browser.newContext()`로 테스트 환경을 수정한 뒤 전체 49개가 통과했다.
+- API 실행 이미지는 개발용 TypeScript·Jest가 없어 컨테이너 안 테스트 실행이 실패했다. 이후 호스트의 개발 의존성과 공개된 로컬 DB 포트 5433으로 실행했다. Node 스크립트에서 `.env`의 `POSTGRES_PASSWORD`를 읽어 접속 URL을 메모리에서 구성하고 환경변수로만 전달했으며 비밀값은 출력하지 않았다. 테스트용 임시 스키마에서만 데이터를 만들고 정리했으며, 사용자 조건 미저장(T-24) 검증을 포함한 32개가 통과했다.
+- 검증 후 기존 `public.policies`는 **3,390건**, 남은 `step41_test_%` 임시 스키마는 **0개**다. 외부 수집·운영 스키마 Migration·시드는 실행하지 않았다. API·DB 컨테이너는 유지하고 웹만 새 이미지로 재생성해 `http://localhost:3000/policies`에서 확인할 수 있도록 실행 상태로 두었다.
+
+핵심 코드 읽는 순서: `use-session-conditions.ts`의 복원/저장 → `page.tsx`의 현행 코드 확인/검색 요청 → `eligibility-filters.tsx`·`region-filter.tsx`의 메타 상태 전달 → `policy-exploration.e2e.mjs`의 세션 검증.
+
+## 62. Step 52 세션 유지 범위 확장 (2026-10-22 사용자 승인)
+
+사용자가 제안된 확장안을 승인해 Step 52에 분야·마감 포함·수동 정렬 유지 기능을 추가했다. 앞 절의 '네 조건만 저장'·'목록 필터/정렬 제외' 결정은 이번 승인으로 아래와 같이 변경한다. Step 53은 진행하지 않는다.
+
+- 훅 이름을 `use-session-exploration.ts` / `useSessionExploration`으로 정리하고 기존 저장 키를 유지해 앞선 네 조건 저장값도 읽을 수 있게 했다. 개인 조건과 분야·마감 포함·직접 선택한 정렬을 하나의 세션 상태로 관리한다. 페이지는 저장하지 않아 새로고침·상세 복귀 시 1페이지로 시작한다.
+- 자동 정렬은 세션에 쓰지 않는다. 복원한 유효 개인 조건이 있으면 맞춤순, 없으면 인기순이다. 직접 선택한 인기순·마감순·최신순은 유지하며, 저장된 맞춤순은 조건 검증 후 유효 조건이 없으면 인기순으로 바꾸고 저장값도 정리한다. 분야와 마감 포함은 맞춤 조건 수에 포함하지 않는다.
+- 복원한 분야도 현재 메타 선택지와 대조한다. 더 이상 없는 분야는 삭제해 '전체'로 표시한다. 메타 로딩 중에는 첫 검색을 기다리고, 실패 시 저장값을 보존하되 해당 필터는 검색에서 제외한다. 재시도 성공 시 검증·복원한다. 지역·자격 메타 로딩 중에는 맞춤순을 성급하게 인기순으로 덮어쓰지 않는다.
+- 마감 포함은 실제 boolean만 읽고 기본 `false`는 생략한다. 알 수 없는 정렬·분야 자료형·추가 필드·페이지는 복원하지 않는다. 분야 '전체'·마감 해제도 세션에 반영한다. URL·localStorage·서버 DB·로그에 개인 조건을 기록하지 않는 기존 경계는 유지한다.
+- API·DB·Migration·패키지 변경은 없다. 승인된 세션 동작을 PRD 4.2·ARCHITECTURE 4장·SPEC 8.1·PLAN Step 52에 동기화했다. SPEC_SUMMARY는 없다. 커밋은 실행하지 않았다.
+
+검증: `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`, `docker compose -f compose.yaml -f compose.local.yaml build web`, `git diff --check` 통과. 이어 `up -d --no-deps --force-recreate --wait --wait-timeout 60 web`으로 웹을 갱신했다. 기존과 같은 Playwright·임시 Chromium 라이브러리·글꼴 환경에서 `node --test apps/web/test/*.e2e.mjs`를 실행해 기존 49개와 신규 4개, **53개 모두 통과**했다.
+
+- 실제 API를 대상으로 분야·마감 포함·수동 정렬의 새로고침/상세 복귀 유지, 2페이지 이후 1페이지 복원, 필터 해제 유지, 첫 검색부터 복원 상태 전송을 확인했다. 잘못된 정렬/boolean/분야 자료형·페이지 제거, 조건 없는 맞춤순의 저장값 정리, 조건 있는 맞춤순·다른 수동 정렬 유지, 자동 정렬 미저장, 메타 지연/실패/재시도를 검증했다.
+- API·DB 소스와 스키마는 변경하지 않았고 외부 수집·Migration·시드는 실행하지 않았다. API·DB 컨테이너는 재생성하지 않았다. 최종 웹·API·DB 모두 healthy이며 `http://localhost:3000/policies`에서 바로 확인할 수 있다. 이번 확장의 미해결 문제는 없다.
+
+핵심 코드 읽는 순서: `use-session-exploration.ts` → `page.tsx`의 필터 검증·정렬 복원 → `policy-exploration.e2e.mjs`의 탐색 상태 복원 테스트.
+
+## 63. 다음 작업을 위한 상태
+
+다음 단계 대상은 **Step 53: 목록·상세 예외 UI와 접근성**이다. Step 53~57은 미착수다. Step 52의 미해결 문제는 없으며 다음 단계는 별도 요청을 기다린다.

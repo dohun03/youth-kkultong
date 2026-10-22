@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 
 /** 선택지 조회의 로딩·실패·정상 결과를 구분한다. */
-type MetaState<T> = { status: 'loading' } | { status: 'error' } | { status: 'success'; data: T };
+export type MetaState<T> = { status: 'loading' } | { status: 'error' } | { status: 'success'; data: T };
 
 /** 분야·자격 등 선택지 API의 검증·시간 제한·재시도·요청 정리를 함께 처리한다. */
 export function useMetaOptions<T>(path: string, validate: (value: unknown) => value is T) {

@@ -9,8 +9,9 @@ after(async () => { await browser?.close(); });
 
 /** 각 탐색 시나리오를 별도 탭에서 실행하고 반드시 닫는다. */
 async function withPage(run) {
-  const page = await browser.newPage();
-  try { await run(page); } finally { await page.close(); }
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try { await run(page); } finally { await context.close(); }
 }
 
 /** 실제 API의 기대 응답을 읽되 조건 원문은 출력하거나 저장하지 않는다. */
@@ -480,4 +481,220 @@ test('목록은 짧은 필터와 소개 중심 카드를 표시하며 작은 화
     assert.ok(stats.y >= description.y + description.height);
     assert.ok(stats.y + stats.height <= mobileCard.y + mobileCard.height);
   });
+});
+
+/** 세션 저장과 복원을 확인하는 화면 전용 키다. */
+const conditionsStorageKey = 'youth-kkultong:conditions';
+
+test('네 조건을 새로고침·상세 복귀 시 유지하고 해제 후에는 복원하지 않는다', async () => {
+  const codes = await (await fetch(`${api}/api/v1/meta/eligibility-codes`)).json();
+  const conditions = { age: 28, jobCode: codes.jobCodes[0].code, schoolCode: codes.schoolCodes[0].code, regionCode: '41111' };
+  await withPage(async (page) => {
+    const requests = [];
+    page.on('request', (request) => {
+      if (request.url().includes('/api/v1/')) {
+        assert.equal(new URL(request.url()).search, '');
+        if (request.url().endsWith('/policies/search')) requests.push(request.postDataJSON());
+        else assert.equal(request.postData(), null);
+      }
+    });
+    await page.goto(`${base}/policies`);
+    await page.locator('#policy-age').fill('28');
+    await page.selectOption('#jobCode', conditions.jobCode);
+    await page.selectOption('#schoolCode', conditions.schoolCode);
+    await page.selectOption('#region-0', '41000');
+    await page.selectOption('#region-1', '41110');
+    await page.selectOption('#region-2', conditions.regionCode);
+    const expected = await search({ conditions });
+    await expectResult(page, expected);
+    assert.deepEqual(await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)), conditionsStorageKey), conditions);
+    for (const returnBy of ['reload', 'link', 'back']) {
+      requests.length = 0;
+      if (returnBy === 'reload') await page.reload();
+      else {
+        await page.locator('.policy-card').first().click();
+        await page.locator('.policy-detail').waitFor();
+        if (returnBy === 'back') await page.goBack();
+        else await page.getByRole('link', { name: /목록/ }).click();
+      }
+      await expectResult(page, expected);
+      assert.equal(await page.locator('#policy-age').inputValue(), '28');
+      assert.equal(await page.locator('#jobCode').inputValue(), conditions.jobCode);
+      assert.equal(await page.locator('#schoolCode').inputValue(), conditions.schoolCode);
+      assert.equal(await page.locator('#region-2').inputValue(), conditions.regionCode);
+      assert.ok(requests.length > 0);
+      assert.ok(requests.every((body) => JSON.stringify(body.conditions) === JSON.stringify(conditions)));
+      assert.equal(new URL(page.url()).search, '');
+      assert.equal(await page.evaluate(() => localStorage.length), 0);
+    }
+    // 독립된 탭의 세션에는 조건을 가져오지 않는다.
+    const other = await page.context().newPage();
+    try {
+      await other.goto(`${base}/policies`);
+      await expectResult(other, await search());
+      assert.equal(await other.locator('#policy-age').inputValue(), '');
+    } finally { await other.close(); }
+    await page.getByRole('button', { name: '나이 지우기' }).click();
+    await page.selectOption('#jobCode', '');
+    await page.selectOption('#schoolCode', '');
+    await page.selectOption('#region-0', '');
+    await expectResult(page, await search());
+    assert.equal(await page.evaluate((key) => sessionStorage.getItem(key), conditionsStorageKey), null);
+    await page.reload();
+    await expectResult(page, await search());
+    assert.equal(await page.locator('#policy-age').inputValue(), '');
+  });
+});
+
+test('손상된 자료·미확인 코드를 제거하고 네 조건만 저장한다', async () => {
+  for (const stored of ['{broken', 'null', '[]', JSON.stringify({ age: 121, jobCode: 'invalid', schoolCode: {}, regionCode: 'x' }), JSON.stringify({ age: 28, jobCode: '9999999', schoolCode: '9999999', regionCode: '99999', category: '추가값', page: 9 })]) {
+    await withPage(async (page) => {
+      await page.addInitScript(({ key, stored }) => sessionStorage.setItem(key, stored), { key: conditionsStorageKey, stored });
+      const requests = [];
+      page.on('request', (request) => { if (request.url().endsWith('/policies/search')) requests.push(request.postDataJSON()); });
+      await page.goto(`${base}/policies`);
+      const validAge = stored.includes('28');
+      await expectResult(page, await search(validAge ? { conditions: { age: 28 } } : {}));
+      assert.ok(requests.every((body) => validAge ? JSON.stringify(body.conditions) === '{"age":28}' : body.conditions === undefined));
+      assert.deepEqual(await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)), conditionsStorageKey), validAge ? { age: 28 } : null);
+    });
+  }
+});
+
+test('저장소 읽기·쓰기가 차단돼도 조건 입력·검색·해제를 계속한다', async () => {
+  await withPage(async (page) => {
+    await page.addInitScript(() => {
+      for (const method of ['getItem', 'setItem', 'removeItem']) Storage.prototype[method] = () => { throw new DOMException('blocked', 'SecurityError'); };
+    });
+    await page.goto(`${base}/policies`);
+    await expectResult(page, await search());
+    await page.locator('#policy-age').fill('28');
+    await expectResult(page, await search({ conditions: { age: 28 } }));
+    await page.getByRole('button', { name: '나이 지우기' }).click();
+    await expectResult(page, await search());
+  });
+});
+
+test('복원 중 메타 조회 실패 시 코드를 전송하지 않고 보관하며 재시도로 복구한다', async () => {
+  await withPage(async (page) => {
+    await page.addInitScript((key) => sessionStorage.setItem(key, JSON.stringify({ regionCode: '41111' })), conditionsStorageKey);
+    let calls = 0;
+    const requests = [];
+    await page.route('**/meta/regions', (route) => ++calls === 1 ? route.fulfill({ status: 503, json: {} }) : route.continue());
+    page.on('request', (request) => { if (request.url().endsWith('/policies/search')) requests.push(request.postDataJSON()); });
+    await page.goto(`${base}/policies`);
+    await page.getByRole('button', { name: '지역 다시 시도' }).waitFor();
+    await expectResult(page, await search());
+    assert.equal(requests[0].conditions, undefined);
+    assert.deepEqual(await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)), conditionsStorageKey), { regionCode: '41111' });
+    await page.getByRole('button', { name: '지역 다시 시도' }).click();
+    await expectResult(page, await search({ conditions: { regionCode: '41111' } }));
+    assert.equal(await page.locator('#region-2').inputValue(), '41111');
+  });
+});
+
+test('분야·마감 포함·수동 정렬을 새로고침과 상세 복귀 후 유지하고 페이지는 1로 복원한다', async () => {
+  const categories = await (await fetch(`${api}/api/v1/meta/categories`)).json();
+  const category = categories[0];
+  const expected = await search({ category, includeClosed: true, sort: 'newest' });
+  await withPage(async (page) => {
+    await page.goto(`${base}/policies`);
+    await page.selectOption('#policy-category', category);
+    await page.getByLabel('마감 포함').check();
+    await page.selectOption('#policy-sort', 'newest');
+    await expectResult(page, expected);
+    if (expected.pagination.totalPages > 1) {
+      await page.getByRole('button', { name: '다음', exact: true }).click();
+      await expectResult(page, await search({ category, includeClosed: true, sort: 'newest', page: 2 }));
+    }
+    const requests = [];
+    page.on('request', (request) => { if (request.url().endsWith('/policies/search')) requests.push(request.postDataJSON()); });
+    for (const action of ['reload', 'detail']) {
+      requests.length = 0;
+      if (action === 'reload') await page.reload();
+      else {
+        await page.locator('.policy-card').first().click();
+        await page.getByRole('link', { name: '목록으로 돌아가기' }).click();
+      }
+      await expectResult(page, expected);
+      assert.equal(await page.locator('#policy-category').inputValue(), category);
+      assert.equal(await page.getByLabel('마감 포함').isChecked(), true);
+      assert.equal(await page.locator('#policy-sort').inputValue(), 'newest');
+      assert.ok(requests.length > 0);
+      assert.ok(requests.every((body) => body.category === category && body.includeClosed === true && body.sort === 'newest' && body.page === 1));
+      assert.deepEqual(await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)), conditionsStorageKey), { category, includeClosed: true, sort: 'newest' });
+      assert.equal(new URL(page.url()).search, '');
+    }
+    await page.selectOption('#policy-category', '');
+    await page.getByLabel('마감 포함').uncheck();
+    await page.reload();
+    await expectResult(page, await search({ sort: 'newest' }));
+    assert.equal(await page.locator('#policy-category').inputValue(), '');
+    assert.equal(await page.getByLabel('마감 포함').isChecked(), false);
+  });
+});
+
+test('복원한 맞춤순은 유효 조건이 없으면 인기순으로 정리하고 다른 수동 정렬은 유지한다', async () => {
+  for (const stored of [{ sort: 'recommended' }, { sort: 'recommended', regionCode: '99999' }, { sort: 'recommended', age: 28 }, { sort: 'popular', age: 28 }, { sort: 'deadline' }, { sort: 'newest' }, { sort: 'invalid', includeClosed: 'false', category: 1, page: 3 }]) {
+    await withPage(async (page) => {
+      await page.addInitScript(({ key, stored }) => sessionStorage.setItem(key, JSON.stringify(stored)), { key: conditionsStorageKey, stored });
+      const requests = [];
+      page.on('request', (request) => { if (request.url().endsWith('/policies/search')) requests.push(request.postDataJSON()); });
+      await page.goto(`${base}/policies`);
+      const sort = stored.sort === 'invalid' ? undefined : stored.sort === 'recommended' && !stored.age ? 'popular' : stored.sort;
+      await expectResult(page, await search({ ...(sort ? { sort } : {}), ...(stored.age ? { conditions: { age: stored.age } } : {}) }));
+      assert.equal(await page.locator('#policy-sort').inputValue(), sort ?? 'popular');
+      assert.ok(requests.every((body) => body.sort === sort && body.page === 1 && body.includeClosed === false && !body.category));
+      const saved = await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)), conditionsStorageKey);
+      assert.deepEqual(saved, sort ? { sort, ...(stored.age ? { age: stored.age } : {}) } : null);
+    });
+  }
+});
+
+test('자동 정렬은 저장하지 않고 복원한 조건 유무로 결정하며 메타 지연 중 맞춤순을 지우지 않는다', async () => {
+  await withPage(async (page) => {
+    await page.goto(`${base}/policies`);
+    await page.locator('#policy-age').fill('28');
+    await expectResult(page, await search({ conditions: { age: 28 } }));
+    await page.reload();
+    await expectResult(page, await search({ conditions: { age: 28 } }));
+    assert.equal(await page.locator('#policy-sort').inputValue(), 'recommended');
+    assert.deepEqual(await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)), conditionsStorageKey), { age: 28 });
+  });
+  await withPage(async (page) => {
+    await page.addInitScript((key) => sessionStorage.setItem(key, JSON.stringify({ regionCode: '41111', sort: 'recommended' })), conditionsStorageKey);
+    let release;
+    const pending = new Promise((resolve) => { release = resolve; });
+    await page.route('**/meta/regions', async (route) => { await pending; await route.continue(); });
+    const requests = [];
+    page.on('request', (request) => { if (request.url().endsWith('/policies/search')) requests.push(request.postDataJSON()); });
+    await page.goto(`${base}/policies`);
+    await page.getByText('지역 선택지를 불러오는 중입니다.').waitFor();
+    assert.equal(requests.length, 0);
+    release();
+    await expectResult(page, await search({ conditions: { regionCode: '41111' }, sort: 'recommended' }));
+    assert.ok(requests.every((body) => body.sort === 'recommended' && body.conditions?.regionCode === '41111'));
+    assert.equal(await page.locator('#policy-sort').inputValue(), 'recommended');
+  });
+});
+
+test('복원한 분야를 메타 API로 확인하고 조회 실패 시 보관한 뒤 재시도로 복원한다', async () => {
+  const categories = await (await fetch(`${api}/api/v1/meta/categories`)).json();
+  for (const category of [categories[0], '존재하지 않는 분야']) {
+    await withPage(async (page) => {
+      await page.addInitScript(({ key, category }) => sessionStorage.setItem(key, JSON.stringify({ category })), { key: conditionsStorageKey, category });
+      let calls = 0;
+      await page.route('**/meta/categories', (route) => ++calls === 1 ? route.fulfill({ status: 503, json: {} }) : route.continue());
+      await page.goto(`${base}/policies`);
+      await page.getByRole('button', { name: '분야 다시 시도' }).waitFor();
+      await expectResult(page, await search());
+      assert.deepEqual(await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)), conditionsStorageKey), { category });
+      await page.getByRole('button', { name: '분야 다시 시도' }).click();
+      const valid = categories.includes(category);
+      await expectResult(page, await search(valid ? { category } : {}));
+      await page.locator('#policy-category:not([disabled])').waitFor();
+      assert.equal(await page.locator('#policy-category').inputValue(), valid ? category : '');
+      assert.deepEqual(await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)), conditionsStorageKey), valid ? { category } : null);
+    });
+  }
 });
