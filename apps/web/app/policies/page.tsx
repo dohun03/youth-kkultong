@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import type { PolicySearchRequest, PolicySearchResponse, SortKey } from '@youth-kkultong/shared';
 import { PolicyCard } from './policy-card';
 import { EligibilityFilters } from './eligibility-filters';
+import { RegionFilter } from './region-filter';
 import { isCategories, useMetaOptions } from './use-meta-options';
 
 /** 로딩·실패·정상 응답을 구분해 API 오류를 빈 목록으로 표시하지 않는다. */
@@ -33,6 +34,7 @@ export default function PoliciesPage() {
   const { state: categories, retry: retryCategories } = useMetaOptions('/api/v1/meta/categories', isCategories);
   const [jobCode, setJobCode] = useState('');
   const [schoolCode, setSchoolCode] = useState('');
+  const [regionCode, setRegionCode] = useState('');
   const [category, setCategory] = useState('');
   const [includeClosed, setIncludeClosed] = useState(false);
   const [ageInput, setAgeInput] = useState('');
@@ -57,6 +59,7 @@ export default function PoliciesPage() {
       if (typeof age === 'number') conditions.age = age;
       if (jobCode) conditions.jobCode = jobCode;
       if (schoolCode) conditions.schoolCode = schoolCode;
+      if (regionCode) conditions.regionCode = regionCode;
       if (Object.keys(conditions).length > 0) request.conditions = conditions;
 
       try {
@@ -85,7 +88,7 @@ export default function PoliciesPage() {
       clearTimeout(timeout);
       controller.abort();
     };
-  }, [attempt, category, includeClosed, age, jobCode, schoolCode]);
+  }, [attempt, category, includeClosed, age, jobCode, schoolCode, regionCode]);
 
   return (
     <main className="container policies-page" id="main-content">
@@ -148,6 +151,10 @@ export default function PoliciesPage() {
         <EligibilityFilters jobCode={jobCode} schoolCode={schoolCode} onChange={(field, code) => {
           setState({ status: 'loading' });
           if (field === 'jobCode') setJobCode(code); else setSchoolCode(code);
+        }} />
+        <RegionFilter regionCode={regionCode} onChange={(code) => {
+          setState({ status: 'loading' });
+          setRegionCode(code);
         }} />
         {categories.status === 'loading' && <p className="filter-message" role="status">분야 선택지를 불러오는 중입니다.</p>}
         {categories.status === 'error' && (

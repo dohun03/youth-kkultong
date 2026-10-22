@@ -75,3 +75,42 @@ test('자격 선택지 실패·재시도와 미확인 코드 전송 방어', asy
     await expectResult(page, await search({ conditions: { jobCode: codes.jobCodes[0].code } }));
   });
 });
+
+test('현행 부모 관계로 시·도·시·구를 선택하고 해제해도 지역 불일치 정책을 제외하지 않는다', async () => {
+  const regions = await (await fetch(`${api}/api/v1/meta/regions`)).json();
+  const initial = await search();
+  await withPage(async (page) => {
+    await page.goto(`${base}/policies`);
+    await page.locator('#region-0:not([disabled])').waitFor();
+    assert.deepEqual(await page.locator('#region-0 option').evaluateAll((options) => options.slice(1).map((item) => item.value)), regions.filter((item) => item.parentCode === null).map((item) => item.code));
+    await page.selectOption('#region-0', '41000');
+    await page.selectOption('#region-1', '41110');
+    assert.deepEqual(await page.locator('#region-2 option').evaluateAll((options) => options.slice(1).map((item) => item.value)), regions.filter((item) => item.parentCode === '41110').map((item) => item.code));
+    await page.selectOption('#region-2', '41111');
+    const expected = await search({ conditions: { regionCode: '41111' } });
+    await expectResult(page, expected);
+    assert.equal(expected.pagination.total, initial.pagination.total);
+    assert.ok(expected.items.some((item) => item.tags.includes('REGION_RELATED') && item.score === 0.5));
+    assert.equal(await page.getByText('지역 관련', { exact: true }).count(), expected.items.filter((item) => item.tags.includes('REGION_RELATED')).length);
+    await page.selectOption('#region-0', '11000');
+    await expectResult(page, await search({ conditions: { regionCode: '11000' } }));
+    assert.equal(await page.locator('#region-2').count(), 0);
+    await page.selectOption('#region-0', '');
+    await expectResult(page, initial);
+    assert.equal(await page.locator('#region-1').count(), 0);
+  });
+});
+
+test('지역 조회 실패 시 다른 탐색을 유지하고 재시도로 현행 선택지만 복구한다', async () => {
+  const regions = await (await fetch(`${api}/api/v1/meta/regions`)).json();
+  await withPage(async (page) => {
+    let calls = 0;
+    await page.route('**/meta/regions', (route) => ++calls === 1 ? route.fulfill({ status: 500, json: {} }) : route.fulfill({ json: regions }));
+    await page.goto(`${base}/policies`);
+    await page.getByRole('button', { name: '지역 다시 시도' }).waitFor();
+    await expectResult(page, await search());
+    await page.getByRole('button', { name: '지역 다시 시도' }).click();
+    await page.locator('#region-0:not([disabled])').waitFor();
+    assert.equal(await page.locator('#region-0 option').count(), regions.filter((item) => item.parentCode === null).length + 1);
+  });
+});

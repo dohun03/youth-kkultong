@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-22 (Asia/Seoul) · **Step 1~47 완료, Step 48~57 미착수**
+최종 확인일: 2026-10-22 (Asia/Seoul) · **Step 1~48 완료, Step 49~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1848,6 +1848,17 @@ git diff --check
 
 검증: `NEXT_TELEMETRY_DISABLED=1 npm run typecheck` 통과. `docker compose -f compose.yaml -f compose.local.yaml build web`의 프로덕션 빌드 통과 후 `up -d --no-deps --force-recreate --wait --wait-timeout 60 web`으로 웹을 재생성했다. 기존 Playwright·임시 Chromium 라이브러리·Windows 한글 글꼴 환경으로 `node --test apps/web/test/*.e2e.mjs`를 실행해 **29개 모두 통과**했다. `git diff --check` 통과. API·DB 스키마·Migration·공용 계약·패키지 변경은 없으며 웹을 3000 포트에서 실행 상태로 유지했다.
 
-## 53. 다음 작업을 위한 상태
+## 53. Step 48 구현·검증 결과
 
-다음 대상은 **Step 48: 지역 선택 UI**다. Step 48~57은 미착수다. 현재 Step 완료를 막는 문제는 없다. 이번 사용자 요청은 Step 51까지이며 이후 단계는 별도 요청을 기다린다.
+사용자가 Step 47~51의 순차 구현·검증·단계별 커밋을 승인했다. PLAN·SPEC의 관련 계약과 선행 구현을 대조하고 Step 48 범위만 진행했다.
+
+- `/meta/regions`의 현행 코드만 `parentCode` 관계로 시·도/시·군·구/하위 구 단계에 표시한다. 코드 접두사로 관계를 추정하지 않으며 상위 선택 변경은 아래 선택을 함께 정리한다. 하위 전체 선택은 선택한 상위 코드로 조회한다.
+- `region-filter.tsx`는 선택 UI와 응답 검증을 맡고 페이지는 최종 코드를 다른 조건과 조합해 1페이지를 검색한다. 지역이 달라도 목록에서 제외하지 않고 서버의 지역 관련 태그와 가점만 반영한다. 로딩·실패·재시도도 제공한다.
+- 실제 현행 284개 메타 자료·수원시/장안구 선택·상위 변경·선택 해제·오류 복구를 검증했다. 지역을 선택해도 전체 건수가 유지되며 관련 태그와 0.5점이 있는 실제 응답을 확인했다. 서버의 부모 지역 가점(T-10)·폐지 코드 등 지역 판정 단위 테스트도 48개 모두 통과했다 (`npm test --workspace apps/api -- --runTestsByPath test/region-match.spec.ts`).
+- 읽는 순서: `region-filter.tsx` → `page.tsx` 조건 조합 → `policy-exploration.e2e.mjs` 지역 검증.
+
+검증: `NEXT_TELEMETRY_DISABLED=1 npm run typecheck` 통과. `docker compose -f compose.yaml -f compose.local.yaml build web`의 프로덕션 빌드 통과 후 `up -d --no-deps --force-recreate --wait --wait-timeout 60 web`으로 웹을 재생성했다. 기존 Playwright·임시 Chromium 라이브러리·Windows 한글 글꼴 환경으로 `node --test apps/web/test/*.e2e.mjs`를 실행해 **31개 모두 통과**했다. `git diff --check` 통과. API·DB 스키마·Migration·공용 계약·패키지 변경은 없으며 웹을 3000 포트에서 실행 상태로 유지했다.
+
+## 54. 다음 작업을 위한 상태
+
+다음 대상은 **Step 49: 정렬 옵션 UI**다. Step 49~57은 미착수다. 현재 Step 완료를 막는 문제는 없다. 이번 사용자 요청은 Step 51까지이며 이후 단계는 별도 요청을 기다린다.
