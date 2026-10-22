@@ -44,6 +44,7 @@ export interface PolicyCard {
   category: string | null;
   subcategory: string | null;
   benefitPreview: string;
+  descriptionPreview: string; // 목록에 보여줄 정책 소개 앞 200자
   applicationStatus: ApplicationStatus;
   applicationPeriodText: string | null;
   applicationEndDate: string | null; // YYYY-MM-DD

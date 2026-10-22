@@ -10,6 +10,7 @@ export type PolicyCandidate = Pick<Policy,
   | 'ageMin' | 'ageMax' | 'jobCodes' | 'schoolCodes' | 'regionCodes'
 > & {
   benefitPreview: string | null;
+  descriptionPreview: string | null;
   hasExtraText: boolean;
 };
 
@@ -28,13 +29,14 @@ export class PolicyRepository {
     query.select([]);
     for (const column of columns) query.addSelect(`policy.${column}`, column);
 
-    // 긴 지원 본문은 DB에서 앞 200자만 가져오고, 추가 자격·제한 설명은 존재 여부만 확인
+    // 지원 본문·정책 소개는 DB에서 앞 200자만 가져오고, 추가 자격·제한 설명은 존재 여부만 확인
     // NULL·빈 문자열·공백뿐인 설명은 추가 조건으로 보지 않음
     return query
       // 원시 조회를 사용해서 DB에서 날짜 문자열로 명시. (JS의 지저분한 DATE 변환을 거치지 않게 조회)
       .addSelect(`TO_CHAR(policy.applicationStartDate, 'YYYY-MM-DD')`, 'applicationStartDate')
       .addSelect(`TO_CHAR(policy.applicationEndDate, 'YYYY-MM-DD')`, 'applicationEndDate')
       .addSelect('LEFT(policy.benefitText, 200)', 'benefitPreview')
+      .addSelect('LEFT(policy.description, 200)', 'descriptionPreview')
       .addSelect(`COALESCE(policy.extraQualification ~ '[^[:space:]]', false)
         OR COALESCE(policy.participationRestriction ~ '[^[:space:]]', false)`, 'hasExtraText')
       .getRawMany<PolicyCandidate>();

@@ -12,7 +12,7 @@ describe('정책 검색 응답 조립', () => {
   /** 필터와 매칭을 통과한 후보를 만들고 사례별 값만 덮어쓴다. */
   function policy(index: number, overrides: Partial<MatchedPolicyCandidate> = {}): MatchedPolicyCandidate {
     return { id: `id-${index}`, externalId: String(index).padStart(5, '0'), title: `정책 ${index}`,
-      category: '주거', subcategory: '주거지원', benefitPreview: '지원 요약', viewCount: index,
+      category: '주거', subcategory: '주거지원', benefitPreview: '지원 요약', descriptionPreview: '정책 소개', viewCount: index,
       sourceRegisteredAt: new Date('2026-10-01T00:00:00Z'), applicationPeriodCode: '0057001',
       applicationPeriodRaw: '20261001 ~ 20261031', applicationStartDate: '2026-10-01', applicationEndDate: '2026-10-31',
       ageMin: 19, ageMax: 34, jobCodes: ['0013003'], schoolCodes: ['0049007'], regionCodes: ['41110'],
@@ -106,11 +106,11 @@ describe('정책 검색 응답 조립', () => {
   });
 
   it('공용 카드 필드만 내보내고 기간 원문·확인 태그를 보존한다', () => {
-    const input = policy(1, { benefitPreview: null, category: null, subcategory: null,
+    const input = policy(1, { benefitPreview: null, descriptionPreview: null, category: null, subcategory: null,
       applicationPeriodRaw: '접수 일정 추후 공지', applicationStatus: 'UNKNOWN', applicationEndDate: null,
       score: 0, tags: ['AGE_REVIEW'], hasExtraText: true });
     expect(buildPolicySearchResponse([input], {}).items[0]).toEqual({
-      id: 'id-1', title: '정책 1', category: null, subcategory: null, benefitPreview: '',
+      id: 'id-1', title: '정책 1', category: null, subcategory: null, benefitPreview: '', descriptionPreview: '',
       applicationStatus: 'UNKNOWN', applicationPeriodText: '접수 일정 추후 공지', applicationEndDate: null,
       viewCount: 1, score: 0, tags: ['AGE_REVIEW'],
     });

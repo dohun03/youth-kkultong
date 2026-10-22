@@ -105,13 +105,14 @@ export default function PoliciesPage() {
   }, [attempt, category, includeClosed, age, jobCode, schoolCode, regionCode, requestedSort, page]);
 
   return (
-    <main className="container policies-page" id="main-content">
+    <main className="container policies-page policy-list-page" id="main-content">
       <p className="eyebrow">내일을 위한 기회</p>
       <h1>청년 정책</h1>
       <p className="page-description">
         나에게 필요한 정책과 지원 정보를 찾아보세요.
       </p>
       <section className="policy-filters" aria-label="정책 필터">
+        <div className="filter-heading"><h2>내 조건으로 찾기</h2><p>원하는 조건만 선택하세요.</p></div>
         <div className="category-filter">
           <label htmlFor="policy-category">분야</label>
           <select
@@ -163,7 +164,7 @@ export default function PoliciesPage() {
               나이 지우기
             </button>
           </div>
-          <p id="age-help">입력하지 않아도 정책을 볼 수 있어요.</p>
+          <p id="age-help">나이 없이도 볼 수 있어요.</p>
           {age === null && <p id="age-error" role="alert">만 나이는 1~120 사이의 정수로 입력해 주세요. 올바르게 입력하면 목록을 다시 조회합니다.</p>}
         </div>
         <EligibilityFilters jobCode={jobCode} schoolCode={schoolCode} onChange={(field, code) => {
@@ -174,7 +175,26 @@ export default function PoliciesPage() {
           setState({ status: 'loading' });
           setPage(1); setRegionCode(code);
         }} />
-        <div className="condition-select">
+        {categories.status === 'loading' && <p className="filter-message" role="status">분야 선택지를 불러오는 중입니다.</p>}
+        {categories.status === 'error' && (
+          <div className="filter-message">
+            <p role="alert">분야 선택지를 불러오지 못했습니다. 전체 목록은 계속 조회할 수 있어요.</p>
+            <button className="retry-button" type="button" onClick={retryCategories}>
+              분야 다시 시도
+            </button>
+          </div>
+        )}
+      </section>
+      <div className="results-toolbar">
+        {state.status === 'success' && age !== null ? (
+          <p className="list-summary" role="status">
+            총 {state.response.pagination.total.toLocaleString('ko-KR')}건 · {sortLabels[state.response.appliedSort]}
+            {state.response.pagination.totalPages > 0 && (
+              <> · {state.response.pagination.page} / {state.response.pagination.totalPages}페이지</>
+            )}
+          </p>
+        ) : <p className="results-label">정책 목록</p>}
+        <div className="condition-select list-sort">
           <label htmlFor="policy-sort">정렬</label>
           <select id="policy-sort" value={selectedSort} onChange={(event) => {
             const value = event.target.value;
@@ -188,16 +208,7 @@ export default function PoliciesPage() {
             ))}
           </select>
         </div>
-        {categories.status === 'loading' && <p className="filter-message" role="status">분야 선택지를 불러오는 중입니다.</p>}
-        {categories.status === 'error' && (
-          <div className="filter-message">
-            <p role="alert">분야 선택지를 불러오지 못했습니다. 전체 목록은 계속 조회할 수 있어요.</p>
-            <button className="retry-button" type="button" onClick={retryCategories}>
-              분야 다시 시도
-            </button>
-          </div>
-        )}
-      </section>
+      </div>
       {age !== null && state.status === 'loading' && (
         <p role="status">정책 목록을 불러오는 중입니다.</p>
       )}
@@ -212,12 +223,7 @@ export default function PoliciesPage() {
       )}
       {age !== null && state.status === 'success' && (
         <section aria-label="정책 목록">
-          <p className="list-summary" role="status">
-            총 {state.response.pagination.total.toLocaleString('ko-KR')}건 · {sortLabels[state.response.appliedSort]}
-            {state.response.pagination.totalPages > 0 && (
-              <> · {state.response.pagination.page} / {state.response.pagination.totalPages}페이지</>
-            )}
-          </p>
+          <p className="policy-disclaimer">최종 신청 자격 및 접수 여부는 공식 신청처에서 확인하세요.</p>
           {state.response.items.length === 0 ? (
             <section className="empty-state" aria-labelledby="empty-title">
               <span className="empty-mark" aria-hidden="true" />

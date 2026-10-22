@@ -58,8 +58,8 @@ export class PoliciesDetailService {
     }
 
     return {
-      // 정책 혜택은 200자 요약으로 자른다
-      ...toPolicyCard({ ...policy, benefitPreview: [...(policy.benefitText ?? '')].slice(0, 200).join(''),
+      // 목록과 동일하게 소개·혜택을 유니코드 문자 기준 앞 200자로 자른다
+      ...toPolicyCard({ ...policy, descriptionPreview: [...(policy.description ?? '')].slice(0, 200).join(''), benefitPreview: [...(policy.benefitText ?? '')].slice(0, 200).join(''),
       applicationStatus: calculateApplicationStatus(policy, today), score: 0, tags: [] }),
       source: policy.source, externalId: policy.externalId, description: policy.description, benefitText: policy.benefitText,
       // 0~0·역전 같은 원본 범위도 그대로 표시하며 제한 없음이나 유효 구간으로 다시 해석하지 않는다.

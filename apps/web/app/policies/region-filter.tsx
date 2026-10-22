@@ -31,11 +31,11 @@ export function RegionFilter({ regionCode, onChange }: { regionCode: string; onC
     if (children.length > 0) levels.push(children);
   }
   return (
-    <fieldset className="condition-filters">
-      <legend>거주 지역 (선택)</legend>
+    <fieldset className="condition-filters region-filter">
+      <legend className="sr-only">거주 지역 (선택)</legend>
       {levels.map((options, level) => (
         <div className="condition-select" key={level}>
-          <label htmlFor={`region-${level}`}>{['시·도', '시·군·구', '구'][level] ?? '하위 지역'}</label>
+          <label htmlFor={`region-${level}`}>{['거주 지역', '시·군·구', '구'][level] ?? '하위 지역'}</label>
           <select id={`region-${level}`} value={path[level]?.code ?? ''} disabled={state.status !== 'success'}
             onChange={(event) => {
               const code = event.target.value;

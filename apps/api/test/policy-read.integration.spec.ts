@@ -82,7 +82,7 @@ describe('정책 읽기의 실제 PostgreSQL 검증', () => {
       ageMin: 0, ageMax: 34, jobCodes: ['0013001', '미확인'], schoolCodes: ['0049010'],
       regionCodes: ['11110'], extraQualification: '추가 서류 확인',
     });
-    const nullable = await seed({ benefitText: null });
+    const nullable = await seed({ benefitText: null, description: null });
     await seed({ applicationPeriodCode: '0057003' });
     const query = jest.spyOn(runner, 'query');
     const candidates = await repository.findCandidates(runner.manager);
@@ -98,19 +98,20 @@ describe('정책 읽기의 실제 PostgreSQL 검증', () => {
       applicationPeriodCode: '0057001', applicationPeriodRaw: '20261001 ~ 20261031',
       applicationStartDate: '2026-10-01', applicationEndDate: '2026-10-31',
       ageMin: 0, ageMax: 34, jobCodes: ['0013001', '미확인'], schoolCodes: ['0049010'],
-      regionCodes: ['11110'], benefitPreview: Array.from(policy.benefitText!).slice(0, 200).join(''),
+      regionCodes: ['11110'], descriptionPreview: Array.from(policy.description!).slice(0, 200).join(''), benefitPreview: Array.from(policy.benefitText!).slice(0, 200).join(''),
       hasExtraText: true,
     });
     expect(candidates.find(({ id }) => id === nullable.id)).toMatchObject({
       viewCount: null, sourceRegisteredAt: null, applicationStartDate: null, applicationEndDate: null,
       ageMin: null, ageMax: null, jobCodes: null, schoolCodes: null, regionCodes: null,
-      benefitPreview: null, hasExtraText: false,
+      benefitPreview: null, descriptionPreview: null, hasExtraText: false,
     });
     const sql = query.mock.calls[0][0];
-    for (const column of ['raw_json', 'description', 'content_hash', 'apply_url', 'source_modified_at']) {
+    for (const column of ['raw_json', 'content_hash', 'apply_url', 'source_modified_at']) {
       expect(sql).not.toContain(column);
     }
     expect(sql).toContain('LEFT(');
+    expect(sql).toContain('LEFT("policy"."description", 200)');
     expect(sql).not.toMatch(/LIMIT|OFFSET/);
   });
 

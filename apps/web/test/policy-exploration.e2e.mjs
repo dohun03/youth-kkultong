@@ -171,7 +171,7 @@ test('페이지 이동은 모든 조건·정렬을 유지하고 각 필터 변�
     const requests = [];
     await page.route('**/api/v1/policies/search', (route) => {
       const body = route.request().postDataJSON(); requests.push(body);
-      return route.fulfill({ json: { items: [{ id: 'test', title: `요청 ${requests.length}`, category: null, subcategory: null, benefitPreview: '', applicationStatus: 'UNKNOWN', applicationPeriodText: null, applicationEndDate: null, viewCount: null, score: 0, tags: [] }], pagination: { page: body.page, limit: 20, total: 100, totalPages: 5 }, appliedSort: body.sort ?? (body.conditions ? 'recommended' : 'popular') } });
+      return route.fulfill({ json: { items: [{ id: 'test', title: `요청 ${requests.length}`, category: null, subcategory: null, benefitPreview: '', descriptionPreview: '', applicationStatus: 'UNKNOWN', applicationPeriodText: null, applicationEndDate: null, viewCount: null, score: 0, tags: [] }], pagination: { page: body.page, limit: 20, total: 100, totalPages: 5 }, appliedSort: body.sort ?? (body.conditions ? 'recommended' : 'popular') } });
     });
     await page.goto(`${base}/policies`);
     await page.locator('.policy-card').waitFor();
@@ -443,5 +443,41 @@ test('상세 날짜는 읽기 쉽게 표시하고 설명·복수 기간·유효�
     await page.goto(`${base}/policies/${first.id}`);
     await page.locator('#period-text').waitFor();
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+  });
+});
+
+test('목록은 짧은 필터와 소개 중심 카드를 표시하며 작은 화면에서도 정보가 겹치지 않는다', async () => {
+  const expected = await search();
+  await withPage(async (page) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`${base}/policies`);
+    await expectResult(page, expected);
+    const category = await page.locator('#policy-category').boundingBox();
+    assert.ok(category.width <= 220);
+    const selectStyle = await page.locator('#policy-category').evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { padding: parseFloat(style.paddingRight), position: style.backgroundPosition, appearance: style.appearance };
+    });
+    assert.ok(selectStyle.padding >= 40);
+    assert.equal(selectStyle.appearance, 'none');
+    assert.ok(selectStyle.position.includes('14px'));
+    const first = page.locator('.policy-card').first();
+    assert.equal(await page.locator('.policy-disclaimer').count(), 1);
+    assert.equal(await first.locator('.policy-benefit').count(), 0);
+    assert.ok((await first.locator('.policy-description').textContent()).length > 0);
+    // 소개는 실제 상세 설명의 앞부분이며 지원 금액의 나열로 대체하지 않는다.
+    const detail = await (await fetch(`${api}/api/v1/policies/${expected.items[0].id}`)).json();
+    assert.equal(expected.items[0].descriptionPreview, Array.from(detail.description ?? '').slice(0, 200).join(''));
+    const main = await first.locator('.policy-card-main').boundingBox();
+    const meta = await first.locator('.policy-card-meta').boundingBox();
+    assert.ok(meta.x >= main.x + main.width);
+    assert.ok((await first.boundingBox()).height < 260);
+    await page.setViewportSize({ width: 375, height: 812 });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+    const mobileCard = await first.boundingBox();
+    const stats = await first.locator('.policy-card-stats').boundingBox();
+    const description = await first.locator('.policy-description').boundingBox();
+    assert.ok(stats.y >= description.y + description.height);
+    assert.ok(stats.y + stats.height <= mobileCard.y + mobileCard.height);
   });
 });

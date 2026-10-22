@@ -15,7 +15,7 @@ describe('정책 검색 후보·필터 조합', () => {
   /** Repository가 반환하는 경량 후보와 같은 필드를 가진 정책을 만든다. */
   function policy(id: string, overrides: Partial<PolicyCandidate> = {}): PolicyCandidate {
     return { id, externalId: `external-${id}`, title: `정책 ${id}`, category: '주거', subcategory: '주거지원',
-      benefitPreview: '지원 요약', viewCount: 10, sourceRegisteredAt: new Date('2026-10-01T00:00:00Z'),
+      benefitPreview: '지원 요약', descriptionPreview: '정책 소개', viewCount: 10, sourceRegisteredAt: new Date('2026-10-01T00:00:00Z'),
       applicationPeriodCode: '0057001', applicationPeriodRaw: '20261001 ~ 20261031',
       applicationStartDate: '2026-10-01', applicationEndDate: '2026-10-31',
       ageMin: 19, ageMax: 34, jobCodes: ['0013003'], schoolCodes: ['0049007'], regionCodes: ['41110'],

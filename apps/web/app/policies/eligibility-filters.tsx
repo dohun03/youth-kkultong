@@ -22,8 +22,8 @@ export function EligibilityFilters({ jobCode, schoolCode, onChange }: {
 }) {
   const { state, retry } = useMetaOptions('/api/v1/meta/eligibility-codes', isEligibility);
   return (
-    <fieldset className="condition-filters">
-      <legend>취업·학력 (선택)</legend>
+    <fieldset className="condition-filters eligibility-filters">
+      <legend className="sr-only">취업·학력 (선택)</legend>
       {(['jobCode', 'schoolCode'] as const).map((field) => {
         const options = state.status === 'success' ? state.data[field === 'jobCode' ? 'jobCodes' : 'schoolCodes'] : [];
         return (

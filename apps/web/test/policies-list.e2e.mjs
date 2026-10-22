@@ -29,6 +29,7 @@ function makePolicy(overrides = {}) {
     category: '주거',
     subcategory: '주거비 지원',
     benefitPreview: '매월 주거비를 지원합니다.',
+    descriptionPreview: '청년의 안정적인 주거를 지원하는 정책입니다.',
     applicationStatus: 'OPEN',
     applicationPeriodText: '2026-01-01 ~ 2026-12-31',
     applicationEndDate: '2026-12-31',
@@ -78,7 +79,7 @@ test('실제 DB의 기본 검색 첫 20건·순서·페이지 정보가 루트 �
     assert.ok(summary.includes('인기순'));
     assert.equal(await page.locator('main [role="alert"]').count(), 0);
     assert.equal(await page.locator('.policy-card').count(), 20);
-    assert.equal(await page.locator('.policy-disclaimer').count(), 20);
+    assert.equal(await page.locator('.policy-disclaimer').count(), 1);
     assert.equal(await page.locator('.tag-match').count(), 0);
     await page.locator('#policy-category:not([disabled])').waitFor();
     assert.deepEqual(await page.locator('#policy-category option').allTextContents(), ['전체', ...categories]);
@@ -498,13 +499,13 @@ test('모바일에서 긴 제목과 빈 지원 내용을 표시하고 HTML 원�
     const title = '<script>window.injected=true</script>' + '긴정책제목'.repeat(50);
     await page.route('**/api/v1/policies/search', (route) => route.fulfill({ json: {
       ...emptyResponse,
-      items: [makePolicy({ title, benefitPreview: '' })],
+      items: [makePolicy({ title, descriptionPreview: '' })],
       pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
     } }));
     await page.goto(`${baseUrl}/policies`);
     await page.locator('.policy-list h2').waitFor();
     assert.equal(await page.locator('.policy-list h2').textContent(), title);
-    assert.ok(await page.locator('.policy-benefit').textContent());
+    assert.ok(await page.locator('.policy-description').textContent());
     assert.equal(await page.evaluate(() => window.injected), undefined);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   });
@@ -519,9 +520,10 @@ test('분야·중분류·신청기간·조회수와 신청 상태 6종을 한국
     await showPolicies(page, states.map(([applicationStatus], index) => makePolicy({ id: String(index), applicationStatus })));
     assert.deepEqual(await page.locator('.application-status').allTextContents(), states.map(([, label]) => label));
     const card = page.locator('.policy-card').first();
-    assert.match(await card.locator('.policy-category').textContent(), /주거 · 주거비 지원/);
-    assert.deepEqual(await card.locator('dd').allTextContents(), ['2026-01-01 ~ 2026-12-31', '1,234회']);
-    assert.equal(await page.locator('.policy-disclaimer').count(), states.length);
+    assert.equal(await card.locator('.policy-category-badge').textContent(), '주거');
+    assert.equal(await card.locator('.policy-subcategory').textContent(), '주거비 지원');
+    assert.deepEqual(await card.locator('dd').allTextContents(), ['2026.01.01 ~ 2026.12.31', '조회 1,234회']);
+    assert.equal(await page.locator('.policy-disclaimer').count(), 1);
   });
 });
 
@@ -539,18 +541,18 @@ test('일치·확인 태그 9종은 API 판정대로 표시하고 자격 확정�
   });
 });
 
-test('빈 혜택·분야·기간·조회수에는 확인 문구를, 조회수 0에는 0회를 표시한다', async () => {
+test('빈 소개·분야·기간·조회수에는 확인 문구를, 조회수 0에는 0회를 표시한다', async () => {
   await withPage(async (page) => {
     await showPolicies(page, [
-      makePolicy({ benefitPreview: ' \n ', category: null, subcategory: null, applicationStatus: 'UNKNOWN', applicationPeriodText: null, applicationEndDate: null, viewCount: null }),
+      makePolicy({ descriptionPreview: ' \n ', category: null, subcategory: null, applicationStatus: 'UNKNOWN', applicationPeriodText: null, applicationEndDate: null, viewCount: null }),
       makePolicy({ id: 'second', applicationPeriodText: null, viewCount: 0 }),
       makePolicy({ id: 'third', applicationStatus: 'ALWAYS_OPEN', applicationPeriodText: null, applicationEndDate: null }),
     ]);
     const cards = page.locator('.policy-card');
-    assert.equal(await cards.nth(0).locator('.policy-benefit').textContent(), '지원 내용은 공식 신청처에서 확인해 주세요.');
+    assert.equal(await cards.nth(0).locator('.policy-description').textContent(), '정책 소개가 제공되지 않았습니다.');
     assert.equal(await cards.nth(0).locator('.policy-category').textContent(), '분야 확인 필요');
-    assert.deepEqual(await cards.nth(0).locator('dd').allTextContents(), ['신청기간 확인 필요', '확인 필요']);
-    assert.deepEqual(await cards.nth(1).locator('dd').allTextContents(), ['신청 마감 2026-12-31', '0회']);
+    assert.deepEqual(await cards.nth(0).locator('dd').allTextContents(), ['신청기간 확인 필요', '조회수 확인 필요']);
+    assert.deepEqual(await cards.nth(1).locator('dd').allTextContents(), ['신청 마감 2026.12.31', '조회 0회']);
     assert.equal(await cards.nth(2).locator('dd').first().textContent(), '상시 신청');
     assert.equal(await page.locator('.policy-tags').count(), 0);
   });
@@ -561,20 +563,20 @@ test('복수 신청기간 원문은 확인 필요 상태와 함께 보존한다'
     const raw = '1차: 2026.01.01~01.31\n2차: 예산 소진 시까지';
     await showPolicies(page, [makePolicy({ applicationStatus: 'UNKNOWN', applicationPeriodText: raw, applicationEndDate: null })]);
     assert.equal(await page.locator('.application-status').textContent(), '확인 필요');
-    assert.equal(await page.locator('.policy-facts dd').first().textContent(), raw);
+    assert.equal(await page.locator('.policy-card-stats dd').first().textContent(), raw);
   });
 });
 
-test('지원 요약의 HTML·공백을 정리하고 이모지를 손상 없이 120자로 줄인다', async () => {
+test('정책 소개의 HTML·장식 기호·공백을 정리하고 이모지를 손상 없이 100자로 줄인다', async () => {
   await withPage(async (page) => {
     await showPolicies(page, [
-      makePolicy({ benefitPreview: '<style>숨길 스타일</style><script>window.injected=true</script><p>매월&nbsp;  20만원</p>\n 지원' }),
-      makePolicy({ id: 'long', benefitPreview: '🍯'.repeat(150) }),
+      makePolicy({ descriptionPreview: '<style>숨길 스타일</style><script>window.injected=true</script><p>□ 매월&nbsp;  20만원</p>\n 지원' }),
+      makePolicy({ id: 'long', descriptionPreview: '🍯'.repeat(150) }),
     ]);
-    const summaries = await page.locator('.policy-benefit').allTextContents();
+    const summaries = await page.locator('.policy-description').allTextContents();
     assert.equal(summaries[0], '매월 20만원 지원');
-    assert.equal(summaries[1], '🍯'.repeat(119) + '…');
-    assert.equal(Array.from(summaries[1]).length, 120);
+    assert.equal(summaries[1], '🍯'.repeat(99) + '…');
+    assert.equal(Array.from(summaries[1]).length, 100);
     assert.equal(await page.evaluate(() => window.injected), undefined);
   });
 });

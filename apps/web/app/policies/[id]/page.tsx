@@ -5,7 +5,8 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { PolicyDetail } from '@youth-kkultong/shared';
 import { statusLabels } from '../policy-labels';
-import { DetailRegions, ExpandableText, formatApplicationPeriod } from './detail-content';
+import { DetailRegions, ExpandableText } from './detail-content';
+import { formatApplicationPeriod } from '../policy-period';
 
 /** 상세 조회의 대기·없는 정책·통신 오류·정상 응답을 구분한다. */
 type DetailState = { status: 'loading' } | { status: 'missing' } | { status: 'error' }

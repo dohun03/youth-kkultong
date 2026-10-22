@@ -69,7 +69,7 @@ describe('정책 검색 API 통합', () => {
   /** 테스트 스키마에만 기본 검색 정책을 저장한다. */
   async function seed(changes: Partial<Policy> = {}): Promise<Policy> {
     return dataSource.getRepository(Policy).save({ source: 'youthcenter', externalId: randomUUID(), title: '검색 정책',
-      category: '주거', benefitText: '지원 내용', viewCount: 10,
+      category: '주거', description: '정책 소개', benefitText: '지원 내용', viewCount: 10,
       applicationPeriodCode: '0057001', applicationPeriodRaw: '20261001 ~ 20261031',
       applicationStartDate: '2026-10-01', applicationEndDate: '2026-10-31', ageMin: 19, ageMax: 34,
       jobCodes: ['0013003'], schoolCodes: ['0049007'], regionCodes: ['41110'], rawJson: {},
@@ -87,7 +87,7 @@ describe('정책 검색 API 통합', () => {
       .send({ conditions: { age: 28, jobCode: '0013003', schoolCode: '0049007', regionCode: '41111' } }).expect(200);
     const body: PolicySearchResponse = response.body;
     expect(body).toEqual({ items: [{ id: saved.id, title: '검색 정책', category: '주거', subcategory: null,
-      benefitPreview: '지원 내용', applicationStatus: 'OPEN', applicationPeriodText: '20261001 ~ 20261031',
+      benefitPreview: '지원 내용', descriptionPreview: '정책 소개', applicationStatus: 'OPEN', applicationPeriodText: '20261001 ~ 20261031',
       applicationEndDate: '2026-10-31', viewCount: 10, score: 3.5,
       tags: ['AGE_MATCH', 'JOB_MATCH', 'SCHOOL_MATCH', 'REGION_RELATED'] }],
       pagination: { page: 1, limit: 20, total: 1, totalPages: 1 }, appliedSort: 'recommended' });

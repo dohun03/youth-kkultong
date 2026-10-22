@@ -70,7 +70,7 @@ describe('정책 상세 API 통합', () => {
     const row = await seed();
     await request(app.getHttpServer()).get(`/api/v1/policies/${row.id}`).expect(200).expect({
       id: row.id, title: '상세 정책', category: '주거', subcategory: '주거지원',
-      benefitPreview: row.benefitText, applicationStatus: 'OPEN', applicationPeriodText: '20261001 ~ 20261031',
+      benefitPreview: row.benefitText, descriptionPreview: row.description, applicationStatus: 'OPEN', applicationPeriodText: '20261001 ~ 20261031',
       applicationEndDate: '2026-10-31', viewCount: 12, score: 0, tags: [], source: 'youthcenter', externalId: '000001',
       description: row.description, benefitText: row.benefitText, ageRangeText: '19~34세',
       jobConditionText: '미취업자, 기타', schoolConditionText: '대학 졸업', regionText: '경기도 수원시 장안구, 경기도 수원시',
@@ -149,12 +149,15 @@ describe('정책 상세 API 통합', () => {
   });
 
   it('목록과 상세의 지원 요약은 이모지도 온전한 200자로 일치한다', async () => {
-    const row = await seed({ benefitText: '😀'.repeat(205) });
+    const row = await seed({ benefitText: '😀'.repeat(205), description: '🌿'.repeat(205) });
     const detail = await request(app.getHttpServer()).get(`/api/v1/policies/${row.id}`).expect(200);
     const list = await request(app.getHttpServer()).post('/api/v1/policies/search').send({}).expect(200);
     expect(detail.body.benefitPreview).toBe('😀'.repeat(200));
     expect(detail.body.benefitPreview).toBe(list.body.items[0].benefitPreview);
     expect(detail.body.benefitText).toBe('😀'.repeat(205));
+    expect(detail.body.descriptionPreview).toBe('🌿'.repeat(200));
+    expect(detail.body.descriptionPreview).toBe(list.body.items[0].descriptionPreview);
+    expect(detail.body.description).toBe('🌿'.repeat(205));
   });
 
   it('상태는 요청 시점의 한국 날짜로 다시 계산한다', async () => {
