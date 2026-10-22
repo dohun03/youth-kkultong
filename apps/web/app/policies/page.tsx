@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PolicySearchRequest, PolicySearchResponse, SortKey } from '@youth-kkultong/shared';
 import { PolicyCard } from './policy-card';
 import { EligibilityFilters, isEligibility } from './eligibility-filters';
@@ -34,6 +34,15 @@ export default function PoliciesPage() {
   const [state, setState] = useState<ListState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const [page, setPage] = useState(1);
+  const summaryRef = useRef<HTMLParagraphElement>(null);
+  const errorRef = useRef<HTMLHeadingElement>(null);
+  const focusAfterSearch = useRef(false);
+  useEffect(() => {
+    // 페이지·재시도 버튼이 사라진 뒤에도 키보드 초점을 새 결과나 오류 안내로 이어준다.
+    if (!focusAfterSearch.current || state.status === 'loading') return;
+    const target = state.status === 'success' ? summaryRef.current : errorRef.current;
+    if (target) { target.focus(); focusAfterSearch.current = false; }
+  }, [state]);
   const { state: categories, retry: retryCategories } = useMetaOptions('/api/v1/meta/categories', isCategories);
   const eligibility = useMetaOptions('/api/v1/meta/eligibility-codes', isEligibility);
   const regions = useMetaOptions('/api/v1/meta/regions', isRegions);
@@ -142,7 +151,7 @@ export default function PoliciesPage() {
   }, [attempt, category, includeClosed, age, jobCode, schoolCode, regionCode, requestedSort, page, ready, restoringCodes, saved.age]);
 
   return (
-    <main className="container policies-page policy-list-page" id="main-content">
+    <main className="container policies-page policy-list-page" id="main-content" tabIndex={-1}>
       <p className="eyebrow">내일을 위한 기회</p>
       <h1>청년 정책</h1>
       <p className="page-description">
@@ -226,7 +235,7 @@ export default function PoliciesPage() {
       </section>
       <div className="results-toolbar">
         {state.status === 'success' && age !== null ? (
-          <p className="list-summary" role="status">
+          <p className="list-summary" role="status" aria-atomic="true" ref={summaryRef} tabIndex={-1}>
             총 {state.response.pagination.total.toLocaleString('ko-KR')}건 · {sortLabels[state.response.appliedSort]}
             {state.response.pagination.totalPages > 0 && (
               <> · {state.response.pagination.page} / {state.response.pagination.totalPages}페이지</>
@@ -249,13 +258,13 @@ export default function PoliciesPage() {
         </div>
       </div>
       {age !== null && state.status === 'loading' && (
-        <p role="status">정책 목록을 불러오는 중입니다.</p>
+        <p className="loading-message" role="status">정책 목록을 불러오는 중입니다.</p>
       )}
       {age !== null && state.status === 'error' && (
         <section className="empty-state" role="alert" aria-labelledby="error-title">
-          <h2 id="error-title">정책 목록을 불러오지 못했습니다</h2>
+          <h2 id="error-title" ref={errorRef} tabIndex={-1}>정책 목록을 불러오지 못했습니다</h2>
           <p>잠시 후 다시 시도해 주세요.</p>
-          <button className="retry-button" type="button" onClick={() => setAttempt((value) => value + 1)}>
+          <button className="retry-button" type="button" onClick={() => { focusAfterSearch.current = true; setAttempt((value) => value + 1); }}>
             다시 시도
           </button>
         </section>
@@ -264,10 +273,12 @@ export default function PoliciesPage() {
         <section aria-label="정책 목록">
           <p className="policy-disclaimer">최종 신청 자격 및 접수 여부는 공식 신청처에서 확인하세요.</p>
           {state.response.items.length === 0 ? (
-            <section className="empty-state" aria-labelledby="empty-title">
+            <section className="empty-state" role="status" aria-labelledby="empty-title">
               <span className="empty-mark" aria-hidden="true" />
               <h2 id="empty-title">표시할 정책이 없습니다</h2>
-              <p>현재 조회할 수 있는 정책이 없어요. 나중에 다시 확인해 주세요.</p>
+              <p>{state.response.pagination.total > 0 ? '아래 페이지 이동으로 다른 페이지를 확인해 주세요.'
+                : category || hasConditions ? '분야나 입력 조건을 줄이거나 마감 포함을 선택해 다시 찾아보세요.'
+                  : '현재 조회할 수 있는 정책이 없어요. 나중에 다시 확인해 주세요.'}</p>
             </section>
           ) : (
             <ul className="policy-list">
@@ -280,6 +291,7 @@ export default function PoliciesPage() {
           )}
           <Pagination page={state.response.pagination.page} totalPages={state.response.pagination.totalPages} onChange={(nextPage) => {
             if (nextPage >= 1 && nextPage <= state.response.pagination.totalPages) {
+              focusAfterSearch.current = true;
               setState({ status: 'loading' });
               setPage(nextPage);
             }

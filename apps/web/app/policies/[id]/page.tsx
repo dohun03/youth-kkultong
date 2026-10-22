@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PolicyDetail } from '@youth-kkultong/shared';
 import { statusLabels } from '../policy-labels';
 import { DetailRegions, ExpandableText } from './detail-content';
@@ -31,6 +31,15 @@ export default function PolicyDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [state, setState] = useState<DetailState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const focusAfterRetry = useRef(false);
+  useEffect(() => {
+    // 재시도 버튼이 사라지면 정책 제목이나 오류·없는 정책 안내에 초점을 이어준다.
+    if (focusAfterRetry.current && state.status !== 'loading') {
+      headingRef.current?.focus();
+      focusAfterRetry.current = false;
+    }
+  }, [state]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -62,21 +71,21 @@ export default function PolicyDetailPage() {
   const policy = state.status === 'success' ? state.data : null;
   const links = policy?.links.filter((link) => isHttpUrl(link.url)) ?? [];
   return (
-    <main className="container policies-page policy-detail" id="main-content">
+    <main className="container policies-page policy-detail" id="main-content" tabIndex={-1}>
       <Link className="back-link" href="/policies">목록으로 돌아가기</Link>
-      {state.status === 'loading' && <p role="status">정책 상세를 불러오는 중입니다.</p>}
-      {state.status === 'missing' && <section className="empty-state">
-        <h1>정책을 찾을 수 없습니다</h1><p>정책 주소를 다시 확인해 주세요.</p>
+      {state.status === 'loading' && <><h1 className="sr-only">정책 상세</h1><p className="loading-message" role="status">정책 상세를 불러오는 중입니다.</p></>}
+      {state.status === 'missing' && <section className="empty-state" role="status">
+        <h1 ref={headingRef} tabIndex={-1}>정책을 찾을 수 없습니다</h1><p>정책 주소를 다시 확인해 주세요.</p>
       </section>}
       {state.status === 'error' && <section className="empty-state" role="alert">
-        <h1>정책 상세를 불러오지 못했습니다</h1><p>잠시 후 다시 시도해 주세요.</p>
-        <button className="retry-button" type="button" onClick={() => setAttempt((value) => value + 1)}>다시 시도</button>
+        <h1 ref={headingRef} tabIndex={-1}>정책 상세를 불러오지 못했습니다</h1><p>잠시 후 다시 시도해 주세요.</p>
+        <button className="retry-button" type="button" onClick={() => { focusAfterRetry.current = true; setAttempt((value) => value + 1); }}>다시 시도</button>
       </section>}
       {policy && <div className="detail-layout">
         <div className="detail-main">
           <header className="detail-heading">
             <p className="detail-category">{policy.category || '분야 확인 필요'}{policy.subcategory && <> · {policy.subcategory}</>}</p>
-            <h1>{policy.title}</h1>
+            <h1 ref={headingRef} tabIndex={-1}>{policy.title}</h1>
             <p className="detail-heading-meta"><span className={`application-status status-${policy.applicationStatus.toLowerCase()}`}>{statusLabels[policy.applicationStatus]}</span>
               <span className="detail-views">조회수 {policy.viewCount === null ? '확인 필요' : `${policy.viewCount.toLocaleString('ko-KR')}회`}</span></p>
             <p>최종 신청 자격 및 접수 여부는 공식 신청처에서 확인하세요.</p>
@@ -87,8 +96,9 @@ export default function PolicyDetailPage() {
               <ExpandableText id="period-text" label="신청기간" text={policy.applicationPeriodText?.trim() ? formatApplicationPeriod(policy.applicationPeriodText)
                 : policy.applicationEndDate ? `신청 마감 ${formatApplicationPeriod(policy.applicationEndDate)}`
                   : policy.applicationStatus === 'ALWAYS_OPEN' ? '상시 신청' : '신청기간 확인 필요'} limit={180} lines={4} />
+              {policy.applicationStatus === 'UNKNOWN' && <p className="detail-period-help">신청기간을 확정하기 어렵습니다. 공식 신청처에서 접수 여부를 확인해 주세요.</p>}
             </div>
-            {links.length === 0 ? <p className="detail-no-links">링크 없음</p> : <ul className="detail-links" aria-label="공식 링크">
+            {links.length === 0 ? <div className="detail-no-links"><p>링크 없음</p><p>제공된 신청·참고 링크가 없습니다. 정책명과 담당 기관의 공지를 확인해 주세요.</p></div> : <ul className="detail-links" aria-label="공식 링크">
               {links.map((link, index) => <li key={`${link.url}-${index}`}>
                 <a className={link.label === '신청' ? 'detail-apply-link' : 'detail-reference-link'} href={link.url} target="_blank" rel="noopener noreferrer">
                   <span>{link.label === '신청' ? '신청처 바로가기' : '참고 사이트'} <span aria-hidden="true">↗</span></span>

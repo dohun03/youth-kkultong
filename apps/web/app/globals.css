@@ -366,3 +366,22 @@ h1 {
     padding-block: 40px;
   }
 }
+
+/* 키보드로 본문·결과 안내·지역 펼침에 이동한 위치를 눈으로 확인한다. */
+summary:focus-visible,
+[tabindex="-1"]:focus-visible { outline: 3px solid #926200; outline-offset: 5px; }
+.loading-message { padding: 24px; border: 1px solid #e4dfd2; border-radius: 12px; background: #f3f1e9; color: #514c40; }
+.detail-no-links p { margin: 0; }
+.detail-no-links p + p, .detail-period-help { margin: 8px 0 0; color: #6b665b; font-size: 15px; line-height: 1.7; }
+/* 작은 보조 문구도 밝은 배경에서 읽을 수 있도록 글자색을 진하게 한다. */
+.filter-heading p, .age-filter p, .condition-filters p, .policy-disclaimer,
+.policy-subcategory, .policy-card-stats { color: #6b665b; }
+/* 터치와 확대 화면에서도 주요 버튼을 누르기 쉽고 긴 문구가 줄바꿈되게 한다. */
+.pagination button, .age-clear-button, .detail-expand-button, .detail-region-group summary { min-height: 44px; }
+.closed-filter { min-height: 44px; margin-top: 22px; }
+@media (max-width: 540px) {
+  .detail-eligibility { grid-template-columns: minmax(0, 1fr); }
+  .detail-links { grid-template-columns: minmax(0, 1fr); }
+  .empty-state { padding: 36px 18px; overflow-wrap: anywhere; }
+  .closed-filter { margin-top: 22px; }
+}

@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-22 (Asia/Seoul) · **Step 1~52 완료, Step 53~57 미착수**
+최종 확인일: 2026-10-22 (Asia/Seoul) · **Step 1~53 완료, Step 54~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1975,6 +1975,35 @@ git diff --check
 
 핵심 코드 읽는 순서: `use-session-exploration.ts` → `page.tsx`의 필터 검증·정렬 복원 → `policy-exploration.e2e.mjs`의 탐색 상태 복원 테스트.
 
-## 63. 다음 작업을 위한 상태
+## 63. Step 53 목록·상세 예외 UI와 접근성 (2026-10-22)
 
-다음 단계 대상은 **Step 53: 목록·상세 예외 UI와 접근성**이다. Step 53~57은 미착수다. Step 52의 미해결 문제는 없으며 다음 단계는 별도 요청을 기다린다.
+사용자 요청으로 Step 52 전체 변경을 `3b91f5c` (`feat: 정책 탐색 조건과 필터 정렬 탭 세션 유지`)로 먼저 커밋했다. 작업 규칙·PLAN Step 53·SPEC 8.3·선행 완료 기록과 목록/상세/페이지 이동/공통 스타일을 대조했고 충돌은 없었다. Step 53만 진행하며 이번 변경은 커밋하지 않았다.
+
+- 목록·상세 로딩을 배경과 여백이 있는 상태 안내로 표시한다. 목록의 정상 0건은 오류와 구분하고, 선택 조건이 있을 때는 분야/조건을 줄이거나 마감 포함으로 재탐색하도록 안내한다. 전체 건수는 있지만 현재 페이지가 빈 경우에는 다른 페이지 이동을 안내한다. 목록 빈 결과와 상세의 없는 정책도 상태 안내로 표시한다.
+- 신청기간이 불명확한 상세에는 원문과 함께 공식 신청처에서 접수 여부를 확인하도록 설명한다. 링크가 없으면 기존 '링크 없음' 표시와 함께 제공된 신청/참고 링크가 없음을 설명한다. 원문·상태 판정·HTTP(S) 검사·새 탭 안전 속성은 유지한다.
+- 목록 페이지 이동·검색 재시도 후에는 결과 요약 또는 오류 제목으로 키보드 초점을 옮긴다. 페이지 버튼·재시도 버튼이 사라져 초점이 본문 밖으로 빠지는 문제를 막으며, 일반 필터 입력 중에는 초점을 빼앗지 않는다. 상세 재시도 후에도 정책 제목이나 오류·없는 정책 안내 제목으로 초점을 옮긴다.
+- 목록·상세 본문을 프로그램으로 초점 받을 수 있게 해 본문 건너뛰기 링크가 실제 본문으로 이동하도록 한다. 상세 로딩 중에도 화면 제목을 스크린리더에 제공한다. 결과 요약은 변경 내용을 한 번에 알리며 지역 펼침과 프로그램으로 이동한 제목/본문에도 초점 테두리를 제공한다.
+- 작은 보조 문구의 글자색을 진하게 하고 페이지·나이 지우기·더보기·지역 펼침·마감 포함의 조작 영역을 최소 44px 높이로 확보한다. 좁은 화면에서 자격·신청 링크를 한 열로 표시하고 빈 결과/오류 문구가 줄바꿈되도록 한다. 목록·상세의 기존 정보 순서와 사용자 조건 세션 기능을 유지한다.
+- API·DB 스키마·Migration·패키지·제품 판정 규칙 변경은 없다. 이번 Step은 기존 SPEC의 표시·예외·접근성 범위 안의 보완이므로 PLAN·SUMMARY에 구현 결과를 기록한다.
+
+### 검증
+
+```bash
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+docker compose -f compose.yaml -f compose.local.yaml build web
+docker compose -f compose.yaml -f compose.local.yaml up -d --no-deps --force-recreate --wait --wait-timeout 60 web
+FONTCONFIG_FILE=/tmp/youth-step46-fonts.conf LD_LIBRARY_PATH=/tmp/youth-step46-browser-libs/root/usr/lib/x86_64-linux-gnu PLAYWRIGHT_MODULE=/home/leenohoon/youth-kkultong-before/node_modules/.pnpm/playwright@1.64.0/node_modules/playwright/index.mjs node --test apps/web/test/*.e2e.mjs
+FONTCONFIG_FILE=/tmp/youth-step46-fonts.conf LD_LIBRARY_PATH=/tmp/youth-step46-browser-libs/root/usr/lib/x86_64-linux-gnu PLAYWRIGHT_MODULE=/home/leenohoon/youth-kkultong-before/node_modules/.pnpm/playwright@1.64.0/node_modules/playwright/index.mjs node --test apps/web/test/policy-accessibility.e2e.mjs
+git diff --check
+```
+
+- 공용·API·웹 타입 검사와 Docker 웹 빌드 통과. 기존 53개에 접근성/예외 시나리오 5개를 추가해 전체 브라우저 **58개 모두 통과**했다. 이후 상세 연속 실패·없는 정책 응답의 초점 처리까지 보완한 최종 빌드로 웹을 재생성하고, 연속 실패→재시도 성공을 포함한 접근성 **5개를 다시 실행해 모두 통과**했다.
+- 실제 키보드 Tab/Enter 입력으로 본문 건너뛰기, 필터 입력 중 초점 유지, 페이지 오류/재시도/성공의 초점 이동, 상세 재시도와 원문·지역 펼침을 검증했다. 느린 목록/상세 로딩과 필터 결과 0건의 안내도 확인했다. 320px·640px에서 주요 조작 영역 높이와 가로 넘침 없음을 검사하고 320px의 실제 목록·상세 캡처를 직접 확인했다. 실제 스크린리더 음성 출력과 모바일 기기의 실기 검증은 수행하지 않았다.
+- 최초 상세 지연 테스트는 대체 URL 패턴이 웹 문서까지 가로채 `page.goto`가 시간 초과됐다. API 경로만 대체하도록 수정한 뒤 전체 58개가 통과했다. 테스트 통과를 위한 요구사항 변경은 없다.
+- 외부 수집·DB 쓰기·Migration·시드를 실행하지 않았고 기존 정책은 **3,390건**이다. API·DB 컨테이너는 유지했다. 웹은 최종 새 이미지로 갱신해 `http://localhost:3000/policies`에서 확인할 수 있다.
+
+핵심 코드 읽는 순서: `policies/page.tsx`의 검색 후 초점/빈 결과 → `policies/[id]/page.tsx`의 상세 재시도/기간·링크 안내 → `globals.css`의 접근성·모바일 보완 → `policy-accessibility.e2e.mjs`.
+
+## 64. 다음 작업을 위한 상태
+
+다음 단계 대상은 **Step 54: 공개 API 보안·요청 보호 점검**이다. Step 54~57은 미착수다. Step 53의 미해결 문제는 없으며 다음 단계는 별도 요청을 기다린다.
