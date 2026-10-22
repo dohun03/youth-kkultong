@@ -51,6 +51,9 @@ async function showPolicies(page, items) {
 }
 
 test('실제 DB의 기본 검색 첫 20건·순서·페이지 정보가 루트 이동 후 표시된다', async () => {
+  const categoriesResponse = await fetch(`${apiUrl}/api/v1/meta/categories`);
+  assert.equal(categoriesResponse.status, 200);
+  const categories = await categoriesResponse.json();
   const response = await fetch(`${apiUrl}/api/v1/policies/search`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
   });
@@ -77,6 +80,187 @@ test('실제 DB의 기본 검색 첫 20건·순서·페이지 정보가 루트 �
     assert.equal(await page.locator('.policy-card').count(), 20);
     assert.equal(await page.locator('.policy-disclaimer').count(), 20);
     assert.equal(await page.locator('.tag-match').count(), 0);
+    await page.locator('#policy-category:not([disabled])').waitFor();
+    assert.deepEqual(await page.locator('#policy-category option').allTextContents(), ['전체', ...categories]);
+    assert.equal(await page.getByLabel('마감 포함').isChecked(), false);
+  });
+});
+
+test('실제 분야 선택과 마감 포함 변경이 DB 검색 결과·순서·전체 건수와 일치한다', async () => {
+  const categories = await (await fetch(`${apiUrl}/api/v1/meta/categories`)).json();
+  let category;
+  let included;
+  // 실제로 마감 정책이 첫 페이지에 나타나는 분야를 찾아 화면에서도 확인한다.
+  for (const item of categories) {
+    const result = await (await fetch(`${apiUrl}/api/v1/policies/search`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category: item, includeClosed: true }),
+    })).json();
+    if (result.items.some((policy) => policy.applicationStatus === 'CLOSED')) {
+      category = item;
+      included = result;
+      break;
+    }
+  }
+  assert.ok(category, '실제 DB에 마감 정책을 포함하는 분야가 있어야 한다.');
+  const excluded = await (await fetch(`${apiUrl}/api/v1/policies/search`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category }),
+  })).json();
+  assert.ok(included.pagination.total > excluded.pagination.total);
+
+  await withPage(async (page) => {
+    await page.goto(`${baseUrl}/policies`);
+    await page.locator('#policy-category:not([disabled])').waitFor();
+    await page.selectOption('#policy-category', category);
+    await expectTitles(page, excluded.items);
+    assert.equal(await page.getByText('마감', { exact: true }).count(), 0);
+    await page.getByLabel('마감 포함').check();
+    await expectTitles(page, included.items);
+    assert.ok(await page.getByText('마감', { exact: true }).count() > 0);
+    assert.ok((await page.locator('.list-summary').textContent()).includes(included.pagination.total.toLocaleString('ko-KR')));
+    await page.getByLabel('마감 포함').uncheck();
+    await expectTitles(page, excluded.items);
+  });
+});
+
+/** 응답 뒤 React가 목록에 반영할 때까지 제목과 순서를 실제 DOM에서 기다린다. */
+async function expectTitles(page, items) {
+  await page.waitForFunction((titles) => {
+    const actual = Array.from(document.querySelectorAll('.policy-list h2'), (element) => element.textContent);
+    return JSON.stringify(actual) === JSON.stringify(titles);
+  }, items.map((item) => item.title));
+}
+
+test('묶음 분야명은 그대로 전송하고 모든 필터 변경은 1페이지이며 전체 선택은 분야를 생략한다', async () => {
+  await withPage(async (page) => {
+    const requests = [];
+    await page.route('**/api/v1/meta/categories', (route) => route.fulfill({ json: ['주거', '금융･복지･문화'] }));
+    await page.route('**/api/v1/policies/search', (route) => {
+      const request = route.request().postDataJSON();
+      requests.push(request);
+      return route.fulfill({ json: {
+        ...emptyResponse,
+        items: [makePolicy({ title: `${request.category ?? '전체'}-${request.includeClosed}` })],
+        pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+      } });
+    });
+    await page.goto(`${baseUrl}/policies`);
+    await expectTitles(page, [{ title: '전체-false' }]);
+    await page.selectOption('#policy-category', '금융･복지･문화');
+    await expectTitles(page, [{ title: '금융･복지･문화-false' }]);
+    await page.getByLabel('마감 포함').check();
+    await expectTitles(page, [{ title: '금융･복지･문화-true' }]);
+    await page.selectOption('#policy-category', '');
+    await expectTitles(page, [{ title: '전체-true' }]);
+    assert.deepEqual(requests, [
+      { page: 1, limit: 20, includeClosed: false },
+      { page: 1, limit: 20, includeClosed: false, category: '금융･복지･문화' },
+      { page: 1, limit: 20, includeClosed: true, category: '금융･복지･문화' },
+      { page: 1, limit: 20, includeClosed: true },
+    ]);
+  });
+});
+
+test('분야 조회 실패는 목록을 유지하고 분야 재시도는 선택지만 다시 불러온다', async () => {
+  await withPage(async (page) => {
+    let categoryCalls = 0;
+    let searchCalls = 0;
+    await page.route('**/api/v1/meta/categories', (route) => {
+      categoryCalls += 1;
+      return categoryCalls === 1
+        ? route.fulfill({ status: 503, json: { message: '비공개 메타 오류' } })
+        : route.fulfill({ json: ['주거'] });
+    });
+    await page.route('**/api/v1/policies/search', (route) => {
+      searchCalls += 1;
+      return route.fulfill({ json: { ...emptyResponse, items: [makePolicy()] } });
+    });
+    await page.goto(`${baseUrl}/policies`);
+    await page.getByRole('button', { name: '분야 다시 시도' }).waitFor();
+    await expectTitles(page, [makePolicy()]);
+    assert.equal(await page.locator('#policy-category').isDisabled(), true);
+    assert.equal(await page.getByText('비공개 메타 오류').count(), 0);
+    await page.getByRole('button', { name: '분야 다시 시도' }).click();
+    await page.locator('#policy-category:not([disabled])').waitFor();
+    assert.deepEqual(await page.locator('#policy-category option').allTextContents(), ['전체', '주거']);
+    assert.equal(categoryCalls, 2);
+    assert.equal(searchCalls, 1);
+    assert.equal(await page.locator('main [role="alert"]').count(), 0);
+  });
+});
+
+test('분야가 빈 배열이면 전체만 제공하고 잘못된 자료형이면 오류를 안내한다', async () => {
+  for (const result of [[], { categories: ['주거'] }, ['주거', null]]) {
+    await withPage(async (page) => {
+      await page.route('**/api/v1/meta/categories', (route) => route.fulfill({ json: result }));
+      await page.goto(`${baseUrl}/policies`);
+      if (Array.isArray(result) && result.length === 0) {
+        await page.locator('#policy-category:not([disabled])').waitFor();
+        assert.deepEqual(await page.locator('#policy-category option').allTextContents(), ['전체']);
+      } else {
+        await page.getByRole('button', { name: '분야 다시 시도' }).waitFor();
+        assert.equal(await page.locator('#policy-category').isDisabled(), true);
+      }
+    });
+  }
+});
+
+test('검색 실패 후 재시도는 선택한 분야와 마감 포함 필터를 유지한다', async () => {
+  await withPage(async (page) => {
+    const requests = [];
+    let failNext = false;
+    await page.route('**/api/v1/meta/categories', (route) => route.fulfill({ json: ['주거'] }));
+    await page.route('**/api/v1/policies/search', (route) => {
+      requests.push(route.request().postDataJSON());
+      if (failNext) {
+        failNext = false;
+        return route.fulfill({ status: 500, json: {} });
+      }
+      return route.fulfill({ json: { ...emptyResponse, items: [makePolicy()] } });
+    });
+    await page.goto(`${baseUrl}/policies`);
+    await expectTitles(page, [makePolicy()]);
+    const categoryResponse = page.waitForResponse('**/api/v1/policies/search');
+    await page.selectOption('#policy-category', '주거');
+    await categoryResponse;
+    await page.locator('.policy-card').waitFor();
+    failNext = true;
+    await page.getByLabel('마감 포함').check();
+    await page.getByRole('button', { name: '다시 시도', exact: true }).click();
+    await expectTitles(page, [makePolicy()]);
+    assert.deepEqual(requests.at(-1), { page: 1, limit: 20, includeClosed: true, category: '주거' });
+    assert.equal(await page.locator('#policy-category').inputValue(), '주거');
+    assert.equal(await page.getByLabel('마감 포함').isChecked(), true);
+  });
+});
+
+test('분야를 빠르게 바꿔도 늦게 끝난 이전 검색 결과가 최종 선택을 덮어쓰지 않는다', async () => {
+  await withPage(async (page) => {
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    let finishPrevious;
+    const previousFinished = new Promise((resolve) => { finishPrevious = resolve; });
+    await page.route('**/api/v1/meta/categories', (route) => route.fulfill({ json: ['주거', '일자리'] }));
+    await page.route('**/api/v1/policies/search', async (route) => {
+      const request = route.request().postDataJSON();
+      if (request.category === '주거') await gate;
+      await route.fulfill({ json: { ...emptyResponse, items: [makePolicy({ title: request.category ?? '전체' })] } });
+      if (request.category === '주거') finishPrevious();
+    });
+    try {
+      await page.goto(`${baseUrl}/policies`);
+      await expectTitles(page, [{ title: '전체' }]);
+      const slowRequest = page.waitForRequest((request) => request.url().endsWith('/policies/search') && request.postDataJSON().category === '주거');
+      await page.selectOption('#policy-category', '주거');
+      await slowRequest;
+      await page.selectOption('#policy-category', '일자리');
+      await expectTitles(page, [{ title: '일자리' }]);
+      release();
+      await previousFinished;
+      // 앞선 요청은 AbortController로 취소되므로 이후 응답을 화면에 적용할 수 없다.
+      assert.equal(await page.locator('#policy-category').inputValue(), '일자리');
+      assert.deepEqual(await page.locator('.policy-list h2').allTextContents(), ['일자리']);
+    } finally { release(); }
   });
 });
 
@@ -119,7 +303,7 @@ test('연결 실패 후 다시 시도하면 기본 요청으로 정상 결과를
       return calls === 1 ? route.abort('failed') : route.fulfill({ json: emptyResponse });
     });
     await page.goto(`${baseUrl}/policies`);
-    await page.getByRole('button', { name: '다시 시도' }).click();
+    await page.getByRole('button', { name: '다시 시도', exact: true }).click();
     await page.locator('#empty-title').waitFor();
     assert.equal(calls, 2);
     assert.equal(await page.locator('main [role="alert"]').count(), 0);
@@ -142,7 +326,7 @@ test('15초 동안 응답이 없으면 로딩을 끝내고 재시도를 제공�
     await page.goto(`${baseUrl}/policies`);
     await request;
     await page.clock.fastForward(15_001);
-    await page.getByRole('button', { name: '다시 시도' }).waitFor();
+    await page.getByRole('button', { name: '다시 시도', exact: true }).waitFor();
     assert.equal(await page.getByText('정책 목록을 불러오는 중입니다.').count(), 0);
   });
 });

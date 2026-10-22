@@ -23,7 +23,9 @@ a:focus-visible {
   outline-offset: 5px;
 }
 
-button:focus-visible {
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
   outline: 3px solid #926200;
   outline-offset: 5px;
 }
@@ -41,6 +43,69 @@ button:focus-visible {
 
 .list-summary {
   color: #6b665b;
+}
+
+.policy-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 20px;
+  padding: 20px;
+  margin-bottom: 24px;
+  border: 1px solid #e8e4da;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.category-filter {
+  display: flex;
+  flex: 1 1 220px;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.category-filter label {
+  flex-shrink: 0;
+}
+
+.category-filter select {
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #b6b0a3;
+  border-radius: 8px;
+  color: inherit;
+  background: #fff;
+  font: inherit;
+}
+
+.closed-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.closed-filter input {
+  width: 18px;
+  height: 18px;
+  accent-color: #926200;
+}
+
+.filter-message {
+  flex-basis: 100%;
+  margin: 0;
+  color: #6b665b;
+  font-size: 14px;
+}
+
+.filter-message p {
+  margin: 0;
+}
+
+.filter-message .retry-button {
+  margin-top: 10px;
 }
 
 .policy-list {

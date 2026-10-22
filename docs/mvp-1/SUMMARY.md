@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-22 (Asia/Seoul) · **Step 1~44 완료, Step 45~57 미착수**
+최종 확인일: 2026-10-22 (Asia/Seoul) · **Step 1~45 완료, Step 46~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1776,8 +1776,37 @@ git diff --check
 
 핵심 코드 읽는 순서: `apps/web/app/policies/policy-card.tsx` → `apps/web/app/policies/page.tsx`의 카드 사용 → `apps/web/app/globals.css` → `apps/web/test/policies-list.e2e.mjs`의 카드 검증.
 
-## 50. 다음 작업을 위한 상태
+## 50. Step 45 구현·검증 결과
 
-다음 요청 대상은 **Step 45: 카테고리와 마감 포함 필터**다. Step 45~57은 시작하지 않았다. Step 44 완료를 막는 문제는 없다. 상세 본문은 Step 51, 실제 조건 입력에 따른 태그 확인은 조건 UI 구현 Step에서 이어간다. 기존 실행 중인 웹 이미지에는 Step 44 변경이 반영되지 않았으므로 사용자가 화면에서 보려면 웹을 다시 빌드해야 한다. 브라우저 테스트는 실행 중인 웹·실제 데이터가 있는 API와 Playwright/Chromium 환경이 필요하다.
+사용자 요청으로 Step 44의 코드·테스트·문서 6개 파일을 `823f3a5` (`feat: 정책 카드와 조건 확인 태그 표시`)로 먼저 커밋했다. 작업 규칙·PLAN Step 45·SPEC 3~4장·8.1과 실제 메타 API·목록 화면을 대조했고 명세 충돌이나 선행 누락은 없었다. Step 45만 진행했으며 이번 변경은 커밋하지 않았다.
 
-Step 44 추천 커밋 메시지: `feat: 정책 카드와 조건 확인 태그 표시`.
+### 구현과 실제 결정사항
+
+- `/policies`에서 `GET /api/v1/meta/categories`로 실제 분야를 받아 '전체'와 함께 선택할 수 있다. `금융･복지･문화` 같은 묶음 분야명을 나누거나 바꾸지 않고 API의 문자열 그대로 표시·전송한다. 전체 선택은 요청의 `category`를 생략한다.
+- 기본값이 꺼진 `마감 포함` 체크박스를 추가했다. 분야·마감 포함이 바뀌면 현재 값을 POST 본문에 넣어 `page=1`, `limit=20`으로 다시 검색한다. 사용자 조건·정렬은 보내지 않아 기존 인기순 기본값을 유지한다. 실제 페이지 이동 컨트롤은 Step 50 범위다.
+- 선택지 조회 상태를 목록과 분리했다. 로딩 중 분야 선택은 비활성화하고, HTTP·네트워크·응답 형식 오류나 15초 지연에는 분야 오류와 별도 재시도를 제공한다. 이때 전체 목록과 마감 포함 필터는 계속 사용할 수 있다. 정상 빈 분야 배열이면 '전체'만 제공한다.
+- 검색 실패 후 재시도에도 선택한 필터를 유지한다. 필터 변경 시 로딩으로 전환하며 기존 요청·타이머를 정리하고 늦게 끝난 이전 응답이 최신 선택을 덮어쓰지 않게 한다. API 오류 원문은 화면에 노출하지 않는다.
+- 필터는 이름이 연결된 기본 select·checkbox로 구현하고 포커스 표시·좁은 화면 줄바꿈을 추가했다. API 계약·DB·Migration·공용 타입·패키지·SPEC 변경은 없다. PLAN·SUMMARY를 갱신하고, 사용자의 지속 요청인 **웹 변경 Step 완료 시 기존 웹 컨테이너를 새 빌드로 재생성해 실행 상태로 유지**하는 규칙을 `AGENT_RULES.md` 11장에 기록했다.
+
+### 실행 환경과 실제 검증
+
+```bash
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+docker compose -f compose.yaml -f compose.local.yaml build web
+docker compose -f compose.yaml -f compose.local.yaml up -d --no-deps --force-recreate --wait --wait-timeout 60 web
+FONTCONFIG_FILE=/tmp/youth-step44-fonts.conf LD_LIBRARY_PATH=/tmp/youth-step43-browser-libs/root/usr/lib/x86_64-linux-gnu PLAYWRIGHT_MODULE=/home/leenohoon/youth-kkultong-before/node_modules/.pnpm/playwright@1.64.0/node_modules/playwright/index.mjs node --test apps/web/test/policies-list.e2e.mjs
+git diff --check
+```
+
+- 공용·API·웹 **타입 검사 통과**, Docker 웹 프로덕션 **빌드 통과**, 새 웹 컨테이너 **healthy**. 기존 API·DB 컨테이너는 재생성하지 않았다. `http://localhost:3000/policies`에서 바로 이번 화면을 확인할 수 있는 상태로 유지했다.
+- 새 컨테이너에서 브라우저 테스트 **21개 모두 통과**. 기존 목록·카드 회귀와 실제 분야 목록·필터 결과·전체 건수/순서를 대조했다. 실제 마감 정책이 있는 분야에서 기본 제외·포함 후 마감 표시·다시 해제를 확인했다. 묶음 분야명·전체 복귀·모든 변경의 1페이지 요청·메타 실패/재시도·빈 선택지/잘못된 자료형·검색 재시도 필터 유지·늦은 이전 응답 방어도 검증했다.
+- 최초 회귀의 시간 초과 테스트는 '다시 시도'가 새 '분야 다시 시도' 버튼까지 선택해 실패했다. 정확한 버튼 이름으로 선택하도록 테스트를 수정한 후 전체 21개가 통과했다. 데스크톱 1280px·모바일 375px의 실제 필터 화면도 캡처해 배치를 확인했다.
+- 검증 전후 기존 `public.policies` **3,390건**, 전체 행·시각 MD5 **`46a965ded0407e47a7af9816cd3e7b6e`**로 동일했다. 외부 수집 API·DB 쓰기·Migration·시드는 실행하지 않았고 API·DB·기존 포트·볼륨을 유지했다. 기존 Compose 고아 컨테이너 안내는 이번 범위에서 변경하지 않았다.
+
+핵심 코드 읽는 순서: `apps/web/app/policies/page.tsx`의 분야 조회 → 필터 포함 검색 요청 → 필터 컨트롤 → `apps/web/test/policies-list.e2e.mjs`의 필터 검증 → `apps/web/app/globals.css`.
+
+## 51. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 46: 나이 입력 UI**다. Step 46~57은 시작하지 않았다. Step 45 완료를 막는 문제는 없다. 목록은 분야·마감 포함 필터까지 실제 API와 연결됐으며 사용자는 기존 3000 포트에서 바로 확인할 수 있다. 앞으로도 웹 변경 Step은 작업 규칙 11장에 따라 웹 컨테이너를 새 빌드로 재생성하고 실행 상태로 둔다. 상세 본문은 Step 51, 실제 페이지 이동은 Step 50에서 구현한다.
+
+Step 45 추천 커밋 메시지: `feat: 정책 분야와 마감 포함 필터 추가`.

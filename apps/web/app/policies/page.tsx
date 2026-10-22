@@ -10,10 +10,55 @@ type ListState =
   | { status: 'error' }
   | { status: 'success'; response: PolicySearchResponse };
 
-/** 사용자 조건 없이 첫 페이지를 조회하고, 정책 목록과 조회 상태를 보여준다. */
+/** 분야 선택지 조회 상태를 목록 조회와 분리해 한쪽 오류가 다른 기능을 막지 않게 한다. */
+type CategoriesState =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | { status: 'success'; items: string[] };
+
+/** 선택한 분야·마감 포함 여부로 첫 페이지를 조회하고 목록과 조회 상태를 보여준다. */
 export default function PoliciesPage() {
   const [state, setState] = useState<ListState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
+  const [categories, setCategories] = useState<CategoriesState>({ status: 'loading' });
+  const [categoriesAttempt, setCategoriesAttempt] = useState(0);
+  const [category, setCategory] = useState('');
+  const [includeClosed, setIncludeClosed] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+
+    /** DB에 저장된 실제 분야를 가져오며 묶음 분야명도 하나의 선택지로 유지한다. */
+    async function loadCategories(): Promise<void> {
+      setCategories({ status: 'loading' });
+      try {
+        const response = await fetch('/api/v1/meta/categories', {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error('분야 조회 실패');
+        const items: unknown = await response.json();
+        // 선택지에 잘못된 자료형이 섞이면 빈 목록으로 숨기지 않고 오류로 안내한다.
+        if (!Array.isArray(items) || !items.every((item): item is string => typeof item === 'string' && item.trim().length > 0)) {
+          throw new Error('분야 응답 형식 오류');
+        }
+        if (active) setCategories({ status: 'success', items });
+      } catch {
+        if (active) setCategories({ status: 'error' });
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    void loadCategories();
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [categoriesAttempt]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -21,10 +66,12 @@ export default function PoliciesPage() {
     // 응답이 끝없이 지연되어도 오류 안내와 다시 시도 버튼을 보여준다.
     const timeout = setTimeout(() => controller.abort(), 15_000);
 
-    /** 기존 Next.js 전달 경로로 기본 검색을 요청하며 정렬은 API의 인기순 기본값을 따른다. */
+    /** 필터를 바꿀 때마다 첫 페이지를 요청하며 정렬은 API의 인기순 기본값을 따른다. */
     async function loadPolicies(): Promise<void> {
       setState({ status: 'loading' });
-      const request: PolicySearchRequest = { page: 1, limit: 20, includeClosed: false };
+      const request: PolicySearchRequest = { page: 1, limit: 20, includeClosed };
+      // '전체'일 때는 category 자체를 보내지 않고, 선택한 실제 분야명만 그대로 보낸다.
+      if (category) request.category = category;
 
       try {
         const response = await fetch('/api/v1/policies/search', {
@@ -52,7 +99,7 @@ export default function PoliciesPage() {
       clearTimeout(timeout);
       controller.abort();
     };
-  }, [attempt]);
+  }, [attempt, category, includeClosed]);
 
   return (
     <main className="container policies-page" id="main-content">
@@ -61,6 +108,45 @@ export default function PoliciesPage() {
       <p className="page-description">
         나에게 필요한 정책과 지원 정보를 찾아보세요.
       </p>
+      <section className="policy-filters" aria-label="정책 필터">
+        <div className="category-filter">
+          <label htmlFor="policy-category">분야</label>
+          <select
+            id="policy-category"
+            value={category}
+            disabled={categories.status !== 'success'}
+            onChange={(event) => {
+              setState({ status: 'loading' });
+              setCategory(event.target.value);
+            }}
+          >
+            <option value="">전체</option>
+            {categories.status === 'success' && categories.items.map((item) => (
+              <option key={item} value={item}>{item}</option>
+            ))}
+          </select>
+        </div>
+        <label className="closed-filter">
+          <input
+            type="checkbox"
+            checked={includeClosed}
+            onChange={(event) => {
+              setState({ status: 'loading' });
+              setIncludeClosed(event.target.checked);
+            }}
+          />
+          마감 포함
+        </label>
+        {categories.status === 'loading' && <p className="filter-message" role="status">분야 선택지를 불러오는 중입니다.</p>}
+        {categories.status === 'error' && (
+          <div className="filter-message">
+            <p role="alert">분야 선택지를 불러오지 못했습니다. 전체 목록은 계속 조회할 수 있어요.</p>
+            <button className="retry-button" type="button" onClick={() => setCategoriesAttempt((value) => value + 1)}>
+              분야 다시 시도
+            </button>
+          </div>
+        )}
+      </section>
       {state.status === 'loading' && (
         <p role="status">정책 목록을 불러오는 중입니다.</p>
       )}
