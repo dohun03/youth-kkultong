@@ -245,9 +245,13 @@ test('실제 목록 카드에서 상세로 이동해 원문과 자격·기간·�
     await page.waitForURL(`**/policies/${first.id}`);
     await page.locator('.detail-heading h1').waitFor();
     assert.equal(await page.locator('h1').textContent(), expected.title);
-    assert.equal(await page.locator('#benefit-title + p').textContent(), expected.benefitText?.trim() ? expected.benefitText : '공식 신청처에서 확인해 주세요.');
-    assert.equal(await page.locator('#description-title + p').textContent(), expected.description?.trim() ? expected.description : '공식 신청처에서 확인해 주세요.');
-    assert.deepEqual(await page.locator('.policy-facts dd').allTextContents(), [expected.ageRangeText, expected.jobConditionText, expected.schoolConditionText, expected.regionText].map((value) => value?.trim() ? value : '공식 신청처에서 확인해 주세요.'));
+    for (const label of ['지원 내용', '정책 설명']) {
+      const more = page.getByRole('button', { name: `${label} 더보기` });
+      if (await more.count()) await more.click();
+    }
+    assert.equal(await page.locator('#benefit-text').textContent(), expected.benefitText?.trim() ? expected.benefitText : '공식 신청처에서 확인해 주세요.');
+    assert.equal(await page.locator('#description-text').textContent(), expected.description?.trim() ? expected.description : '공식 신청처에서 확인해 주세요.');
+    assert.deepEqual(await page.locator('.detail-eligibility dd').allTextContents(), [expected.ageRangeText, expected.jobConditionText, expected.schoolConditionText].map((value) => value?.trim() ? value : '공식 신청처에서 확인해 주세요.'));
     assert.equal(await page.getByText('최종 신청 자격 및 접수 여부는 공식 신청처에서 확인하세요.', { exact: true }).count(), 1);
     assert.equal(await page.locator('.detail-links a').count(), expected.links.length);
     await page.getByRole('link', { name: '목록으로 돌아가기' }).click();
@@ -278,8 +282,9 @@ test('상세의 긴 원문·줄바꿈·링크 없음·악성 링크를 모바일
     } }));
     await page.goto(`${base}/policies/${first.id}`);
     await page.getByText('링크 없음', { exact: true }).waitFor();
-    assert.equal(await page.locator('#benefit-title + p').textContent(), raw);
-    assert.equal(await page.locator('#period-title + p').textContent(), '1차 신청\n2차 신청');
+    await page.getByRole('button', { name: '지원 내용 더보기' }).click();
+    assert.equal(await page.locator('#benefit-text').textContent(), raw);
+    assert.equal(await page.locator('#period-text').textContent(), '1차 신청\n2차 신청');
     assert.equal(await page.locator('.detail-links a').count(), 0);
     assert.equal(await page.evaluate(() => window.injected), undefined);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
@@ -333,4 +338,110 @@ test('상세 HTTP 오류·깨진 JSON·연결 실패·시간 초과를 안내하
       assert.equal(await page.getByText('비공개 상세 오류').count(), 0);
     });
   }
+});
+
+test('상세는 원문 미리보기·더보기·접기를 제공하고 지역은 시도별 검색으로 찾아본다', async () => {
+  const first = (await search()).items[0];
+  const fixture = await (await fetch(`${api}/api/v1/policies/${first.id}`)).json();
+  const benefit = '지원 내용 첫 문장\n' + '지원 혜택의 상세 조건입니다. '.repeat(100);
+  const qualification = '추가 신청 자격을 확인하세요.\n' + '별도 기준을 충족해야 합니다. '.repeat(100);
+  const regions = ['서울특별시 종로구', '서울특별시 강남구', '경기도 수원시 장안구', '경기도 수원시 영통구', '경기도 성남시 분당구', '미확인코드', '부산광역시 중구', '대구광역시 중구', '인천광역시 중구', '대전광역시 중구', '울산광역시 중구'];
+  await withPage(async (page) => {
+    await page.route(`**/api/v1/policies/${first.id}`, (route) => route.fulfill({ json: {
+      ...fixture, benefitText: benefit, extraQualification: qualification, regionText: regions.join(', '),
+    } }));
+    await page.goto(`${base}/policies/${first.id}`);
+    await page.locator('.detail-heading').waitFor();
+    assert.ok((await page.locator('#benefit-text').textContent()).length < benefit.length);
+    const more = page.getByRole('button', { name: '지원 내용 더보기' });
+    assert.equal(await more.getAttribute('aria-expanded'), 'false');
+    await more.click();
+    assert.equal(await page.locator('#benefit-text').textContent(), benefit);
+    await page.getByRole('button', { name: '지원 내용 접기' }).click();
+    assert.ok((await page.locator('#benefit-text').textContent()).length < benefit.length);
+    assert.ok((await page.locator('#extra-text').textContent()).length < qualification.length);
+    await page.getByRole('button', { name: '추가 자격 더보기' }).click();
+    assert.equal(await page.locator('#extra-text').textContent(), qualification);
+    assert.equal(await page.locator('.detail-region-group[open]').count(), 0);
+    assert.equal(await page.locator('.detail-region-group').count(), 3);
+    const rows = await page.locator('.detail-region-group').all();
+    for (let index = 1; index < rows.length; index += 1) {
+      const previous = await rows[index - 1].boundingBox();
+      const current = await rows[index].boundingBox();
+      assert.ok(current.y >= previous.y + previous.height);
+    }
+    await page.getByRole('button', { name: '지역 목록 더보기' }).click();
+    assert.equal(await page.locator('.detail-region-group').count(), 8);
+    await page.locator('.detail-region-group summary').filter({ hasText: '서울특별시' }).click();
+    assert.equal(await page.getByText('서울특별시 강남구', { exact: true }).isVisible(), true);
+    await page.getByRole('searchbox', { name: '지역 찾기' }).fill('수원');
+    assert.deepEqual(await page.locator('.detail-region-group li').allTextContents(), regions.filter((region) => region.includes('수원')));
+    assert.equal(await page.locator('.detail-region-group[open]').count(), 1);
+    await page.getByRole('searchbox', { name: '지역 찾기' }).fill('없는지역');
+    await page.getByText('일치하는 지역이 없습니다. 다른 지역명으로 찾아보세요.').waitFor();
+    await page.getByRole('searchbox', { name: '지역 찾기' }).fill('');
+    assert.deepEqual((await page.locator('.detail-region-group li').allTextContents()).sort(), [...regions].sort());
+    assert.equal(await page.getByText('전국 대상', { exact: true }).count(), 0);
+  });
+});
+
+test('상세는 전체 폭을 사용하고 소개·혜택 순서, 간결한 신청 영역, 카테고리 배지를 표시한다', async () => {
+  const first = (await search()).items[0];
+  await withPage(async (page) => {
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await page.goto(`${base}/policies/${first.id}`);
+    await page.locator('.detail-heading').waitFor();
+    assert.equal(await page.locator('.detail-sidebar').count(), 0);
+    assert.equal(await page.getByText('신청 안내', { exact: true }).count(), 0);
+    assert.equal(await page.getByText('신청·참고 링크', { exact: true }).count(), 0);
+    const heading = await page.locator('.detail-heading').boundingBox();
+    const application = await page.locator('.detail-application').boundingBox();
+    const intro = await page.locator('.detail-introduction').boundingBox();
+    const benefit = await page.locator('.detail-benefit').boundingBox();
+    assert.ok(heading.width >= 1000);
+    assert.ok(Math.abs(benefit.width - heading.width) < 2);
+    assert.ok(application.y >= heading.y + heading.height);
+    assert.ok(intro.y >= application.y + application.height);
+    assert.ok(benefit.y >= intro.y + intro.height);
+    assert.equal(await page.locator('#description-title').textContent(), '정책 소개');
+    assert.equal(await page.locator('#benefit-title').textContent(), '지원 혜택');
+    assert.ok(await page.locator('#description-title').evaluate((element) => parseFloat(getComputedStyle(element).fontSize) >= 23));
+    assert.notEqual(await page.locator('.detail-introduction').evaluate((element) => getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0)');
+    assert.notEqual(await page.locator('.detail-category').evaluate((element) => getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0)');
+    assert.equal(await page.locator('#benefit-text').evaluate((element) => getComputedStyle(element).fontSize), '18px');
+    await page.setViewportSize({ width: 375, height: 812 });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+    assert.equal(await page.locator('#benefit-text').evaluate((element) => getComputedStyle(element).fontSize), '17px');
+  });
+});
+
+test('상세 날짜는 읽기 쉽게 표시하고 설명·복수 기간·유효하지 않은 범위는 보존한다', async () => {
+  const first = (await search()).items[0];
+  const fixture = await (await fetch(`${api}/api/v1/policies/${first.id}`)).json();
+  await withPage(async (page) => {
+    let period = '';
+    await page.route(`**/api/v1/policies/${first.id}`, (route) => route.fulfill({ json: { ...fixture, applicationPeriodText: period } }));
+    for (const [original, expected] of [
+      ['20261006 ~ 20261023', '2026.10.06 ~ 2026.10.23'],
+      ['2026-10-06~2026-10-23', '2026.10.06 ~ 2026.10.23'],
+      ['20261006', '2026.10.06'],
+      ['20240229 ~ 20240301', '2024.02.29 ~ 2024.03.01'],
+      ['20260229 ~ 20260301', '20260229 ~ 20260301'],
+      ['20260230 ~ 20260301', '20260230 ~ 20260301'],
+      ['20261023 ~ 20261006', '20261023 ~ 20261006'],
+      ['상시 신청', '상시 신청'],
+      ['예산 소진 시까지', '예산 소진 시까지'],
+      ['20260101 ~ 20260131, 20261006 ~ 20261023', '20260101 ~ 20260131, 20261006 ~ 20261023'],
+    ]) {
+      period = original;
+      await page.goto(`${base}/policies/${first.id}`);
+      await page.locator('#period-text').waitFor();
+      assert.equal(await page.locator('#period-text').textContent(), expected);
+    }
+    await page.setViewportSize({ width: 375, height: 812 });
+    period = '20261006 ~ 20261023';
+    await page.goto(`${base}/policies/${first.id}`);
+    await page.locator('#period-text').waitFor();
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+  });
 });

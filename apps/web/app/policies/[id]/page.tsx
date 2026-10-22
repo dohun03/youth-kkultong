@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { PolicyDetail } from '@youth-kkultong/shared';
 import { statusLabels } from '../policy-labels';
+import { DetailRegions, ExpandableText, formatApplicationPeriod } from './detail-content';
 
 /** 상세 조회의 대기·없는 정책·통신 오류·정상 응답을 구분한다. */
 type DetailState = { status: 'loading' } | { status: 'missing' } | { status: 'error' }
@@ -70,46 +71,60 @@ export default function PolicyDetailPage() {
         <h1>정책 상세를 불러오지 못했습니다</h1><p>잠시 후 다시 시도해 주세요.</p>
         <button className="retry-button" type="button" onClick={() => setAttempt((value) => value + 1)}>다시 시도</button>
       </section>}
-      {policy && <>
-        <header className="detail-heading">
-          <p className="eyebrow">{policy.category || '분야 확인 필요'}{policy.subcategory && <> · {policy.subcategory}</>}</p>
-          <h1>{policy.title}</h1>
-          <p><span className={`application-status status-${policy.applicationStatus.toLowerCase()}`}>{statusLabels[policy.applicationStatus]}</span>
-            <span className="detail-views">조회수 {policy.viewCount === null ? '확인 필요' : `${policy.viewCount.toLocaleString('ko-KR')}회`}</span></p>
-          <p>최종 신청 자격 및 접수 여부는 공식 신청처에서 확인하세요.</p>
-        </header>
-        <section className="detail-section" aria-labelledby="benefit-title">
-          <h2 id="benefit-title">지원 내용</h2><p className="detail-text">{displayText(policy.benefitText)}</p>
-        </section>
-        <section className="detail-section" aria-labelledby="description-title">
-          <h2 id="description-title">정책 설명</h2><p className="detail-text">{displayText(policy.description)}</p>
-        </section>
-        <section className="detail-section" aria-labelledby="conditions-title">
-          <h2 id="conditions-title">신청 자격</h2>
-          <dl className="policy-facts">
-            <div><dt>나이</dt><dd>{displayText(policy.ageRangeText)}</dd></div>
-            <div><dt>취업</dt><dd>{displayText(policy.jobConditionText)}</dd></div>
-            <div><dt>학력</dt><dd>{displayText(policy.schoolConditionText)}</dd></div>
-            <div><dt>지역</dt><dd>{displayText(policy.regionText)}</dd></div>
-          </dl>
-          <h3>추가 자격</h3><p className="detail-text">{displayText(policy.extraQualification)}</p>
-          <h3>참여 제한</h3><p className="detail-text">{displayText(policy.participationRestriction)}</p>
-        </section>
-        <section className="detail-section" aria-labelledby="period-title">
-          <h2 id="period-title">신청기간</h2>
-          <p className="detail-text">{policy.applicationPeriodText?.trim() ? policy.applicationPeriodText
-            : policy.applicationEndDate ? `신청 마감 ${policy.applicationEndDate}`
-              : policy.applicationStatus === 'ALWAYS_OPEN' ? '상시 신청' : '신청기간 확인 필요'}</p>
-        </section>
-        <section className="detail-section" aria-labelledby="links-title">
-          <h2 id="links-title">신청·참고 링크</h2>
-          {links.length === 0 ? <p>링크 없음</p> : <ul className="detail-links">
-            {links.map((link, index) => <li key={`${link.url}-${index}`}>
-              <a href={link.url} target="_blank" rel="noopener noreferrer">{link.label} · {new URL(link.url).hostname} (새 탭)</a>
-            </li>)}
-          </ul>}
-        </section>
-      </>}
+      {policy && <div className="detail-layout">
+        <div className="detail-main">
+          <header className="detail-heading">
+            <p className="detail-category">{policy.category || '분야 확인 필요'}{policy.subcategory && <> · {policy.subcategory}</>}</p>
+            <h1>{policy.title}</h1>
+            <p className="detail-heading-meta"><span className={`application-status status-${policy.applicationStatus.toLowerCase()}`}>{statusLabels[policy.applicationStatus]}</span>
+              <span className="detail-views">조회수 {policy.viewCount === null ? '확인 필요' : `${policy.viewCount.toLocaleString('ko-KR')}회`}</span></p>
+            <p>최종 신청 자격 및 접수 여부는 공식 신청처에서 확인하세요.</p>
+          </header>
+          <section className="detail-application" aria-label="신청기간 및 링크">
+            <div className="detail-period">
+              <h2 id="period-title">신청기간</h2>
+              <ExpandableText id="period-text" label="신청기간" text={policy.applicationPeriodText?.trim() ? formatApplicationPeriod(policy.applicationPeriodText)
+                : policy.applicationEndDate ? `신청 마감 ${formatApplicationPeriod(policy.applicationEndDate)}`
+                  : policy.applicationStatus === 'ALWAYS_OPEN' ? '상시 신청' : '신청기간 확인 필요'} limit={180} lines={4} />
+            </div>
+            {links.length === 0 ? <p className="detail-no-links">링크 없음</p> : <ul className="detail-links" aria-label="공식 링크">
+              {links.map((link, index) => <li key={`${link.url}-${index}`}>
+                <a className={link.label === '신청' ? 'detail-apply-link' : 'detail-reference-link'} href={link.url} target="_blank" rel="noopener noreferrer">
+                  <span>{link.label === '신청' ? '신청처 바로가기' : '참고 사이트'} <span aria-hidden="true">↗</span></span>
+                  <small>{new URL(link.url).hostname} · 새 탭</small>
+                </a>
+              </li>)}
+            </ul>}
+          </section>
+          <section className="detail-introduction" aria-labelledby="description-title">
+            <h2 id="description-title">정책 소개</h2>
+            <ExpandableText id="description-text" label="정책 설명" text={displayText(policy.description)} limit={240} lines={3} />
+          </section>
+          <section className="detail-benefit" aria-labelledby="benefit-title">
+            <h2 id="benefit-title">지원 혜택</h2>
+            <ExpandableText id="benefit-text" label="지원 내용" text={displayText(policy.benefitText)} limit={240} lines={4} />
+          </section>
+          <section className="detail-section" aria-labelledby="conditions-title">
+            <p className="detail-section-label">신청 대상</p>
+            <h2 id="conditions-title">내가 신청할 수 있을까요?</h2>
+            <dl className="detail-eligibility">
+              <div><dt>나이</dt><dd>{displayText(policy.ageRangeText)}</dd></div>
+              <div><dt>취업 상태</dt><dd>{displayText(policy.jobConditionText)}</dd></div>
+              <div><dt>학력</dt><dd>{displayText(policy.schoolConditionText)}</dd></div>
+            </dl>
+            <DetailRegions text={policy.regionText} />
+            <div className="detail-extra">
+              <h3>추가로 확인할 조건</h3>
+              <ExpandableText id="extra-text" label="추가 자격" text={displayText(policy.extraQualification)} limit={320} lines={4} />
+            </div>
+            <div className="detail-restriction">
+              <h3>참여 제한</h3>
+              <ExpandableText id="restriction-text" label="참여 제한" text={displayText(policy.participationRestriction)} limit={240} lines={3} />
+            </div>
+          </section>
+        </div>
+      </div>}
+
     </main>
   );
 }
