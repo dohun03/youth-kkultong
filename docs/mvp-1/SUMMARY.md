@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-22 (Asia/Seoul) · **Step 1~45 완료, Step 46~57 미착수**
+최종 확인일: 2026-10-22 (Asia/Seoul) · **Step 1~46 완료, Step 47~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1805,8 +1805,39 @@ git diff --check
 
 핵심 코드 읽는 순서: `apps/web/app/policies/page.tsx`의 분야 조회 → 필터 포함 검색 요청 → 필터 컨트롤 → `apps/web/test/policies-list.e2e.mjs`의 필터 검증 → `apps/web/app/globals.css`.
 
-## 51. 다음 작업을 위한 상태
+## 51. Step 46 구현·검증 결과
 
-다음 요청 대상은 **Step 46: 나이 입력 UI**다. Step 46~57은 시작하지 않았다. Step 45 완료를 막는 문제는 없다. 목록은 분야·마감 포함 필터까지 실제 API와 연결됐으며 사용자는 기존 3000 포트에서 바로 확인할 수 있다. 앞으로도 웹 변경 Step은 작업 규칙 11장에 따라 웹 컨테이너를 새 빌드로 재생성하고 실행 상태로 둔다. 상세 본문은 Step 51, 실제 페이지 이동은 Step 50에서 구현한다.
+사용자 요청으로 Step 45의 코드·테스트·작업 규칙·문서 6개 파일을 `b4a9128` (`feat: 정책 분야와 마감 포함 필터 추가`)로 먼저 커밋했다. 작업 규칙·PLAN Step 46·SPEC 3장·4.1·7장·8.1과 실제 요청 타입·기본 정렬·목록 화면을 대조했고 명세 충돌이나 선행 누락은 없었다. Step 46만 진행했으며 이번 변경은 커밋하지 않았다.
 
-Step 45 추천 커밋 메시지: `feat: 정책 분야와 마감 포함 필터 추가`.
+### 구현과 실제 결정사항
+
+- `/policies`에 선택적 만 나이 입력과 '나이 지우기' 버튼을 추가했다. 잘못된 입력도 지워지지 않고 오류를 확인할 수 있도록 text 입력과 모바일 숫자 키패드를 사용한다. 빈 입력은 조건 없음, 숫자만 입력한 1~120 정수는 유효한 나이, 나머지는 입력 오류로 구분한다. 소수·지수·부호·문자를 정수로 잘라 전송하지 않는다.
+- 유효한 나이만 POST 본문의 `conditions.age`에 숫자로 넣어 `page=1`로 조회한다. 입력을 지우면 `conditions`도 생략하고 기존 분야·마감 포함 필터는 유지한다. 같은 숫자인 `28` → `028` 변경은 불필요하게 다시 조회하지 않는다.
+- 입력 오류에는 연결된 안내 문구와 `aria-invalid`를 표시하고 요청을 보내지 않는다. 이때 이전 결과를 숨겨 현재 입력으로 조회한 결과처럼 보이지 않게 하며, 올바르게 고치거나 지우면 다시 조회한다. 진행 중인 이전 요청·타이머는 정리하고 검색 재시도에도 나이 조건을 유지한다.
+- 정렬 문구를 고정 인기순에서 API의 실제 `appliedSort` 표시로 바꿨다. 정렬을 직접 지정하지 않아 나이가 있으면 맞춤순, 지우면 인기순이라는 기존 API 동작을 그대로 따른다. 카드에는 API가 반환한 나이 태그를 표시하며 브라우저에서 판정·점수를 재계산하지 않는다.
+- 나이는 컴포넌트 메모리와 요청 본문에만 사용하며 URL·브라우저 저장소에 기록하지 않는다. 세션 유지는 Step 52 범위다. API 계약·DB·Migration·공용 타입·패키지·SPEC 변경 없이 PLAN·SUMMARY를 갱신했다.
+
+### 실행 환경과 실제 검증
+
+착수 당시 DB·API·웹 컨테이너가 정지 상태여서 기존 이미지·볼륨으로 DB·API를 먼저 재기동했다. 웹은 이번 이미지로 재생성해 실행 상태로 두었다. 기존 `/tmp` 브라우저 라이브러리가 정리된 상태라 Step 43과 같은 방법으로 `/tmp/youth-step46-browser-libs`에 필수 라이브러리만 다운로드·추출했다. Windows 기존 한글 글꼴도 검증 프로세스에만 연결했으며 시스템 설치·프로젝트 의존성을 변경하지 않았다.
+
+```bash
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+docker compose -f compose.yaml -f compose.local.yaml up -d --no-build --wait --wait-timeout 60 db api
+docker compose -f compose.yaml -f compose.local.yaml build web
+docker compose -f compose.yaml -f compose.local.yaml up -d --no-deps --force-recreate --wait --wait-timeout 60 web
+FONTCONFIG_FILE=/tmp/youth-step46-fonts.conf LD_LIBRARY_PATH=/tmp/youth-step46-browser-libs/root/usr/lib/x86_64-linux-gnu PLAYWRIGHT_MODULE=/home/leenohoon/youth-kkultong-before/node_modules/.pnpm/playwright@1.64.0/node_modules/playwright/index.mjs node --test apps/web/test/policies-list.e2e.mjs
+git diff --check
+```
+
+- 공용·API·웹 **타입 검사 통과**, Docker 웹 프로덕션 **빌드 통과**, 브라우저 테스트 **27개 모두 통과**. 실제 DB의 28세 맞춤 결과·태그·건수·순서와 삭제 후 인기순 복귀를 대조했다. 경계 1/120·숫자 전송·동일 나이 변경·오류 입력 10종의 미전송과 안내·올바른 값으로 복구·분야/마감 필터 유지·1페이지 요청·오류 후 재시도·지연 응답 중 나이 삭제도 검증했다. URL query와 sessionStorage/localStorage에 나이가 저장되지 않는 것도 확인했다.
+- 초기 타입 검사에서 비동기 함수 내부의 나이가 nullable 타입으로 남는 문제를 확인하고 요청 구성 시 숫자 타입을 명시적으로 확인하도록 수정한 뒤 최종 타입 검사를 통과했다. 데스크톱 1280px·모바일 375px에서 실제 맞춤 목록과 입력 오류 화면을 캡처해 배치·가로 넘침 없음을 확인했다.
+- 검증 전후 기존 `public.policies` **3,390건**, 전체 행·시각 MD5 **`46a965ded0407e47a7af9816cd3e7b6e`**로 동일했다. 외부 수집 API·DB 쓰기·Migration·시드는 실행하지 않았다. API·DB는 재생성 없이 기존 컨테이너를 기동했고 기존 포트·볼륨을 유지했다. 최종 웹·API·DB 모두 **healthy**, `http://localhost:3000/policies`에서 바로 확인할 수 있다.
+
+핵심 코드 읽는 순서: `apps/web/app/policies/page.tsx`의 `parseAgeInput` → 나이를 포함한 검색 요청 → 나이 입력/오류와 적용 정렬 표시 → `apps/web/test/policies-list.e2e.mjs`의 나이 검증 → `apps/web/app/globals.css`.
+
+## 52. 다음 작업을 위한 상태
+
+다음 요청 대상은 **Step 47: 취업·학력 선택 UI**다. Step 47~57은 시작하지 않았다. Step 46 완료를 막는 문제는 없다. 분야·마감 포함·만 나이를 실제 API와 연결했고 새 웹 컨테이너를 3000 포트에 실행 중이다. 실제 페이지 이동은 Step 50, 상세 본문은 Step 51, 입력 조건 세션 유지는 Step 52에서 구현한다.
+
+Step 46 추천 커밋 메시지: `feat: 맞춤 탐색 나이 입력 추가`.

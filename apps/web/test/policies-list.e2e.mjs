@@ -86,6 +86,167 @@ test('실제 DB의 기본 검색 첫 20건·순서·페이지 정보가 루트 �
   });
 });
 
+test('실제 만 나이 입력은 맞춤순 결과·태그를 표시하고 삭제하면 기본 인기순으로 복귀한다', async () => {
+  const search = async (body) => {
+    const response = await fetch(`${apiUrl}/api/v1/policies/search`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    assert.equal(response.status, 200);
+    return response.json();
+  };
+  const initial = await search({});
+  const matched = await search({ conditions: { age: 28 } });
+  assert.equal(matched.appliedSort, 'recommended');
+  assert.ok(matched.items.some((policy) => policy.tags.includes('AGE_MATCH')));
+
+  await withPage(async (page) => {
+    await page.goto(`${baseUrl}/policies`);
+    await expectTitles(page, initial.items);
+    await page.locator('#policy-age').fill('28');
+    await expectTitles(page, matched.items);
+    assert.match(await page.locator('.list-summary').textContent(), /맞춤순/);
+    assert.equal(await page.locator('.tag-match').count(), matched.items.reduce((count, policy) => count + policy.tags.filter((tag) => !tag.endsWith('_REVIEW')).length, 0));
+    assert.ok((await page.locator('.list-summary').textContent()).includes(matched.pagination.total.toLocaleString('ko-KR')));
+    // 개인 조건은 POST 본문에만 보내고 URL·브라우저 저장소에 기록하지 않는다.
+    assert.equal(new URL(page.url()).search, '');
+    assert.deepEqual(await page.evaluate(() => [sessionStorage.length, localStorage.length]), [0, 0]);
+    await page.getByRole('button', { name: '나이 지우기' }).click();
+    await expectTitles(page, initial.items);
+    assert.match(await page.locator('.list-summary').textContent(), /인기순/);
+    assert.equal(await page.locator('#policy-age').inputValue(), '');
+    assert.equal(await page.getByRole('button', { name: '나이 지우기' }).isDisabled(), true);
+  });
+});
+
+/** 나이에 따라 응답 제목을 바꿔 입력값의 숫자 전송·정렬·삭제를 확인한다. */
+async function mockAgeSearch(page, requests) {
+  await page.route('**/api/v1/policies/search', (route) => {
+    const request = route.request().postDataJSON();
+    requests.push(request);
+    return route.fulfill({ json: {
+      ...emptyResponse,
+      items: [makePolicy({ title: `나이 ${request.conditions?.age ?? '없음'}` })],
+      pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+      appliedSort: request.conditions ? 'recommended' : 'popular',
+    } });
+  });
+  await page.goto(`${baseUrl}/policies`);
+  await expectTitles(page, [{ title: '나이 없음' }]);
+}
+
+test('나이 경계 1·120과 정상 정수는 숫자로 보내고 동일한 나이는 불필요하게 다시 조회하지 않는다', async () => {
+  await withPage(async (page) => {
+    const requests = [];
+    await mockAgeSearch(page, requests);
+    for (const age of [1, 120, 28]) {
+      await page.locator('#policy-age').fill(String(age));
+      await expectTitles(page, [{ title: `나이 ${age}` }]);
+      assert.deepEqual(requests.at(-1), { page: 1, limit: 20, includeClosed: false, conditions: { age } });
+    }
+    await page.locator('#policy-age').fill('028');
+    assert.deepEqual(await page.locator('.policy-list h2').allTextContents(), ['나이 28']);
+    assert.equal(requests.length, 4);
+    await page.locator('#policy-age').fill('');
+    await expectTitles(page, [{ title: '나이 없음' }]);
+    assert.deepEqual(requests.at(-1), { page: 1, limit: 20, includeClosed: false });
+  });
+});
+
+test('잘못된 나이는 전송하지 않고 안내하며 이전 결과를 숨긴 뒤 올바른 값에서 다시 조회한다', async () => {
+  await withPage(async (page) => {
+    const requests = [];
+    await mockAgeSearch(page, requests);
+    await page.locator('#policy-age').fill('28');
+    await expectTitles(page, [{ title: '나이 28' }]);
+    for (const invalid of ['0', '121', '-1', '1.5', '1e2', 'abc', ' ', '999999999999999999999', 'NaN', '+28']) {
+      await page.locator('#policy-age').fill(invalid);
+      await page.locator('#age-error').waitFor();
+      assert.equal(await page.locator('#policy-age').getAttribute('aria-invalid'), 'true');
+      assert.equal(await page.locator('.policy-card').count(), 0);
+      assert.equal(requests.length, 2);
+    }
+    await page.locator('#policy-age').fill('35');
+    await expectTitles(page, [{ title: '나이 35' }]);
+    assert.equal(await page.locator('#age-error').count(), 0);
+    assert.equal(await page.locator('#policy-age').getAttribute('aria-invalid'), 'false');
+    assert.deepEqual(requests.at(-1).conditions, { age: 35 });
+  });
+});
+
+test('나이를 바꾸거나 지워도 분야·마감 포함을 유지하며 모든 변경은 1페이지를 요청한다', async () => {
+  await withPage(async (page) => {
+    const requests = [];
+    await page.route('**/api/v1/meta/categories', (route) => route.fulfill({ json: ['주거'] }));
+    await mockAgeSearch(page, requests);
+    const fieldResponse = page.waitForResponse('**/api/v1/policies/search');
+    await page.selectOption('#policy-category', '주거');
+    await fieldResponse;
+    await page.locator('.policy-card').waitFor();
+    const closedResponse = page.waitForResponse('**/api/v1/policies/search');
+    await page.getByLabel('마감 포함').check();
+    await closedResponse;
+    await page.locator('.policy-card').waitFor();
+    await page.locator('#policy-age').fill('28');
+    await expectTitles(page, [{ title: '나이 28' }]);
+    assert.deepEqual(requests.at(-1), { page: 1, limit: 20, includeClosed: true, category: '주거', conditions: { age: 28 } });
+    await page.getByRole('button', { name: '나이 지우기' }).click();
+    await expectTitles(page, [{ title: '나이 없음' }]);
+    assert.deepEqual(requests.at(-1), { page: 1, limit: 20, includeClosed: true, category: '주거' });
+    assert.equal(await page.locator('#policy-category').inputValue(), '주거');
+    assert.equal(await page.getByLabel('마감 포함').isChecked(), true);
+  });
+});
+
+test('나이 검색 실패 후 다시 시도할 때도 나이 조건을 유지한다', async () => {
+  await withPage(async (page) => {
+    let failed = false;
+    const requests = [];
+    await page.route('**/api/v1/policies/search', (route) => {
+      const request = route.request().postDataJSON();
+      requests.push(request);
+      if (request.conditions && !failed) {
+        failed = true;
+        return route.fulfill({ status: 503, json: {} });
+      }
+      return route.fulfill({ json: { ...emptyResponse, items: [makePolicy({ title: request.conditions ? '나이 재조회' : '초기' })] } });
+    });
+    await page.goto(`${baseUrl}/policies`);
+    await expectTitles(page, [{ title: '초기' }]);
+    await page.locator('#policy-age').fill('28');
+    await page.getByRole('button', { name: '다시 시도', exact: true }).click();
+    await expectTitles(page, [{ title: '나이 재조회' }]);
+    assert.equal(await page.locator('#policy-age').inputValue(), '28');
+    assert.deepEqual(requests.at(-1).conditions, { age: 28 });
+  });
+});
+
+test('지연된 나이 검색 중 값을 지우면 이전 응답이 기본 결과를 덮어쓰지 않는다', async () => {
+  await withPage(async (page) => {
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    let finishPrevious;
+    const previousFinished = new Promise((resolve) => { finishPrevious = resolve; });
+    await page.route('**/api/v1/policies/search', async (route) => {
+      const request = route.request().postDataJSON();
+      if (request.conditions) await gate;
+      await route.fulfill({ json: { ...emptyResponse, items: [makePolicy({ title: request.conditions ? '이전 나이' : '기본 목록' })] } });
+      if (request.conditions) finishPrevious();
+    });
+    try {
+      await page.goto(`${baseUrl}/policies`);
+      await expectTitles(page, [{ title: '기본 목록' }]);
+      const slowRequest = page.waitForRequest((request) => request.url().endsWith('/policies/search') && Boolean(request.postDataJSON().conditions));
+      await page.locator('#policy-age').fill('28');
+      await slowRequest;
+      await page.getByRole('button', { name: '나이 지우기' }).click();
+      await expectTitles(page, [{ title: '기본 목록' }]);
+      release();
+      await previousFinished;
+      assert.deepEqual(await page.locator('.policy-list h2').allTextContents(), ['기본 목록']);
+    } finally { release(); }
+  });
+});
+
 test('실제 분야 선택과 마감 포함 변경이 DB 검색 결과·순서·전체 건수와 일치한다', async () => {
   const categories = await (await fetch(`${apiUrl}/api/v1/meta/categories`)).json();
   let category;

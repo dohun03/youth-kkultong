@@ -108,6 +108,57 @@ input:focus-visible {
   margin-top: 10px;
 }
 
+.age-filter {
+  flex-basis: 100%;
+  min-width: 0;
+}
+
+.age-input-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.age-input-row input {
+  width: 120px;
+  padding: 10px;
+  border: 1px solid #b6b0a3;
+  border-radius: 8px;
+  color: inherit;
+  background: #fff;
+  font: inherit;
+}
+
+.age-input-row input[aria-invalid="true"] {
+  border-color: #a33222;
+}
+
+.age-clear-button {
+  padding: 10px 14px;
+  border: 1px solid #b6b0a3;
+  border-radius: 8px;
+  background: #fcfbf7;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.age-clear-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.age-filter p {
+  margin: 8px 0 0;
+  color: #6b665b;
+  font-size: 14px;
+}
+
+.age-filter #age-error {
+  color: #a33222;
+}
+
 .policy-list {
   display: grid;
   gap: 16px;
