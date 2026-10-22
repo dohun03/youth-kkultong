@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-22 (Asia/Seoul) · **Step 1~46 완료, Step 47~57 미착수**
+최종 확인일: 2026-10-22 (Asia/Seoul) · **Step 1~47 완료, Step 48~57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -1836,8 +1836,18 @@ git diff --check
 
 핵심 코드 읽는 순서: `apps/web/app/policies/page.tsx`의 `parseAgeInput` → 나이를 포함한 검색 요청 → 나이 입력/오류와 적용 정렬 표시 → `apps/web/test/policies-list.e2e.mjs`의 나이 검증 → `apps/web/app/globals.css`.
 
-## 52. 다음 작업을 위한 상태
+## 52. Step 47 구현·검증 결과
 
-다음 요청 대상은 **Step 47: 취업·학력 선택 UI**다. Step 47~57은 시작하지 않았다. Step 46 완료를 막는 문제는 없다. 분야·마감 포함·만 나이를 실제 API와 연결했고 새 웹 컨테이너를 3000 포트에 실행 중이다. 실제 페이지 이동은 Step 50, 상세 본문은 Step 51, 입력 조건 세션 유지는 Step 52에서 구현한다.
+사용자가 Step 47~51의 순차 구현·검증·단계별 커밋을 승인했다. PLAN·SPEC의 관련 계약과 선행 구현을 대조하고 Step 47 범위만 진행했다.
 
-Step 46 추천 커밋 메시지: `feat: 맞춤 탐색 나이 입력 추가`.
+- 공식 `/meta/eligibility-codes`의 코드·표시명으로 취업·학력 드롭다운을 제공한다. 미선택·선택·해제에 따라 나이와 조합해 POST 본문을 구성하고 1페이지에서 재조회한다. 목록 태그·점수 계산은 기존 API가 담당한다.
+- 확인된 선택지의 코드만 전달하고 코드표를 브라우저에 중복 정의하지 않는다. 로딩·오류·재시도는 분야와 독립적이며 조회 실패 중에도 다른 필터를 사용할 수 있다.
+- 분야와 자격 조회에서 실제로 공유하는 검증·15초 제한·요청 정리·재시도를 `use-meta-options.ts`로 분리했다. `eligibility-filters.tsx`는 선택지 표시, `page.tsx`는 검색 조건 조합을 담당한다.
+- 실제 API의 단일·복수 조건 결과와 태그, 해제 후 인기순, 실패 후 재시도·미확인 코드 방어를 검증했다. 기존 27개와 신규 2개가 모두 통과했다. 선택 조건을 URL·브라우저 저장소에 보관하지 않는다.
+- 읽는 순서: `eligibility-filters.tsx` → `use-meta-options.ts` → `page.tsx`의 조건 조합 → `policy-exploration.e2e.mjs`.
+
+검증: `NEXT_TELEMETRY_DISABLED=1 npm run typecheck` 통과. `docker compose -f compose.yaml -f compose.local.yaml build web`의 프로덕션 빌드 통과 후 `up -d --no-deps --force-recreate --wait --wait-timeout 60 web`으로 웹을 재생성했다. 기존 Playwright·임시 Chromium 라이브러리·Windows 한글 글꼴 환경으로 `node --test apps/web/test/*.e2e.mjs`를 실행해 **29개 모두 통과**했다. `git diff --check` 통과. API·DB 스키마·Migration·공용 계약·패키지 변경은 없으며 웹을 3000 포트에서 실행 상태로 유지했다.
+
+## 53. 다음 작업을 위한 상태
+
+다음 대상은 **Step 48: 지역 선택 UI**다. Step 48~57은 미착수다. 현재 Step 완료를 막는 문제는 없다. 이번 사용자 요청은 Step 51까지이며 이후 단계는 별도 요청을 기다린다.

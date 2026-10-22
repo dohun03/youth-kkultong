@@ -45,6 +45,25 @@ input:focus-visible {
   color: #6b665b;
 }
 
+.condition-filters {
+  display: flex;
+  flex-wrap: wrap;
+  flex-basis: 100%;
+  gap: 16px;
+  min-width: 0;
+  margin: 0;
+  padding: 12px 0 0;
+  border: 0;
+}
+
+.condition-filters legend { padding: 0; }
+.condition-filters p { margin: 0; font-size: 14px; color: #6b665b; }
+.condition-select { display: grid; flex: 1 1 200px; gap: 8px; min-width: 0; }
+.condition-select select {
+  width: 100%; min-width: 0; padding: 10px; border: 1px solid #b6b0a3;
+  border-radius: 8px; background: #fff; color: inherit; font: inherit;
+}
+
 .policy-filters {
   display: flex;
   flex-wrap: wrap;

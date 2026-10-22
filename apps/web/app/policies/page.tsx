@@ -3,18 +3,14 @@
 import { useEffect, useState } from 'react';
 import type { PolicySearchRequest, PolicySearchResponse, SortKey } from '@youth-kkultong/shared';
 import { PolicyCard } from './policy-card';
+import { EligibilityFilters } from './eligibility-filters';
+import { isCategories, useMetaOptions } from './use-meta-options';
 
 /** 로딩·실패·정상 응답을 구분해 API 오류를 빈 목록으로 표시하지 않는다. */
 type ListState =
   | { status: 'loading' }
   | { status: 'error' }
   | { status: 'success'; response: PolicySearchResponse };
-
-/** 분야 선택지 조회 상태를 목록 조회와 분리해 한쪽 오류가 다른 기능을 막지 않게 한다. */
-type CategoriesState =
-  | { status: 'loading' }
-  | { status: 'error' }
-  | { status: 'success'; items: string[] };
 
 // 화면에 실제 적용된 정렬을 표시하며, 조건을 지웠을 때 인기순으로 돌아온 것도 반영한다.
 const sortLabels: Record<SortKey, string> = {
@@ -34,47 +30,13 @@ function parseAgeInput(input: string): number | undefined | null {
 export default function PoliciesPage() {
   const [state, setState] = useState<ListState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
-  const [categories, setCategories] = useState<CategoriesState>({ status: 'loading' });
-  const [categoriesAttempt, setCategoriesAttempt] = useState(0);
+  const { state: categories, retry: retryCategories } = useMetaOptions('/api/v1/meta/categories', isCategories);
+  const [jobCode, setJobCode] = useState('');
+  const [schoolCode, setSchoolCode] = useState('');
   const [category, setCategory] = useState('');
   const [includeClosed, setIncludeClosed] = useState(false);
   const [ageInput, setAgeInput] = useState('');
   const age = parseAgeInput(ageInput);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    let active = true;
-    const timeout = setTimeout(() => controller.abort(), 15_000);
-
-    /** DB에 저장된 실제 분야를 가져오며 묶음 분야명도 하나의 선택지로 유지한다. */
-    async function loadCategories(): Promise<void> {
-      setCategories({ status: 'loading' });
-      try {
-        const response = await fetch('/api/v1/meta/categories', {
-          cache: 'no-store',
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error('분야 조회 실패');
-        const items: unknown = await response.json();
-        // 선택지에 잘못된 자료형이 섞이면 빈 목록으로 숨기지 않고 오류로 안내한다.
-        if (!Array.isArray(items) || !items.every((item): item is string => typeof item === 'string' && item.trim().length > 0)) {
-          throw new Error('분야 응답 형식 오류');
-        }
-        if (active) setCategories({ status: 'success', items });
-      } catch {
-        if (active) setCategories({ status: 'error' });
-      } finally {
-        clearTimeout(timeout);
-      }
-    }
-
-    void loadCategories();
-    return () => {
-      active = false;
-      clearTimeout(timeout);
-      controller.abort();
-    };
-  }, [categoriesAttempt]);
 
   useEffect(() => {
     // 잘못된 나이는 전송하지 않는다. 이전 결과도 숨겨 현재 입력의 결과처럼 보이지 않게 한다.
@@ -91,7 +53,11 @@ export default function PoliciesPage() {
       // '전체'일 때는 category 자체를 보내지 않고, 선택한 실제 분야명만 그대로 보낸다.
       if (category) request.category = category;
       // 선택 입력을 지우면 conditions도 생략한다. 나이는 URL·브라우저 저장소에 남기지 않는다.
-      if (typeof age === 'number') request.conditions = { age };
+      const conditions: NonNullable<PolicySearchRequest['conditions']> = {};
+      if (typeof age === 'number') conditions.age = age;
+      if (jobCode) conditions.jobCode = jobCode;
+      if (schoolCode) conditions.schoolCode = schoolCode;
+      if (Object.keys(conditions).length > 0) request.conditions = conditions;
 
       try {
         const response = await fetch('/api/v1/policies/search', {
@@ -119,7 +85,7 @@ export default function PoliciesPage() {
       clearTimeout(timeout);
       controller.abort();
     };
-  }, [attempt, category, includeClosed, age]);
+  }, [attempt, category, includeClosed, age, jobCode, schoolCode]);
 
   return (
     <main className="container policies-page" id="main-content">
@@ -141,7 +107,7 @@ export default function PoliciesPage() {
             }}
           >
             <option value="">전체</option>
-            {categories.status === 'success' && categories.items.map((item) => (
+            {categories.status === 'success' && categories.data.map((item) => (
               <option key={item} value={item}>{item}</option>
             ))}
           </select>
@@ -179,11 +145,15 @@ export default function PoliciesPage() {
           <p id="age-help">입력하지 않아도 정책을 볼 수 있어요.</p>
           {age === null && <p id="age-error" role="alert">만 나이는 1~120 사이의 정수로 입력해 주세요. 올바르게 입력하면 목록을 다시 조회합니다.</p>}
         </div>
+        <EligibilityFilters jobCode={jobCode} schoolCode={schoolCode} onChange={(field, code) => {
+          setState({ status: 'loading' });
+          if (field === 'jobCode') setJobCode(code); else setSchoolCode(code);
+        }} />
         {categories.status === 'loading' && <p className="filter-message" role="status">분야 선택지를 불러오는 중입니다.</p>}
         {categories.status === 'error' && (
           <div className="filter-message">
             <p role="alert">분야 선택지를 불러오지 못했습니다. 전체 목록은 계속 조회할 수 있어요.</p>
-            <button className="retry-button" type="button" onClick={() => setCategoriesAttempt((value) => value + 1)}>
+            <button className="retry-button" type="button" onClick={retryCategories}>
               분야 다시 시도
             </button>
           </div>
