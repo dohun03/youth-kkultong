@@ -2059,6 +2059,13 @@ git diff --check
 
 핵심 코드 읽는 순서: `title-search.ts` → `policy-search-candidates.ts` → 공용 `policy-search.schema.ts` → 웹 `policies/page.tsx`의 검색 폼/요청 → `use-session-exploration.ts`의 검색어 복원.
 
-## 69. 다음 작업을 위한 상태
+## 69. 검색 기능 커밋·입력 포커스 외곽선 정리 (2026-10-23 사용자 요청)
+
+- 제목 검색 기능·관련 테스트·문서를 `deb5600` (`feat: 정책 제목 JS 검색과 검색어 세션 유지`)으로 먼저 커밋했다.
+- 사용자 검수에 따라 모든 input/select의 파란 focus-visible 외곽선을 제거하고 검색 입력창 바깥의 focus-within 파란 테두리/광택도 제거했다. 키보드 위치는 기존 테두리의 회색 농도로 구분한다. 버튼·링크·본문 건너뛰기의 초점 표시는 유지한다. 적용 기준은 SPEC 8.3에 반영했다.
+- Docker 웹 빌드·diff 검사 통과 후 웹만 새 이미지로 재생성했다. 실제 브라우저에서 검색·나이·분야·취업·학력·지역·표시 개수·정렬의 8종 입력/셀렉트에 초점을 주어 outline-style:none·box-shadow:none과 검색창 바깥 그림자 없음을 확인했다. 첫 검사는 outline:none에서도 남을 수 있는 computed outline-width만 검사해 실패했으며, 실제 그리기 여부인 outline-style로 바로잡아 통과했다. 화면 캡처도 직접 확인했다.
+- 기존 Playwright 환경으로 `node --test apps/web/test/policy-accessibility.e2e.mjs`를 실행해 키보드 초점·페이지 이동·재시도·모바일 5개 모두 통과했다. API·DB는 유지하며 웹은 `http://localhost:3000/policies`에서 바로 확인할 수 있다. 이번 포커스 스타일 변경은 커밋하지 않았다.
+
+## 70. 다음 작업을 위한 상태
 
 다음 단계 대상은 **Step 54: 공개 API 보안·요청 보호 점검**이다. Step 54~57은 미착수다. Step 53의 미해결 문제는 없으며 다음 단계는 별도 요청을 기다린다.
