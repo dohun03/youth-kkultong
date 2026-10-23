@@ -1,3 +1,4 @@
+import { parsePolicyCategories } from '@youth-kkultong/shared';
 import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { Policy } from '../entities/policy.entity';
@@ -56,7 +57,8 @@ export class PolicyRepository {
       .orderBy('policy.category', 'ASC')
       .getRawMany<{ category: string }>();
 
-    return rows.map(({ category }) => category);
+    // 원문은 DB에 보존하고 선택지에서만 복수 분야를 펼쳐 중복을 제거한다.
+    return [...new Set(rows.flatMap(({ category }) => parsePolicyCategories(category)))].sort((a, b) => a.localeCompare(b, 'ko'));
   }
 
   /** 정책 해시 조회 */

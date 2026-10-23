@@ -58,12 +58,11 @@ describe('정책 검색 후보·필터 조합', () => {
       .toEqual(['housing', 'other', 'null', 'empty']);
   });
 
-  it.each(['주거', ' 주거 ', '금융･복지･문화', '금융·복지·문화', ' '])('분야 %j는 공백·문장 부호까지 정확 일치한다', (category) => {
-    const rows = ['주거', ' 주거 ', '금융･복지･문화', '금융·복지·문화', ' ', null]
-      .map((value, index) => policy(String(index), { category: value }));
-    const result = buildSearchCandidates(rows, { category }, today, regions);
-    expect(result).toHaveLength(1);
-    expect(result[0].category).toBe(category);
+  it('분리된 분야 포함 여부를 판단하고 가운뎃점 이름은 유지한다', () => {
+    const rows = [policy('a', { category: ' 주거,주거 ' }), policy('b', { category: '일자리,주거' }), policy('c', { category: '금융･복지･문화' })];
+    expect(buildSearchCandidates(rows, { category: '주거' }, today, regions).map((row) => row.id)).toEqual(['a', 'b']);
+    expect(buildSearchCandidates(rows, { category: '금융' }, today, regions)).toEqual([]);
+    expect(rows[0].category).toBe(' 주거,주거 ');
   });
 
   it('존재하지 않는 분야는 빈 결과다', () => {

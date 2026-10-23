@@ -2066,6 +2066,22 @@ git diff --check
 - Docker 웹 빌드·diff 검사 통과 후 웹만 새 이미지로 재생성했다. 실제 브라우저에서 검색·나이·분야·취업·학력·지역·표시 개수·정렬의 8종 입력/셀렉트에 초점을 주어 outline-style:none·box-shadow:none과 검색창 바깥 그림자 없음을 확인했다. 첫 검사는 outline:none에서도 남을 수 있는 computed outline-width만 검사해 실패했으며, 실제 그리기 여부인 outline-style로 바로잡아 통과했다. 화면 캡처도 직접 확인했다.
 - 기존 Playwright 환경으로 `node --test apps/web/test/policy-accessibility.e2e.mjs`를 실행해 키보드 초점·페이지 이동·재시도·모바일 5개 모두 통과했다. API·DB는 유지하며 웹은 `http://localhost:3000/policies`에서 바로 확인할 수 있다. 이번 포커스 스타일 변경은 커밋하지 않았다.
 
-## 70. 다음 작업을 위한 상태
+## 70. DB 원문을 유지한 분야 중복 정리 (2026-10-23 사용자 승인)
+
+- 사용자가 제안된 쉼표 분리·중복 제거·포함 판정을 승인했다. 기존 DB category와 raw_json·수집 코드는 수정하지 않고 shared의 `parsePolicyCategories` 순수 함수를 추가했다. 쉼표로 분리하고 앞뒤 공백·빈 값·반복 이름을 제거한다. 가운뎃점은 이름의 일부이며 다른 분야명은 임의 통합하지 않는다.
+- 분야 메타 조회는 기존 고유 문자열을 읽은 뒤 같은 함수를 적용해 합집합·한국어 이름순으로 반환한다. JS 후보 필터는 전체 문자열 비교 대신 분야 포함 여부를 확인한다. 카드·상세는 API 원문을 받아 같은 함수로 ‘일자리 · 교육’처럼 표시하며 API category 응답 원문 계약은 유지한다.
+- 세션의 ‘일자리,일자리’는 ‘일자리’로 복원하고 ‘일자리,교육’ 같은 복수 값은 임의로 하나를 고르지 않고 전체로 복귀한다. 현재 메타에 없는 값은 기존 검증대로 제거한다.
+- 공용 함수를 웹에서도 실행하면서 기존 Docker 웹 빌드에 shared 실행 파일 생성 단계가 없어 처음 빌드가 실패했다. 웹 prebuild에 기존 shared 빌드를 연결하고 Docker에 shared tsconfig를 복사하도록 보완했다. 새 패키지·서비스·DB 스키마는 추가하지 않았다.
+- PRD·ARCHITECTURE·SPEC·PLAN을 승인된 분야 동작과 동기화했다. Step 54는 진행하지 않고 커밋하지 않는다.
+
+검증: `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`, API·웹 Docker 빌드, `git diff --check` 통과. 분야 분리/후보 필터 단위 테스트 **29개**, 별도 임시 스키마를 사용한 메타/검색 API 통합 테스트 **45개**, 기존 Playwright 환경의 `node --test apps/web/test/*.e2e.mjs` 브라우저 **64개 모두 통과**했다. 원문 분야 저장값은 유지하면서 선택지 정리·복수 분야 포함·카드/상세 표시·이전 세션 단일화/전체 복귀를 확인했다.
+
+- 실제 메타 API는 20개 문자열 조합에서 8개 분야로 정리됐고, 마감 포함 일자리 조회는 1,240건에서 1,320건으로 늘어 복수 분야 정책의 누락이 해소됐다.
+- 운영 정책 테이블은 변경 전후 **3,390건**, 전체 행 JSON MD5 **`02575d9d37be7670ec17d32181b1f902`**로 같았다. 수집·운영 데이터 UPDATE/삭제·스키마 Migration은 실행하지 않았다. 테스트 자료는 운영 정책과 분리된 임시 스키마에서만 생성·정리했다.
+- DB 컨테이너·볼륨을 유지하고 API·웹만 새 이미지로 재생성했다. 웹·API·DB 모두 healthy이며 `http://localhost:3000/policies`에서 확인할 수 있다. 이번 변경은 커밋하지 않았다.
+
+읽는 순서: `packages/shared/src/policy-categories.ts` → `policy.repository.ts`의 선택지 조립 → `policy-search-candidates.ts`의 포함 판정 → 카드/상세/세션의 공용 함수 사용.
+
+## 71. 다음 작업을 위한 상태
 
 다음 단계 대상은 **Step 54: 공개 API 보안·요청 보호 점검**이다. Step 54~57은 미착수다. Step 53의 미해결 문제는 없으며 다음 단계는 별도 요청을 기다린다.

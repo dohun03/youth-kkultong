@@ -829,3 +829,35 @@ test('한글 조합 Enter는 검색하지 않고 오류 재시도에도 적용 �
     assert.equal(await input.getAttribute('maxlength'), '100');
   });
 });
+
+test('분야 선택지·복수 분야 검색·원문 표시·이전 세션을 같은 기준으로 정리한다', async () => {
+  const categories = await (await fetch(`${api}/api/v1/meta/categories`)).json();
+  assert.equal(categories.length, new Set(categories).size);
+  assert.ok(categories.every((name) => !name.includes(',')));
+  assert.ok(categories.includes('금융･복지･문화'));
+  const expected = await search({ category: '일자리', includeClosed: true, limit: 50 });
+  assert.ok(expected.pagination.total > 0);
+  assert.ok(expected.items.every((item) => item.category.split(',').map((name) => name.trim()).includes('일자리')));
+  for (const [stored, restored] of [['일자리,일자리', '일자리'], ['일자리,교육', '']]) {
+    await withPage(async (page) => {
+      await page.addInitScript(({ key, stored }) => sessionStorage.setItem(key, JSON.stringify({ category: stored })), { key: conditionsStorageKey, stored });
+      await page.goto(`${base}/policies`);
+      await expectResult(page, await search(restored ? { category: restored } : {}));
+      assert.equal(await page.locator('#policy-category').inputValue(), restored);
+    });
+  }
+  await withPage(async (page) => {
+    const fixture = { ...(await search()).items[0], category: '일자리,교육,일자리' };
+    await page.route('**/policies/search', (route) => route.fulfill({ json: { ...(expected), items: [fixture] } }));
+    await page.goto(`${base}/policies`);
+    await page.locator('.policy-category-badge').waitFor();
+    assert.equal(await page.locator('.policy-category-badge').textContent(), '일자리 · 교육');
+    await page.route(`**/api/v1/policies/${fixture.id}`, async (route) => {
+      const result = await route.fetch(); const detail = await result.json();
+      await route.fulfill({ json: { ...detail, category: '일자리,교육,일자리' } });
+    });
+    await page.locator('.policy-card-link').click();
+    await page.locator('.detail-category').waitFor();
+    assert.ok((await page.locator('.detail-category').textContent()).startsWith('일자리 · 교육'));
+  });
+});

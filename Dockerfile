@@ -18,6 +18,7 @@ RUN npm run build --workspace apps/api
 
 FROM dependencies AS web-build
 COPY tsconfig.base.json ./
+COPY packages/shared/tsconfig.json packages/shared/tsconfig.json
 COPY packages/shared/src packages/shared/src
 COPY apps/web apps/web
 ARG API_INTERNAL_URL=http://api:4000

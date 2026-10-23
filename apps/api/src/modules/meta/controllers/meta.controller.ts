@@ -20,7 +20,7 @@ export class MetaController {
     return this.regionRepository.findActive(this.dataSource.manager);
   }
 
-  /** 카테고리 문자열 배열로 반환 (묶음 분야도 저장된 문자열 그대로) */
+  /** 복수·반복 분야를 정리한 분야 선택지를 반환 */
   @Get('categories')
   getCategories(): Promise<string[]> {
     return this.policyRepository.findCategories(this.dataSource.manager);

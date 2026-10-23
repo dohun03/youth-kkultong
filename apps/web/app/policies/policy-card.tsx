@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { parsePolicyCategories } from '@youth-kkultong/shared';
 import { statusLabels } from './policy-labels';
 import { formatApplicationPeriod } from './policy-period';
 import type { MatchTag, PolicyCard as PolicyCardData } from '@youth-kkultong/shared';
@@ -45,7 +46,7 @@ export function PolicyCard({ policy }: { policy: PolicyCardData }) {
       <Link className="policy-card-link" href={`/policies/${policy.id}`} prefetch={false}>
         <div className="policy-card-main">
           <p className="policy-category">
-            <span className="policy-category-badge">{policy.category?.trim() || '분야 확인 필요'}</span>
+            <span className="policy-category-badge">{parsePolicyCategories(policy.category).join(' · ') || '분야 확인 필요'}</span>
             {policy.subcategory?.trim() && <span className="policy-subcategory">{policy.subcategory}</span>}
           </p>
           <h2>{policy.title}</h2>

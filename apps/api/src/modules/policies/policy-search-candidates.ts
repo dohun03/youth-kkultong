@@ -1,3 +1,4 @@
+import { parsePolicyCategories } from '@youth-kkultong/shared';
 import type { ApplicationStatus, PolicySearchRequest } from '@youth-kkultong/shared';
 import { evaluatePolicy } from '../matching/evaluate-policy';
 import type { PolicyMatchResult } from '../matching/evaluate-policy';
@@ -26,7 +27,7 @@ export function buildSearchCandidates(
     // 요청마다 한 번 정한 한국 오늘 날짜를 모든 정책에 동일하게 적용한다.
     const applicationStatus = calculateApplicationStatus(policy, today);
 
-    if (request.category !== undefined && request.category !== '' && policy.category !== request.category) continue;
+    if (request.category !== undefined && request.category !== '' && !parsePolicyCategories(policy.category).includes(request.category)) continue;
     if (!matchesPolicyTitle(policy.title, terms)) continue;
     if (!request.includeClosed && applicationStatus === 'CLOSED') continue;
 

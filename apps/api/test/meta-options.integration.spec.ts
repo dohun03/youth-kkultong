@@ -80,15 +80,12 @@ describe('분야·자격 코드 메타 API의 실제 PostgreSQL·HTTP 검증', (
 
   it('분야의 중복·빈 값은 제외하고 묶음 분야명과 문장 부호는 그대로 반환한다', async () => {
     const expected = ['금융･복지･문화', '금융·복지·문화', '참여･기반', '일자리', '주거'];
-    for (const category of [...expected, '주거', null, '', ' \t\n']) await seed(category);
+    for (const category of [...expected, '주거', '일자리,일자리', '일자리,주거', null, '', ' \t\n']) await seed(category);
     const response = await request(app.getHttpServer()).get('/api/v1/meta/categories').expect(200);
     expect(response.body).toHaveLength(expected.length);
     expect(new Set(response.body)).toEqual(new Set(expected));
-    // DB 정렬 결과와 HTTP 응답이 같으며, 분야를 쪼갠 별도 선택지는 만들지 않음
-    const actual = await dataSource.getRepository(Policy).createQueryBuilder('policy')
-      .select('policy.category', 'category').distinct(true)
-      .where(`policy.category ~ '[^[:space:]]'`).orderBy('policy.category', 'ASC').getRawMany();
-    expect(response.body).toEqual(actual.map(({ category }) => category));
+    expect(response.body).toEqual([...expected].sort((a, b) => a.localeCompare(b, 'ko')));
+    expect((await dataSource.getRepository(Policy).findOneByOrFail({ category: '일자리,일자리' })).category).toBe('일자리,일자리');
   });
 
   it('정책 DB에서 변경한 분야가 다음 요청에 바로 반영된다', async () => {

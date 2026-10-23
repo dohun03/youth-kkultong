@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { parsePolicyCategories } from '@youth-kkultong/shared';
 import type { SortKey } from '@youth-kkultong/shared';
 
 /** 기존 조건 저장값도 그대로 읽을 수 있도록 같은 탭 전용 키를 유지한다. */
@@ -19,7 +20,11 @@ function readConditions(value: unknown): SessionExploration {
     const code = input[field];
     if (typeof code === 'string' && (field === 'regionCode' ? /^\d{5}$/ : /^\d{7}$/).test(code)) conditions[field] = code;
   }
-  if (typeof input.category === 'string' && input.category.trim()) conditions.category = input.category;
+  // 반복된 단일 분야는 복원하고, 복수 분야는 임의로 고르지 않고 전체로 돌아간다.
+  if (typeof input.category === 'string') {
+    const categories = parsePolicyCategories(input.category);
+    if (categories.length === 1) conditions.category = categories[0];
+  }
   // 문자열 'false'를 참으로 해석하지 않고 실제 boolean만 허용한다. 기본값은 저장하지 않는다.
   if (input.includeClosed === true) conditions.includeClosed = true;
   if (input.sort === 'popular' || input.sort === 'recommended' || input.sort === 'deadline' || input.sort === 'newest') conditions.sort = input.sort;

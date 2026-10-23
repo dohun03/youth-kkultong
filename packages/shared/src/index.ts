@@ -12,3 +12,5 @@ export type {
   SortKey,
   UserConditions,
 } from './policies.js';
+
+export { parsePolicyCategories } from './policy-categories.js';

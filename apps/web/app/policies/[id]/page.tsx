@@ -1,5 +1,6 @@
 'use client';
 
+import { parsePolicyCategories } from '@youth-kkultong/shared';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
@@ -84,7 +85,7 @@ export default function PolicyDetailPage() {
       {policy && <div className="detail-layout">
         <div className="detail-main">
           <header className="detail-heading">
-            <p className="detail-category">{policy.category || '분야 확인 필요'}{policy.subcategory && <> · {policy.subcategory}</>}</p>
+            <p className="detail-category">{parsePolicyCategories(policy.category).join(' · ') || '분야 확인 필요'}{policy.subcategory && <> · {policy.subcategory}</>}</p>
             <h1 ref={headingRef} tabIndex={-1}>{policy.title}</h1>
             <p className="detail-heading-meta"><span className={`application-status status-${policy.applicationStatus.toLowerCase()}`}>{statusLabels[policy.applicationStatus]}</span>
               <span className="detail-views">조회수 {policy.viewCount === null ? '확인 필요' : `${policy.viewCount.toLocaleString('ko-KR')}회`}</span></p>
