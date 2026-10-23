@@ -75,11 +75,11 @@ test('실제 DB의 기본 검색 첫 20건·순서·페이지 정보가 루트 �
     assert.deepEqual(await page.locator('.policy-list h2').allTextContents(), expected.items.map((item) => item.title));
     const summary = await page.locator('.list-summary').textContent();
     assert.ok(summary.includes(expected.pagination.total.toLocaleString('ko-KR')));
-    assert.ok(summary.includes(`1 / ${expected.pagination.totalPages}페이지`));
-    assert.ok(summary.includes('인기순'));
+    assert.doesNotMatch(summary, /페이지/);
+    assert.equal(await page.locator('#policy-sort').inputValue(), 'popular');
     assert.equal(await page.locator('main [role="alert"]').count(), 0);
     assert.equal(await page.locator('.policy-card').count(), 20);
-    assert.equal(await page.locator('.policy-disclaimer').count(), 1);
+    assert.equal(await page.locator('.policy-disclaimer').count(), 0);
     assert.equal(await page.locator('.tag-match').count(), 0);
     await page.locator('#policy-category:not([disabled])').waitFor();
     assert.deepEqual(await page.locator('#policy-category option').allTextContents(), ['전체', ...categories]);
@@ -105,7 +105,7 @@ test('실제 만 나이 입력은 맞춤순 결과·태그를 표시하고 삭�
     await expectTitles(page, initial.items);
     await page.locator('#policy-age').fill('28');
     await expectTitles(page, matched.items);
-    assert.match(await page.locator('.list-summary').textContent(), /맞춤순/);
+    assert.equal(await page.locator('#policy-sort').inputValue(), 'recommended');
     assert.equal(await page.locator('.tag-match').count(), matched.items.reduce((count, policy) => count + policy.tags.filter((tag) => !tag.endsWith('_REVIEW')).length, 0));
     assert.ok((await page.locator('.list-summary').textContent()).includes(matched.pagination.total.toLocaleString('ko-KR')));
     // 개인 조건은 POST 본문과 탭 세션에만 사용하며 URL·localStorage에는 기록하지 않는다.
@@ -113,7 +113,7 @@ test('실제 만 나이 입력은 맞춤순 결과·태그를 표시하고 삭�
     assert.deepEqual(await page.evaluate(() => [JSON.parse(sessionStorage.getItem('youth-kkultong:conditions')), localStorage.length]), [{ age: 28 }, 0]);
     await page.getByRole('button', { name: '나이 지우기' }).click();
     await expectTitles(page, initial.items);
-    assert.match(await page.locator('.list-summary').textContent(), /인기순/);
+    assert.equal(await page.locator('#policy-sort').inputValue(), 'popular');
     assert.equal(await page.locator('#policy-age').inputValue(), '');
     assert.equal(await page.getByRole('button', { name: '나이 지우기' }).isDisabled(), true);
   });
@@ -523,7 +523,7 @@ test('분야·중분류·신청기간·조회수와 신청 상태 6종을 한국
     assert.equal(await card.locator('.policy-category-badge').textContent(), '주거');
     assert.equal(await card.locator('.policy-subcategory').textContent(), '주거비 지원');
     assert.deepEqual(await card.locator('dd').allTextContents(), ['2026.01.01 ~ 2026.12.31', '조회 1,234회']);
-    assert.equal(await page.locator('.policy-disclaimer').count(), 1);
+    assert.equal(await page.locator('.policy-disclaimer').count(), 0);
   });
 });
 

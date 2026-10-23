@@ -13,7 +13,7 @@ import { useSessionExploration } from './use-session-exploration';
 type ListState =
   | { status: 'loading' }
   | { status: 'error' }
-  | { status: 'success'; response: PolicySearchResponse };
+  | { status: 'success'; response: PolicySearchResponse; refreshing?: boolean };
 
 // 화면에 실제 적용된 정렬을 표시하며, 조건을 지웠을 때 인기순으로 돌아온 것도 반영한다.
 const sortLabels: Record<SortKey, string> = {
@@ -39,9 +39,9 @@ export default function PoliciesPage() {
   const focusAfterSearch = useRef(false);
   useEffect(() => {
     // 페이지·재시도 버튼이 사라진 뒤에도 키보드 초점을 새 결과나 오류 안내로 이어준다.
-    if (!focusAfterSearch.current || state.status === 'loading') return;
+    if (!focusAfterSearch.current || state.status === 'loading' || (state.status === 'success' && state.refreshing)) return;
     const target = state.status === 'success' ? summaryRef.current : errorRef.current;
-    if (target) { target.focus(); focusAfterSearch.current = false; }
+    if (target) { target.focus({ preventScroll: true }); focusAfterSearch.current = false; }
   }, [state]);
   const { state: categories, retry: retryCategories } = useMetaOptions('/api/v1/meta/categories', isCategories);
   const eligibility = useMetaOptions('/api/v1/meta/eligibility-codes', isEligibility);
@@ -54,6 +54,7 @@ export default function PoliciesPage() {
   const category = categories.status === 'success' && categories.data.includes(saved.category ?? '') ? saved.category! : '';
   const includeClosed = saved.includeClosed ?? false;
   const sort = saved.sort;
+  const limit = saved.limit ?? 20;
   const restoringCodes = (Boolean(saved.jobCode || saved.schoolCode) && eligibility.state.status === 'loading')
     || (Boolean(saved.regionCode) && regions.state.status === 'loading')
     || (Boolean(saved.category) && categories.status === 'loading');
@@ -108,8 +109,9 @@ export default function PoliciesPage() {
 
     /** 필터를 바꿀 때마다 첫 페이지를 요청하며 조건에 따른 기본 정렬은 API가 결정한다. */
     async function loadPolicies(): Promise<void> {
-      setState({ status: 'loading' });
-      const request: PolicySearchRequest = { page, limit: 20, includeClosed };
+      // 페이지 이동은 기존 카드와 버튼을 유지해 화면 높이가 줄거나 깜빡이지 않게 한다.
+      setState((previous) => previous.status === 'success' && previous.refreshing ? previous : { status: 'loading' });
+      const request: PolicySearchRequest = { page, limit, includeClosed };
       // 자동 기본 정렬은 서버가 결정하고, 사용자가 고른 정렬만 명시적으로 전송한다.
       if (requestedSort !== undefined) request.sort = requestedSort;
       // '전체'일 때는 category 자체를 보내지 않고, 선택한 실제 분야명만 그대로 보낸다.
@@ -148,7 +150,7 @@ export default function PoliciesPage() {
       clearTimeout(timeout);
       controller.abort();
     };
-  }, [attempt, category, includeClosed, age, jobCode, schoolCode, regionCode, requestedSort, page, ready, restoringCodes, saved.age]);
+  }, [attempt, category, includeClosed, age, jobCode, schoolCode, regionCode, requestedSort, page, limit, ready, restoringCodes, saved.age]);
 
   return (
     <main className="container policies-page policy-list-page" id="main-content" tabIndex={-1}>
@@ -158,7 +160,7 @@ export default function PoliciesPage() {
         나에게 필요한 정책과 지원 정보를 찾아보세요.
       </p>
       <section className="policy-filters" aria-label="정책 필터">
-        <div className="filter-heading"><h2>내 조건으로 찾기</h2><p>원하는 조건만 선택하세요.</p></div>
+        <div className="filter-heading"><h2>내 조건으로 찾기</h2></div>
         <div className="category-filter">
           <label htmlFor="policy-category">분야</label>
           <select
@@ -236,12 +238,22 @@ export default function PoliciesPage() {
       <div className="results-toolbar">
         {state.status === 'success' && age !== null ? (
           <p className="list-summary" role="status" aria-atomic="true" ref={summaryRef} tabIndex={-1}>
-            총 {state.response.pagination.total.toLocaleString('ko-KR')}건 · {sortLabels[state.response.appliedSort]}
-            {state.response.pagination.totalPages > 0 && (
-              <> · {state.response.pagination.page} / {state.response.pagination.totalPages}페이지</>
-            )}
+            <span className="result-total">총 <strong>{state.response.pagination.total.toLocaleString('ko-KR')}</strong>건의 정책이 있습니다</span>
+
           </p>
         ) : <p className="results-label">정책 목록</p>}
+        <div className="result-controls">
+          <div className="condition-select list-limit">
+            <label htmlFor="policy-limit">표시 개수</label>
+            <select id="policy-limit" value={limit} onChange={(event) => {
+              const value = Number(event.target.value);
+              if (value === 10 || value === 20 || value === 50) {
+                setState({ status: 'loading' }); setPage(1); updateCondition('limit', value);
+              }
+            }}>
+              {[10, 20, 50].map((value) => <option key={value} value={value}>{value}개씩</option>)}
+            </select>
+          </div>
         <div className="condition-select list-sort">
           <label htmlFor="policy-sort">정렬</label>
           <select id="policy-sort" value={selectedSort} onChange={(event) => {
@@ -256,10 +268,12 @@ export default function PoliciesPage() {
             ))}
           </select>
         </div>
+        </div>
       </div>
       {age !== null && state.status === 'loading' && (
         <p className="loading-message" role="status">정책 목록을 불러오는 중입니다.</p>
       )}
+      {age !== null && state.status === 'success' && state.refreshing && <p className="sr-only" role="status">다음 정책 페이지를 불러오는 중입니다.</p>}
       {age !== null && state.status === 'error' && (
         <section className="empty-state" role="alert" aria-labelledby="error-title">
           <h2 id="error-title" ref={errorRef} tabIndex={-1}>정책 목록을 불러오지 못했습니다</h2>
@@ -270,13 +284,19 @@ export default function PoliciesPage() {
         </section>
       )}
       {age !== null && state.status === 'success' && (
-        <section aria-label="정책 목록">
-          <p className="policy-disclaimer">최종 신청 자격 및 접수 여부는 공식 신청처에서 확인하세요.</p>
+        <section aria-label="정책 목록" aria-busy={Boolean(state.refreshing)}>
+          <Pagination busy={Boolean(state.refreshing)} page={state.response.pagination.page} totalPages={state.response.pagination.totalPages} onChange={(nextPage) => {
+            if (nextPage >= 1 && nextPage <= state.response.pagination.totalPages) {
+              focusAfterSearch.current = true;
+              setState({ ...state, refreshing: true });
+              setPage(nextPage);
+            }
+          }} />
           {state.response.items.length === 0 ? (
             <section className="empty-state" role="status" aria-labelledby="empty-title">
               <span className="empty-mark" aria-hidden="true" />
               <h2 id="empty-title">표시할 정책이 없습니다</h2>
-              <p>{state.response.pagination.total > 0 ? '아래 페이지 이동으로 다른 페이지를 확인해 주세요.'
+              <p>{state.response.pagination.total > 0 ? '위 페이지 이동으로 다른 페이지를 확인해 주세요.'
                 : category || hasConditions ? '분야나 입력 조건을 줄이거나 마감 포함을 선택해 다시 찾아보세요.'
                   : '현재 조회할 수 있는 정책이 없어요. 나중에 다시 확인해 주세요.'}</p>
             </section>
@@ -289,13 +309,7 @@ export default function PoliciesPage() {
               ))}
             </ul>
           )}
-          <Pagination page={state.response.pagination.page} totalPages={state.response.pagination.totalPages} onChange={(nextPage) => {
-            if (nextPage >= 1 && nextPage <= state.response.pagination.totalPages) {
-              focusAfterSearch.current = true;
-              setState({ status: 'loading' });
-              setPage(nextPage);
-            }
-          }} />
+
         </section>
       )}
     </main>

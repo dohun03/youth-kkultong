@@ -36,12 +36,14 @@ test('키보드 본문 건너뛰기·입력 레이블·필터 입력 초점을 �
     assert.deepEqual(await page.locator('input, select').evaluateAll((fields) => fields.filter((field) => !field.labels?.length).map((field) => field.id)), []);
     await page.locator('#policy-age').focus();
     await page.keyboard.type('28');
-    await page.locator('.list-summary').filter({ hasText: '맞춤순' }).waitFor();
+    await page.locator('.list-summary').waitFor();
+    assert.equal(await page.locator('#policy-sort').inputValue(), 'recommended');
     await expectFocus(page, '#policy-age');
     await page.keyboard.press('Tab');
     await expectFocus(page, '.age-clear-button');
     await page.keyboard.press('Enter');
-    await page.locator('.list-summary').filter({ hasText: '인기순' }).waitFor();
+    await page.locator('.list-summary').waitFor();
+    assert.equal(await page.locator('#policy-sort').inputValue(), 'popular');
   });
 });
 
@@ -61,11 +63,11 @@ test('페이지 이동 실패·재시도·성공 후 초점을 오류 제목과 
     await page.getByRole('button', { name: '다시 시도', exact: true }).focus();
     await page.keyboard.press('Enter');
     await expectFocus(page, '.list-summary');
-    assert.match(await page.locator('.list-summary').textContent(), /2 \/ /);
+    assert.equal(await page.locator('.pagination [aria-current="page"]').textContent(), '2');
     await page.getByRole('button', { name: '이전', exact: true }).focus();
     await page.keyboard.press('Enter');
     await expectFocus(page, '.list-summary');
-    assert.match(await page.locator('.list-summary').textContent(), /1 \/ /);
+    assert.equal(await page.locator('.pagination [aria-current="page"]').textContent(), '1');
   });
 });
 

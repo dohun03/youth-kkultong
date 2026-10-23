@@ -7,7 +7,7 @@ import type { SortKey } from '@youth-kkultong/shared';
 const storageKey = 'youth-kkultong:conditions';
 
 /** 개인 조건과 목록 필터·수동 정렬을 보관하며 페이지와 오류 입력 문구는 제외한다. */
-type SessionExploration = { age?: number; jobCode?: string; schoolCode?: string; regionCode?: string; category?: string; includeClosed?: boolean; sort?: SortKey };
+type SessionExploration = { age?: number; jobCode?: string; schoolCode?: string; regionCode?: string; category?: string; includeClosed?: boolean; sort?: SortKey; limit?: number };
 
 /** 저장소 내용을 신뢰하지 않고 필요한 필드의 자료형·범위부터 확인한다. */
 function readConditions(value: unknown): SessionExploration {
@@ -23,6 +23,7 @@ function readConditions(value: unknown): SessionExploration {
   // 문자열 'false'를 참으로 해석하지 않고 실제 boolean만 허용한다. 기본값은 저장하지 않는다.
   if (input.includeClosed === true) conditions.includeClosed = true;
   if (input.sort === 'popular' || input.sort === 'recommended' || input.sort === 'deadline' || input.sort === 'newest') conditions.sort = input.sort;
+  if (input.limit === 10 || input.limit === 20 || input.limit === 50) conditions.limit = input.limit;
   return conditions;
 }
 

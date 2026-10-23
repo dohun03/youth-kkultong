@@ -51,7 +51,7 @@ test('공식 취업·학력 선택·복수 조건·해제가 실제 API 결과�
     await expectResult(page, await search({ conditions: { schoolCode } }));
     await page.selectOption('#schoolCode', '');
     await expectResult(page, await search());
-    assert.match(await page.locator('.list-summary').textContent(), /인기순/);
+    assert.equal(await page.locator('#policy-sort').inputValue(), 'popular');
     assert.equal(new URL(page.url()).search, '');
     assert.deepEqual(await page.evaluate(() => [sessionStorage.length, localStorage.length]), [0, 0]);
   });
@@ -232,7 +232,7 @@ test('2페이지 오류 후 재시도는 요청한 페이지를 유지한다', a
     await page.locator('.policy-card').first().waitFor();
     await page.getByRole('button', { name: '다음', exact: true }).click();
     await page.getByRole('button', { name: '다시 시도', exact: true }).click();
-    await page.locator('.list-summary').filter({ hasText: '2 /' }).waitFor();
+    await page.locator('.pagination [aria-current="page"]').filter({ hasText: '2' }).waitFor();
     assert.deepEqual(requested, [1, 2, 2]);
   });
 });
@@ -463,7 +463,7 @@ test('목록은 짧은 필터와 소개 중심 카드를 표시하며 작은 화
     assert.equal(selectStyle.appearance, 'none');
     assert.ok(selectStyle.position.includes('14px'));
     const first = page.locator('.policy-card').first();
-    assert.equal(await page.locator('.policy-disclaimer').count(), 1);
+    assert.equal(await page.locator('.policy-disclaimer').count(), 0);
     assert.equal(await first.locator('.policy-benefit').count(), 0);
     assert.ok((await first.locator('.policy-description').textContent()).length > 0);
     // 소개는 실제 상세 설명의 앞부분이며 지원 금액의 나열로 대체하지 않는다.
@@ -697,4 +697,75 @@ test('복원한 분야를 메타 API로 확인하고 조회 실패 시 보관한
       assert.deepEqual(await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)), conditionsStorageKey), valid ? { category } : null);
     });
   }
+});
+
+test('표시 개수 10·20·50은 실제 응답·페이지 이동·세션 복원에 반영되고 총 건수와 상단 페이지 조작을 구분한다', async () => {
+  await withPage(async (page) => {
+    await page.goto(`${base}/policies`);
+    await expectResult(page, await search());
+    for (const limit of [10, 50, 20]) {
+      await page.selectOption('#policy-limit', String(limit));
+      const expected = await search({ limit });
+      await expectResult(page, expected);
+      assert.equal(await page.locator('.policy-card').count(), expected.items.length);
+      assert.equal(await page.locator('.result-total strong').textContent(), expected.pagination.total.toLocaleString('ko-KR'));
+      assert.doesNotMatch(await page.locator('.list-summary').textContent(), /맞춤순|인기순/);
+      assert.equal(await page.locator('.pagination').evaluate((nav) => Boolean(nav.compareDocumentPosition(document.querySelector('.policy-list')) & Node.DOCUMENT_POSITION_FOLLOWING)), true);
+      await page.getByRole('button', { name: '다음', exact: true }).click();
+      await expectResult(page, await search({ limit, page: 2 }));
+      await page.reload();
+      await expectResult(page, expected);
+      assert.equal(await page.locator('#policy-limit').inputValue(), String(limit));
+    }
+    await page.locator('#policy-age').fill('28');
+    await page.selectOption('#policy-sort', 'newest');
+    await page.selectOption('#policy-limit', '50');
+    await expectResult(page, await search({ limit: 50, sort: 'newest', conditions: { age: 28 } }));
+    await page.getByRole('button', { name: '다음', exact: true }).click();
+    await expectResult(page, await search({ page: 2, limit: 50, sort: 'newest', conditions: { age: 28 } }));
+    await page.selectOption('#policy-limit', '10');
+    await expectResult(page, await search({ limit: 10, sort: 'newest', conditions: { age: 28 } }));
+  });
+});
+
+test('손상된 표시 개수 저장값은 기본 20개로 복원한다', async () => {
+  for (const limit of [0, 100, '50', null]) {
+    await withPage(async (page) => {
+      await page.addInitScript(({ key, limit }) => sessionStorage.setItem(key, JSON.stringify({ limit })), { key: conditionsStorageKey, limit });
+      await page.goto(`${base}/policies`);
+      await expectResult(page, await search());
+      assert.equal(await page.locator('#policy-limit').inputValue(), '20');
+    });
+  }
+});
+
+test('느린 페이지 이동 중 카드·버튼·높이를 유지하고 완료 후 교체하며 중복 클릭을 막는다', async () => {
+  await withPage(async (page) => {
+    const first = await search();
+    const second = await search({ page: 2 });
+    let release;
+    const pending = new Promise((resolve) => { release = resolve; });
+    await page.route('**/policies/search', async (route) => {
+      const body = route.request().postDataJSON();
+      if (body.page === 2) await pending;
+      await route.fulfill({ json: body.page === 2 ? second : first });
+    });
+    await page.goto(`${base}/policies`);
+    await expectResult(page, first);
+    await page.locator('.policy-list').evaluate((list) => { window.previousList = list; });
+    const initialHeight = await page.locator('.policy-list').evaluate((list) => list.clientHeight);
+    await page.getByRole('button', { name: '다음', exact: true }).click();
+    await page.locator('[aria-label="정책 목록"][aria-busy="true"]').waitFor();
+    assert.equal(await page.locator('.policy-list').evaluate((list) => list === window.previousList), true);
+    assert.equal(await page.locator('.policy-list').evaluate((list) => list.clientHeight), initialHeight);
+    assert.deepEqual(await page.locator('.policy-list h2').allTextContents(), first.items.map((item) => item.title));
+    assert.equal(await page.getByRole('button', { name: '다음', exact: true }).isDisabled(), true);
+    assert.equal(await page.locator('.loading-message').count(), 0);
+    release();
+    await expectResult(page, second);
+    assert.equal(await page.locator('.pagination [aria-current="page"]').textContent(), '2');
+    assert.equal(await page.locator('.result-page,.policy-disclaimer,.filter-heading p').count(), 0);
+    const sizes = await page.locator('.result-total').evaluate((total) => [getComputedStyle(total).fontSize, getComputedStyle(total.querySelector('strong')).fontSize]);
+    assert.equal(sizes[0], sizes[1]);
+  });
 });
