@@ -11,6 +11,7 @@ export interface PolicySearchCodes {
 /** 검색 요청의 자료형·범위·허용 코드를 검사하고 기본값을 채우는 Zod 스키마를 생성한다. */
 export function createPolicySearchSchema(codes: PolicySearchCodes) {
   return z.object({
+    keyword: z.string().trim().max(100).optional(),
     page: z.number().int().min(1).default(1),
     limit: z.number().int().min(1).max(50).default(20),
     category: z.string().optional(),

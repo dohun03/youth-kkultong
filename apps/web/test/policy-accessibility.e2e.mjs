@@ -85,7 +85,7 @@ test('느린 목록은 상태 안내를 제공하고 빈 결과에는 조건 조
     release();
     await page.getByRole('heading', { name: '표시할 정책이 없습니다' }).waitFor();
     await page.locator('#policy-age').fill('28');
-    await page.getByText('분야나 입력 조건을 줄이거나 마감 포함을 선택해 다시 찾아보세요.').waitFor();
+    await page.getByText('검색어·분야·입력 조건을 바꾸거나 마감 포함을 선택해 다시 찾아보세요.').waitFor();
     assert.equal(await page.getByRole('navigation', { name: '정책 목록 페이지' }).count(), 0);
   });
 });

@@ -2,6 +2,7 @@ import type { ApplicationStatus, PolicySearchRequest } from '@youth-kkultong/sha
 import { evaluatePolicy } from '../matching/evaluate-policy';
 import type { PolicyMatchResult } from '../matching/evaluate-policy';
 import type { ActiveRegionMap } from '../matching/region-match';
+import { getTitleSearchTerms, matchesPolicyTitle } from './title-search';
 import { calculateApplicationStatus } from './application-status';
 import type { PolicyCandidate } from './repositories/policy.repository';
 
@@ -18,12 +19,15 @@ export function buildSearchCandidates(
   activeRegions: ActiveRegionMap,
 ): MatchedPolicyCandidate[] {
   const result: MatchedPolicyCandidate[] = [];
+  // 검색어는 요청당 한 번만 정리하고, 전체 후보의 제목을 서버 JS에서 비교한다.
+  const terms = getTitleSearchTerms(request.keyword);
 
   for (const policy of candidates) {
     // 요청마다 한 번 정한 한국 오늘 날짜를 모든 정책에 동일하게 적용한다.
     const applicationStatus = calculateApplicationStatus(policy, today);
 
     if (request.category !== undefined && request.category !== '' && policy.category !== request.category) continue;
+    if (!matchesPolicyTitle(policy.title, terms)) continue;
     if (!request.includeClosed && applicationStatus === 'CLOSED') continue;
 
     // 분야·마감 필터를 통과한 정책만 사용자 조건과 비교한다. 확인 필요는 제외하지 않는다.

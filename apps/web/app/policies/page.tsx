@@ -34,6 +34,7 @@ export default function PoliciesPage() {
   const [state, setState] = useState<ListState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const [page, setPage] = useState(1);
+  const [keywordInput, setKeywordInput] = useState('');
   const summaryRef = useRef<HTMLParagraphElement>(null);
   const errorRef = useRef<HTMLHeadingElement>(null);
   const focusAfterSearch = useRef(false);
@@ -55,6 +56,7 @@ export default function PoliciesPage() {
   const includeClosed = saved.includeClosed ?? false;
   const sort = saved.sort;
   const limit = saved.limit ?? 20;
+  const keyword = saved.keyword ?? '';
   const restoringCodes = (Boolean(saved.jobCode || saved.schoolCode) && eligibility.state.status === 'loading')
     || (Boolean(saved.regionCode) && regions.state.status === 'loading')
     || (Boolean(saved.category) && categories.status === 'loading');
@@ -68,7 +70,10 @@ export default function PoliciesPage() {
     });
   }
   useEffect(() => {
-    if (ready) setAgeInput(saved.age === undefined ? '' : String(saved.age));
+    if (ready) {
+      setAgeInput(saved.age === undefined ? '' : String(saved.age));
+      setKeywordInput(saved.keyword ?? '');
+    }
     // 최초 저장소 복원이 끝날 때만 입력칸을 채우고 이후의 오류 입력은 사용자가 고치게 둔다.
   }, [ready]);
   useEffect(() => {
@@ -116,6 +121,7 @@ export default function PoliciesPage() {
       if (requestedSort !== undefined) request.sort = requestedSort;
       // '전체'일 때는 category 자체를 보내지 않고, 선택한 실제 분야명만 그대로 보낸다.
       if (category) request.category = category;
+      if (keyword) request.keyword = keyword;
       // 선택 입력을 지우면 conditions도 생략한다. 개인 조건은 URL에 넣지 않고 POST 본문으로만 전송한다.
       const conditions: NonNullable<PolicySearchRequest['conditions']> = {};
       if (typeof age === 'number') conditions.age = age;
@@ -150,7 +156,7 @@ export default function PoliciesPage() {
       clearTimeout(timeout);
       controller.abort();
     };
-  }, [attempt, category, includeClosed, age, jobCode, schoolCode, regionCode, requestedSort, page, limit, ready, restoringCodes, saved.age]);
+  }, [attempt, keyword, category, includeClosed, age, jobCode, schoolCode, regionCode, requestedSort, page, limit, ready, restoringCodes, saved.age]);
 
   return (
     <main className="container policies-page policy-list-page" id="main-content" tabIndex={-1}>
@@ -159,6 +165,27 @@ export default function PoliciesPage() {
       <p className="page-description">
         나에게 필요한 정책과 지원 정보를 찾아보세요.
       </p>
+      <form className="policy-search" role="search" aria-label="정책 제목 검색" onSubmit={(event) => {
+        event.preventDefault();
+        // 입력 초안은 검색 전까지 요청·세션에 반영하지 않는다. 적용할 때만 첫 페이지로 돌아간다.
+        setState({ status: 'loading' }); setPage(1);
+        updateCondition('keyword', keywordInput.trim()); setAttempt((value) => value + 1);
+      }}>
+        <label className="sr-only" htmlFor="policy-keyword">정책명 검색</label>
+        <div className="search-input-wrap">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></svg>
+          <input id="policy-keyword" type="search" placeholder="정책명을 입력하세요" maxLength={100}
+            autoComplete="off" value={keywordInput} onChange={(event) => setKeywordInput(event.target.value)}
+            onKeyDown={(event) => {
+              // 한글 조합을 확정하는 Enter를 검색 실행으로 오인하지 않는다.
+              if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.keyCode === 229)) event.preventDefault();
+            }} />
+        </div>
+        <button className="search-submit" type="submit">검색</button>
+        {(keywordInput || keyword) && <button className="search-clear" type="button" onClick={() => {
+          setKeywordInput(''); updateCondition('keyword', ''); setPage(1); setState({ status: 'loading' }); setAttempt((value) => value + 1);
+        }}>검색 지우기</button>}
+      </form>
       <section className="policy-filters" aria-label="정책 필터">
         <div className="filter-heading"><h2>내 조건으로 찾기</h2></div>
         <div className="category-filter">
@@ -297,7 +324,7 @@ export default function PoliciesPage() {
               <span className="empty-mark" aria-hidden="true" />
               <h2 id="empty-title">표시할 정책이 없습니다</h2>
               <p>{state.response.pagination.total > 0 ? '위 페이지 이동으로 다른 페이지를 확인해 주세요.'
-                : category || hasConditions ? '분야나 입력 조건을 줄이거나 마감 포함을 선택해 다시 찾아보세요.'
+                : keyword || category || hasConditions ? '검색어·분야·입력 조건을 바꾸거나 마감 포함을 선택해 다시 찾아보세요.'
                   : '현재 조회할 수 있는 정책이 없어요. 나중에 다시 확인해 주세요.'}</p>
             </section>
           ) : (

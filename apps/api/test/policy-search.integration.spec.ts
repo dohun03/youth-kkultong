@@ -188,7 +188,7 @@ describe('정책 검색 API 통합', () => {
     const fileLog = jest.spyOn(app.get(IngestionLogService), 'write');
     const queries = jest.spyOn(dataSource.logger, 'logQuery');
     const privateValue = 'step41-private-condition';
-    await request(app.getHttpServer()).post('/api/v1/policies/search').send({ category: privateValue,
+    await request(app.getHttpServer()).post('/api/v1/policies/search').send({ category: privateValue, keyword: privateValue,
       conditions: { age: 28, regionCode: '41111' } }).expect(200);
     await request(app.getHttpServer()).post('/api/v1/policies/search').send({ conditions: { jobCode: privateValue } }).expect(400);
     // 검색 요청 동안 실제 SQL은 조회뿐이며 사용자 조건은 쿼리나 로그에 남지 않는다.
@@ -209,10 +209,25 @@ describe('정책 검색 API 통합', () => {
     expect(JSON.stringify(errorLog.mock.calls)).not.toContain('step41-private-error');
   });
 
+  it('제목 검색을 전체 후보에 적용한 뒤 정렬·페이지 분리하고 검색어만으로 맞춤순을 켜지 않는다', async () => {
+    await seed({ title: '청년 IT 주거 1', viewCount: 30 });
+    await seed({ title: '청년 IT 주거 2', viewCount: 20 });
+    await seed({ title: '청년 취업', description: '청년 IT 주거', viewCount: 100 });
+    const response = await request(app.getHttpServer()).post('/api/v1/policies/search')
+      .send({ keyword: '  it 주거  ', limit: 1, page: 2, sort: 'recommended' }).expect(200);
+    expect(response.body.items.map((item: { title: string }) => item.title)).toEqual(['청년 IT 주거 2']);
+    expect(response.body.pagination).toEqual({ total: 2, totalPages: 2, page: 2, limit: 1 });
+    expect(response.body.appliedSort).toBe('popular');
+    await request(app.getHttpServer()).post('/api/v1/policies/search').send({ keyword: '가'.repeat(101) }).expect(400);
+    await request(app.getHttpServer()).post('/api/v1/policies/search').send({ keyword: null }).expect(400);
+  });
+
   it('실제 DB 연결 종료 시 빈 정상 결과 대신 503을 반환한다', async () => {
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
     await dataSource.destroy();
     await request(app.getHttpServer()).post('/api/v1/policies/search').send({}).expect(503)
       .expect({ code: 'SERVICE_UNAVAILABLE', message: 'DB에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.' });
   });
+
+
 });

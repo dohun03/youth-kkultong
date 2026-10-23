@@ -30,6 +30,7 @@ export interface UserConditions {
 
 /** 사용자 조건이 있으면 맞춤순, 없으면 인기순이다. 카테고리만 선택하면 조건 없음이다. */
 export interface PolicySearchRequest {
+  keyword?: string; // 제목 검색, 앞뒤 공백 제거 후 최대 100자
   page?: number; // 기본 1
   limit?: number; // 기본 20, 최대 50
   category?: string; // 비우면 전체

@@ -426,3 +426,20 @@ summary:focus-visible,
 
 .result-total { white-space: normal; word-break: keep-all; }
 .result-total strong { color: var(--primary-strong); }
+
+/* 제목 검색은 하나의 입력창과 주요 검색 버튼으로 구성한다. */
+.policy-search { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 24px; }
+.search-input-wrap { display: flex; flex: 1 1 240px; align-items: center; gap: 12px; min-width: 0; padding: 0 16px; border: 1px solid #cbd5e1; border-radius: 10px; background: var(--surface); }
+.search-input-wrap:focus-within { border-color: var(--primary); box-shadow: 0 0 0 2px var(--tint); }
+.search-input-wrap svg { flex: 0 0 20px; width: 20px; height: 20px; color: var(--muted); }
+.search-input-wrap input { width: 100%; min-width: 0; height: 50px; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 16px; }
+.search-input-wrap input::placeholder { color: #64748b; }
+.search-submit, .search-clear { min-height: 50px; padding: 10px 24px; border-radius: 8px; font: inherit; font-weight: 650; cursor: pointer; }
+.search-submit { border: 1px solid var(--primary); background: var(--primary); color: #fff; }
+.search-submit:hover { background: var(--primary-strong); }
+.search-clear { border: 1px solid var(--border); background: var(--surface); color: var(--muted); }
+@media (max-width: 540px) {
+  .search-input-wrap { flex-basis: calc(100% - 90px); padding-inline: 12px; gap: 8px; }
+  .search-submit { padding-inline: 18px; }
+  .search-clear { min-height: 44px; padding: 6px 12px; font-size: 14px; }
+}

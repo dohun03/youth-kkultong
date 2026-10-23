@@ -769,3 +769,63 @@ test('느린 페이지 이동 중 카드·버튼·높이를 유지하고 완료 
     assert.equal(sizes[0], sizes[1]);
   });
 });
+
+test('제목 검색은 제출 시에만 적용하고 조건·페이지·세션과 함께 동작한다', async () => {
+  await withPage(async (page) => {
+    const requests = [];
+    page.on('request', (request) => { if (request.url().endsWith('/policies/search')) requests.push(request.postDataJSON()); });
+    await page.goto(`${base}/policies`);
+    await expectResult(page, await search());
+    const previous = requests.length;
+    await page.getByLabel('정책명 검색', { exact: true }).fill('  청년  ');
+    assert.equal(requests.length, previous);
+    await page.getByRole('button', { name: '검색', exact: true }).click();
+    const expected = await search({ keyword: '청년' });
+    await expectResult(page, expected);
+    assert.equal(requests.at(-1).keyword, '청년');
+    assert.equal(requests.at(-1).page, 1);
+    assert.equal(await page.locator('#policy-sort').inputValue(), 'popular');
+    assert.equal(await page.locator('#policy-sort option[value="recommended"]').isDisabled(), true);
+    await page.getByRole('button', { name: '다음', exact: true }).click();
+    await expectResult(page, await search({ keyword: '청년', page: 2 }));
+    await page.reload();
+    await expectResult(page, expected);
+    assert.equal(await page.getByLabel('정책명 검색', { exact: true }).inputValue(), '청년');
+    await page.locator('#policy-age').fill('28');
+    await page.selectOption('#policy-limit', '10');
+    await page.selectOption('#policy-sort', 'newest');
+    await expectResult(page, await search({ keyword: '청년', conditions: { age: 28 }, limit: 10, sort: 'newest' }));
+    await page.getByLabel('정책명 검색', { exact: true }).fill('찾을수없는정책제목123');
+    await page.getByLabel('정책명 검색', { exact: true }).press('Enter');
+    await page.getByRole('heading', { name: '표시할 정책이 없습니다' }).waitFor();
+    await page.getByRole('button', { name: '검색 지우기' }).click();
+    await expectResult(page, await search({ conditions: { age: 28 }, limit: 10, sort: 'newest' }));
+    assert.equal(requests.at(-1).keyword, undefined);
+    assert.equal(new URL(page.url()).search, '');
+    assert.equal(await page.evaluate(() => localStorage.length), 0);
+  });
+});
+
+test('한글 조합 Enter는 검색하지 않고 오류 재시도에도 적용 검색어를 유지한다', async () => {
+  await withPage(async (page) => {
+    let fail = false;
+    const requests = [];
+    await page.route('**/policies/search', (route) => {
+      const body = route.request().postDataJSON(); requests.push(body);
+      if (body.keyword && !fail) { fail = true; return route.fulfill({ status: 503, json: {} }); }
+      return route.continue();
+    });
+    await page.goto(`${base}/policies`);
+    await expectResult(page, await search());
+    const input = page.getByLabel('정책명 검색', { exact: true });
+    await input.fill('주거');
+    const count = requests.length;
+    await input.dispatchEvent('keydown', { key: 'Enter', code: 'Enter', isComposing: true, keyCode: 229 });
+    assert.equal(requests.length, count);
+    await input.press('Enter');
+    await page.getByRole('button', { name: '다시 시도', exact: true }).click();
+    await expectResult(page, await search({ keyword: '주거' }));
+    assert.equal(requests.at(-1).keyword, '주거');
+    assert.equal(await input.getAttribute('maxlength'), '100');
+  });
+});

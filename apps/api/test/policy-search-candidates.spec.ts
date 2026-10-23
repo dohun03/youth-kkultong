@@ -152,4 +152,15 @@ describe('정책 검색 후보·필터 조합', () => {
     expect(buildSearchCandidates(rows, request, today, regions)[0].tags).toEqual(['AGE_MATCH']);
     expect(JSON.stringify({ rows, request, regions: [...regions] })).toBe(before);
   });
+  it('제목만 검색하고 분야·자격 조건과 조합하며 원본 후보를 바꾸지 않는다', () => {
+    const rows = [policy('yes', { title: '청년 주거 지원' }),
+      policy('description', { title: '취업', descriptionPreview: '청년 주거' }),
+      policy('category', { title: '청년 주거', category: '일자리' }),
+      policy('age', { title: '청년 주거', ageMin: 35, ageMax: 39 })];
+    const result = buildSearchCandidates(rows, { keyword: '주거 청년', category: '주거', conditions: { age: 28 } }, today, regions);
+    expect(result.map((row) => row.id)).toEqual(['yes']);
+    expect(result[0].tags).toContain('AGE_MATCH');
+    expect(rows).toHaveLength(4);
+  });
+
 });

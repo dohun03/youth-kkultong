@@ -2041,6 +2041,24 @@ git diff --check
 - 앞선 색상 변경·상단 페이지네이션·표시 개수/세션 유지·결과 요약·깜빡임 개선과 이번 마무리를 하나의 목록 UI 개선 커밋으로 묶도록 사용자가 요청했다. 검색 기능과 Step 54는 진행하지 않는다.
 - 앞선 전체 브라우저 61개 통과 이후, 이번 문구 수정에 대해 타입 검사·Docker 웹 빌드·diff 검사와 실제 브라우저의 문구/본문색/숫자색/동일 글자 크기를 확인했다. PC 1280px·모바일 320px의 가로 넘침 없음과 페이지 전환 DOM·높이 유지 테스트 1개 재실행도 통과했다. 웹을 최종 이미지로 재생성해 `http://localhost:3000/policies`에서 확인할 수 있도록 유지했다.
 
-## 68. 다음 작업을 위한 상태
+## 68. 제목 기준 JS 검색 (2026-10-23 사용자 요청)
+
+- 사용자가 제목만 검색하는 서버 JS 방식을 승인해 추가 기능으로 진행했다. Repository SQL·스키마·목록 후보 조회는 유지하고 `title-search.ts`의 순수 함수에서 검색어를 공백 단위로 나눠 영문 대소문자를 통일한다. 모든 단어가 제목에 포함된 후보만 통과하며 순서는 무관하다. 기호는 일반 문자로 비교하고 설명·지원 내용은 검색하지 않는다.
+- 기존 후보 처리에서 분야·제목·마감 필터를 적용한 뒤 자격 매칭·점수·전체 정렬·페이지 분리를 수행한다. 공용 검색 요청에 선택적 `keyword`를 추가하고 Zod에서 문자열·앞뒤 공백 제거·최대 100자를 검증한다. 빈 값은 필터 해제다. 검색어만으로 맞춤순을 활성화하거나 점수를 바꾸지 않는다.
+- 목록 필터 위에 검색 아이콘·정책명 입력·파란 검색 버튼을 배치했다. 대상 선택창은 없다. 입력 중에는 요청·저장하지 않고 버튼/Enter로 제출할 때만 검색어를 적용해 1페이지로 이동한다. 한글 조합 확정 Enter는 제출하지 않는다. 검색 지우기/빈 검색어 제출로 해제하며 나이·분야·마감·수동 정렬·표시 개수는 유지한다.
+- 적용 검색어만 기존 탭 세션에 저장해 새로고침·상세 복귀 시 복원한다. 검색어는 POST 본문에만 전송하며 URL·localStorage·SQL·DB·파일/기본 로그에 기록하지 않는다. 기존 페이지 이동 중 목록 유지·요청 취소·검색 실패 재시도는 유지한다. 초성·오타·동의어 검색은 구현하지 않았다.
+- PRD·ARCHITECTURE·SPEC·PLAN을 승인된 기능과 동기화했다. DB·Migration·패키지는 변경하지 않았고 Step 54는 진행하지 않았다. 커밋하지 않았다.
+
+### 검증
+
+- `NEXT_TELEMETRY_DISABLED=1 npm run typecheck`와 API·웹 Docker 빌드, `git diff --check` 통과.
+- `npm test --workspace apps/api -- --runTestsByPath test/title-search.spec.ts test/policy-search-candidates.spec.ts test/policy-search-response.spec.ts test/policy-search-validation.spec.ts`: **4개 스위트 140개 통과**. 문자열 비교·빈 값·기호·영문 대소문자·100자 경계/자료형·제목 전용 필터와 기존 조건 조합을 검증했다.
+- `npm test --workspace apps/api -- --runTestsByPath test/policy-search.integration.spec.ts`: 실제 DB 전용 임시 스키마에서 **33개 통과**. 호스트의 `.env` 비밀값을 메모리에서 조합한 로컬 DATABASE_URL 환경변수로 실행하고 접속 정보는 출력하지 않았다. 제목 필터 후 전체 정렬·페이지 분리·keyword만 있는 맞춤순의 인기순 전환·400·검색어의 SQL/DB/로그 미저장을 검증했다. 최초에는 기존 DB 연결 종료 테스트 뒤에 추가한 테스트가 실행돼 실패했고, 연결 종료 테스트를 마지막으로 유지하도록 순서를 바로잡아 통과했다.
+- 기존 `/tmp/youth-colors-fonts.conf`·`/tmp/youth-colors-libs`·Playwright 환경에서 `node --test apps/web/test/*.e2e.mjs`: **63개 모두 통과**. 기존 61개와 신규 검색 2개로 제출 전 미전송·Enter/버튼·한글 조합·검색어 해제·조건/정렬/limit 조합·검색 결과 페이지 이동·세션 복원·0건·오류 재시도·URL/localStorage 미저장을 확인했다. 기존 320px/640px 접근성 검증도 통과했고 PC 1440px·모바일 390px 검색 화면을 캡처해 직접 확인했다. 모바일 placeholder가 잘리지 않도록 최종 문구는 '정책명을 입력하세요'로 줄였고 최종 웹에서 신규 검색 시나리오 2개를 재실행해 통과했다.
+- DB는 기존 컨테이너·볼륨을 유지하고 API·웹만 새 이미지로 갱신했다. 검증 후 기존 정책 3,390건과 테스트 스키마 0개를 확인했고 세 컨테이너 모두 healthy다. 외부 수집·운영 스키마 Migration·시드는 실행하지 않았다. 최종 목록은 `http://localhost:3000/policies`에서 확인할 수 있다.
+
+핵심 코드 읽는 순서: `title-search.ts` → `policy-search-candidates.ts` → 공용 `policy-search.schema.ts` → 웹 `policies/page.tsx`의 검색 폼/요청 → `use-session-exploration.ts`의 검색어 복원.
+
+## 69. 다음 작업을 위한 상태
 
 다음 단계 대상은 **Step 54: 공개 API 보안·요청 보호 점검**이다. Step 54~57은 미착수다. Step 53의 미해결 문제는 없으며 다음 단계는 별도 요청을 기다린다.
