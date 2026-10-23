@@ -7,6 +7,15 @@ const integerString = z.string().regex(/^\d+$/, '0 이상의 정수 문자열이
 const positiveInteger = integerString.pipe(z.number().int().min(1).max(Number.MAX_SAFE_INTEGER));
 
 const environmentSchema = z.object({
+  // 브라우저에 허용할 출처만 지정한다. 경로·와일드카드·인증정보는 받지 않는다.
+  API_CORS_ORIGINS: z.string().default('http://localhost:3000,http://127.0.0.1:3000')
+    .transform((value) => value.split(',').map((origin) => origin.trim()))
+    .pipe(z.array(z.string().refine((origin) => {
+      try {
+        const url = new URL(origin);
+        return ['http:', 'https:'].includes(url.protocol) && url.origin === origin;
+      } catch { return false; }
+    }, '경로와 인증정보 없는 HTTP(S) 출처가 필요합니다.')).min(1)),
   DATABASE_URL: z.string().trim().refine((value) => {
     try {
       const url = new URL(value);

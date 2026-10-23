@@ -2082,6 +2082,38 @@ git diff --check
 
 읽는 순서: `packages/shared/src/policy-categories.ts` → `policy.repository.ts`의 선택지 조립 → `policy-search-candidates.ts`의 포함 판정 → 카드/상세/세션의 공용 함수 사용.
 
-## 71. 다음 작업을 위한 상태
+## 71. Step 54 공개 API 보안·요청 보호 점검 (2026-10-23)
 
-다음 단계 대상은 **Step 54: 공개 API 보안·요청 보호 점검**이다. Step 54~57은 미착수다. Step 53의 미해결 문제는 없으며 다음 단계는 별도 요청을 기다린다.
+작업 규칙 → PLAN Step 54 → SPEC 4장·T-24 → 선행 완료 기록 → 공통 설정·컨트롤러·검증·로그·응답 조립·웹 프록시·Compose를 대조했다. Step 53과 추가 승인 작업은 완료됐고, 기존 Zod 입력 검증과 공통 오류 원문 숨김을 유지하면서 빠져 있던 요청 보호만 보완했다. Step 55는 진행하지 않고 커밋하지 않았다.
+
+- `main.ts`에서 NestJS 12.1의 내장 `useSecurityHeaders`로 정상·오류 응답을 보호한다. 별도 Helmet 등 패키지는 추가하지 않았다. HTTP 로컬 실행에 맞춰 HSTS만 끄고 나머지 기본 헤더를 적용한다. API 요청 결과에는 `Cache-Control: no-store`를 적용한다.
+- `API_CORS_ORIGINS`의 정확한 출처만 CORS로 허용한다. 환경변수 형식·기본값은 SPEC 4.3·`.env.example`에 정의하고 Compose에 전달했다. GET·POST와 Content-Type만 허용하며 인증정보 공유는 끈다. CORS를 호출 제한 앞에 등록해 허용 출처의 브라우저가 429 응답도 읽을 수 있다. 허용하지 않은 Origin에는 허용 헤더를 보내지 않으며 Origin 없는 서버 요청은 유지한다.
+- `request-protection.ts`에서 접속 주소별 60초/120회 제한·429/Retry-After·최대 10,000개 주소·요청 시 만료 정리를 구현했다. 잘못된 요청과 없는 경로도 세고 생존 확인과 CORS 사전 요청은 제외한다. 주소는 단기 메모리에만 보관한다. X-Forwarded-For·X-Real-IP를 바꿔도 제한을 우회하지 못한다.
+- 현재 Next.js 프록시 경유 사용자는 같은 주소의 한도를 공유한다. API 재시작 시 초기화되고 여러 인스턴스 사이에는 집계를 공유하지 않는다. 사용자별 프록시 제한과 다중 인스턴스 집계는 추후 배포 구성이 정해질 때 검토할 사항이다. 이번 Step에서 새 서비스·인프라나 프록시 신뢰 설정은 도입하지 않았다.
+- 검색 POST의 JSON 형식 검사와 16KB 한도를 적용하고 압축 본문은 받지 않는다. 400·413·415·429는 고정된 공통 오류 형식이며, 파서 오류의 본문·예외 원문을 노출하지 않는다. 기존 검색 조건·현행 지역/자격 코드·UUID 검증과 DB/파일/기본 로그 미저장을 다시 확인했다. 정상 응답도 raw_json·해시·서버 인증키가 아닌 기존 공용 필드만 조립한다.
+- SPEC 4.3에 구현된 보안 기준을 기록하고 ARCHITECTURE에는 참조를 추가했다. PLAN Step 54를 완료 표시했다. API 경로·정상 응답·DB 스키마·Migration·패키지·웹 소스는 변경하지 않았다. API 보호 오류와 환경변수 설정만 추가했다. SPEC_SUMMARY는 없다.
+
+### 검증
+
+```bash
+npm run typecheck
+npm test --workspace apps/api -- --runTestsByPath test/request-protection.spec.ts test/request-validation.spec.ts test/environment.spec.ts test/load-environment.spec.ts test/policy-search.integration.spec.ts test/policy-detail.integration.spec.ts test/meta-options.integration.spec.ts test/meta-regions.integration.spec.ts test/health.spec.ts
+docker compose -f compose.yaml -f compose.local.yaml build api
+docker compose -f compose.yaml -f compose.local.yaml up -d --no-deps --force-recreate --wait --wait-timeout 60 api
+FONTCONFIG_FILE=/tmp/youth-colors-fonts.conf LD_LIBRARY_PATH=/tmp/youth-colors-libs/root/usr/lib/x86_64-linux-gnu PLAYWRIGHT_MODULE=/home/leenohoon/youth-kkultong-before/node_modules/.pnpm/playwright@1.64.0/node_modules/playwright/index.mjs node --test --test-name-pattern='실제 목록 카드에서 상세로 이동해 원문과 자격·기간·공식 링크를 표시한다' apps/web/test/policy-exploration.e2e.mjs
+git diff --check
+```
+
+- 전체 타입 검사, API 프로덕션 Docker 빌드, 관련 API **9개 스위트 163개**, 기존 웹의 실제 목록→상세→목록 복귀 브라우저 **1개**가 모두 통과했다. 전체 브라우저/전체 API 스위트나 Step 55의 종합 사용자 흐름 시험은 실행하지 않았다.
+- HTTP 테스트에서 정상·400·404·500·429의 보안 헤더, CORS 허용/미허용/사전 요청, 인증정보 미허용, 본문 형식/구문/크기/압축 거부, 전달 헤더 위조에도 429 유지, 생존 확인 유지, 60초 경계와 주소 상한, 오류 응답/로그의 민감정보 미노출을 확인했다. 기존 실제 DB 검색·상세·메타 회귀도 통과했다.
+- 호스트 테스트의 DB URL은 `/tmp/step54-db-tests.cjs`에서 `.env` 비밀값을 메모리에만 읽어 구성한 뒤 자식 프로세스 환경변수로 전달했다. 임시 스키마에서만 테스트 데이터를 생성·정리했으며 비밀값을 출력하지 않았다. 최초 실행은 샌드박스의 HTTP listen·DB 접속 제한으로 실패했고 승인된 확장 권한 실행에서 통과했다. 별도 Express 타입 패키지 없는 환경에 맞춰 기존 HTTP 어댑터의 파서 인터페이스를 사용했고 타입 검사·빌드를 통과했다.
+- 새 API 컨테이너의 직접 주소 `http://127.0.0.1:4000`과 기존 웹 프록시 `http://localhost:3000` 양쪽에서 정상 검색 200/20건, CORS·보안/캐시 헤더, 잘못된 입력/JSON의 400, 본문 초과 413, 다른 본문 형식 415, 원문 미노출을 추가 확인했다. 실행 중 API에는 한도 초과 부하를 가하지 않고 429는 독립 테스트 앱에서 검증했다.
+- DB·웹 컨테이너와 기존 볼륨은 유지하고 API만 새 이미지로 재생성했다. 최종 세 컨테이너 모두 healthy다. 운영 정책은 변경 전후 **3,390건**, 전체 행 JSON MD5 **`46a965ded0407e47a7af9816cd3e7b6e`**로 같았고 검색·상세 테스트 스키마는 0개다. 웹은 `http://localhost:3000/policies`에서 확인할 수 있다. 수집·운영 스키마 Migration·시드·운영 정책 UPDATE/삭제는 실행하지 않았다.
+
+기술 근거: [NestJS 내장 보안 헤더](https://docs.nestjs.com/techniques/security), [Express 프록시 신뢰와 전달 헤더 주의사항](https://expressjs.com/en/guide/behind-proxies/). 실제 사용 가능 여부는 설치된 NestJS 타입·구현과 테스트로도 확인했다.
+
+핵심 코드 읽는 순서: `main.ts`의 설정 순서 → `request-protection.ts`의 호출 제한/본문 형식 → `api-exception.filter.ts`의 파서 오류 정규화 → `environment.ts`의 출처 검증 → `request-protection.spec.ts`.
+
+## 72. 다음 작업을 위한 상태
+
+다음 단계 대상은 **Step 55: 핵심 사용자 흐름 통합 검증**이다. Step 54는 완료했고 Step 55~57은 미착수다. 프록시 사용자의 호출 한도 공유·단일 프로세스 집계 한계는 SPEC 4.3에 기록했다. 다음 단계는 별도 요청을 기다린다.

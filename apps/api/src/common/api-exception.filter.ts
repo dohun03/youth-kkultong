@@ -37,12 +37,18 @@ export class ApiExceptionFilter implements ExceptionFilter {
 
   /** 예외의 HTTP 상태를 결정하고 { code, message } 형식의 JSON 응답을 전송한다. */
   catch(error: unknown, host: ArgumentsHost): void {
+    // 본문 파서는 NestJS 예외가 아닌 오류를 전달하므로 알려진 크기·인코딩 오류만 변환한다.
+    const parserType = typeof error === 'object' && error !== null && 'type' in error ? error.type : undefined;
+    const parserStatus = parserType === 'entity.too.large' ? 413
+      : parserType === 'encoding.unsupported' || parserType === 'charset.unsupported' ? 415 : undefined;
     const status = error instanceof HttpException
       ? error.getStatus()
-      : isDatabaseUnavailable(error) ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.INTERNAL_SERVER_ERROR;
+      : parserStatus ?? (isDatabaseUnavailable(error) ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.INTERNAL_SERVER_ERROR);
     const messages: Record<number, string> = {
       400: '요청값이 올바르지 않습니다.',
       404: '요청한 대상을 찾을 수 없습니다.',
+      413: '요청 본문이 너무 큽니다.',
+      415: '지원하지 않는 본문 인코딩입니다.',
       500: '서버 내부 오류가 발생했습니다.',
       503: 'DB에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.',
     };

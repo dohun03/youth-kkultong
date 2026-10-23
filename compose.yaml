@@ -35,6 +35,7 @@ services:
       YOUTH_CENTER_REQUEST_DELAY_MS: ${YOUTH_CENTER_REQUEST_DELAY_MS:-3000}
       YOUTH_CENTER_MAX_ATTEMPTS: ${YOUTH_CENTER_MAX_ATTEMPTS:-3}
       POLICY_IMPORT_BATCH_SIZE: ${POLICY_IMPORT_BATCH_SIZE:-200}
+      API_CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
     volumes:
       - ingestion_logs:/app/logs
     depends_on:

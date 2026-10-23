@@ -6,6 +6,7 @@ describe('환경변수 검증', () => {
   it('필수 DB 주소만 있으면 명세의 기본값과 키 미설정 상태를 반환한다', () => {
     expect(parseEnvironment({ DATABASE_URL: databaseUrl })).toEqual({
       DATABASE_URL: databaseUrl,
+      API_CORS_ORIGINS: ['http://localhost:3000', 'http://127.0.0.1:3000'],
       YOUTH_CENTER_PAGE_SIZE: 50,
       YOUTH_CENTER_REQUEST_DELAY_MS: 3000,
       YOUTH_CENTER_MAX_ATTEMPTS: 3,
@@ -66,5 +67,17 @@ describe('환경변수 검증', () => {
       expect(message).toContain('TZ');
       expect(message).not.toMatch(/db-secret|api-secret|https:\/\//);
     }
+  });
+
+  it('허용 출처를 쉼표로 나누고 앞뒤 공백을 정리한다', () => {
+    expect(parseEnvironment({ DATABASE_URL: databaseUrl, API_CORS_ORIGINS: 'https://youth.example, http://localhost:3000 ' })
+      .API_CORS_ORIGINS).toEqual(['https://youth.example', 'http://localhost:3000']);
+  });
+
+  it.each(['*', 'null', '', 'https://example.com/', 'https://example.com/path', 'https://user:secret@example.com', 'ftp://example.com'])
+  ('잘못된 CORS 출처를 값 노출 없이 거부한다: %s', (origin) => {
+    expect(() => parseEnvironment({ DATABASE_URL: databaseUrl, API_CORS_ORIGINS: origin })).toThrow('API_CORS_ORIGINS');
+    try { parseEnvironment({ DATABASE_URL: databaseUrl, API_CORS_ORIGINS: origin }); }
+    catch (error) { expect((error as Error).message).not.toContain('user:secret'); }
   });
 });

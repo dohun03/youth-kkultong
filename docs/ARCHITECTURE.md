@@ -213,6 +213,7 @@ youth-kkultong/
 | DB 초기화 | 명시적 TypeORM Migration 실행 → 공식 지역 코드 시드 |
 | 정책 수집 | 같은 API 이미지의 독립 CLI 프로세스에서 `npm run import:policies` 실행. PostgreSQL Advisory Lock으로 중복 실행 차단 |
 | 로그 | 서버 로그는 표준 출력, 수집 결과는 `/app/logs/`에 기록·볼륨 보관. API 키·사용자 조건 원문은 기록하지 않음 |
+| 공개 API 보호 | 정확한 출처의 CORS, NestJS 내장 보안 헤더, JSON 본문 한도, 단일 프로세스 접속 주소별 호출 제한. 설정·수치·프록시 한계는 MVP1 SPEC 4.3 참조 |
 | 외부 링크 | `https://`/`http://` URL만 렌더링, 새 탭 이동 시 `noopener noreferrer` 적용 |
 | 장애 대응 | 수집 실패 시 기존 DB 보존, 읽기 API는 기존 정상 정책 제공 |
 | 백업 | PostgreSQL 정기 백업 경로와 복원 절차를 배포 환경에 포함 |
