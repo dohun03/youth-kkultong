@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
+import { pacedFetch as fetch, paceBrowserContext } from './api-pacing.mjs';
 
 // 기존 브라우저 검증 도구의 경로를 받을 수 있어 제품 의존성을 추가하지 않는다.
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
@@ -17,8 +18,10 @@ after(async () => { await browser?.close(); });
 
 /** 테스트마다 브라우저 탭을 분리하고 실패하더라도 반드시 닫는다. */
 async function withPage(run) {
-  const page = await browser.newPage();
-  try { await run(page); } finally { await page.close(); }
+  const context = await browser.newContext();
+  await paceBrowserContext(context);
+  const page = await context.newPage();
+  try { await run(page); } finally { await context.close(); }
 }
 
 /** API 계약에 맞는 카드를 준비하고 각 테스트에서 확인할 필드만 덮어쓴다. */

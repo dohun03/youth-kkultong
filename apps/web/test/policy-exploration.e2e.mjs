@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
+import { pacedFetch as fetch, paceBrowserContext } from './api-pacing.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
 const base = process.env.WEB_TEST_URL ?? 'http://127.0.0.1:3000';
 const api = process.env.API_TEST_URL ?? 'http://127.0.0.1:4000';
@@ -10,6 +11,7 @@ after(async () => { await browser?.close(); });
 /** 각 탐색 시나리오를 별도 탭에서 실행하고 반드시 닫는다. */
 async function withPage(run) {
   const context = await browser.newContext();
+  await paceBrowserContext(context);
   const page = await context.newPage();
   try { await run(page); } finally { await context.close(); }
 }
@@ -859,5 +861,52 @@ test('분야 선택지·복수 분야 검색·원문 표시·이전 세션을 �
     await page.locator('.policy-card-link').click();
     await page.locator('.detail-category').waitFor();
     assert.ok((await page.locator('.detail-category').textContent()).startsWith('일자리 · 교육'));
+  });
+});
+
+test('실제 정책으로 기본 목록→조건·맞춤순→상세→신청 링크 새 탭까지 연결된다', async () => {
+  const expected = await search({ conditions: { age: 28 } });
+  assert.equal(expected.appliedSort, 'recommended');
+  assert.ok(expected.items.length > 0);
+  assert.ok(expected.items.some((item) => item.tags.includes('AGE_MATCH')));
+  let chosen;
+  let applicationLink;
+  // 실제 첫 페이지에서 신청 링크가 있는 정책을 선택한다. 운영 데이터는 수정하지 않는다.
+  for (const item of expected.items) {
+    const response = await fetch(`${api}/api/v1/policies/${item.id}`);
+    assert.equal(response.status, 200);
+    const detail = await response.json();
+    applicationLink = detail.links.find((link) => link.label === '신청');
+    if (applicationLink) { chosen = item; break; }
+  }
+  assert.ok(chosen && applicationLink, '맞춤 첫 페이지에 실제 신청 링크가 있는 정책이 필요합니다.');
+  await withPage(async (page) => {
+    await page.goto(base);
+    await page.locator('.policy-card').first().waitFor();
+    assert.equal(new URL(page.url()).pathname, '/policies');
+    await page.getByLabel('만 나이').fill('28');
+    await expectResult(page, expected);
+    assert.equal(await page.locator('#policy-sort').inputValue(), 'recommended');
+    const selected = page.locator(`.policy-card-link[href="/policies/${chosen.id}"]`);
+    await selected.click();
+    await page.waitForURL(`**/policies/${chosen.id}`);
+    await page.locator('.detail-heading h1').waitFor();
+    assert.equal(await page.locator('h1').textContent(), chosen.title);
+    const link = page.locator('.detail-links a').filter({ hasText: '신청' }).first();
+    assert.equal(await link.getAttribute('href'), applicationLink.url);
+    assert.equal(await link.getAttribute('target'), '_blank');
+    assert.match(await link.getAttribute('rel'), /noopener/);
+    assert.match(await link.getAttribute('rel'), /noreferrer/);
+    const target = new URL(applicationLink.url).href;
+    // 클릭과 새 탭 생성은 실제로 실행하고 외부 신청 시스템의 응답만 테스트 페이지로 대체한다.
+    await page.context().route((url) => url.href === target, (route) => route.fulfill({
+      contentType: 'text/html', body: '<html lang="ko"><title>신청 링크 도착 확인</title></html>',
+    }));
+    const opened = page.context().waitForEvent('page');
+    await link.click();
+    const popup = await opened;
+    await popup.waitForLoadState();
+    assert.equal(popup.url(), target);
+    assert.equal(await popup.evaluate(() => window.opener), null);
   });
 });

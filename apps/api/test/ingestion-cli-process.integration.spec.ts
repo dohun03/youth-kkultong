@@ -7,7 +7,11 @@ import { Logger } from '@nestjs/common';
 import type { DataSource } from 'typeorm';
 import { loadEnvironment } from '../src/common/environment';
 import { createDataSource } from '../src/database/data-source';
+import * as database from '../src/database/data-source';
 import { CreatePolicies1792162800000 } from '../src/database/migrations/1792162800000-create-policies';
+import { CreateRegions1792162801000 } from '../src/database/migrations/1792162801000-create-regions';
+import { createApplication } from '../src/main';
+import request from 'supertest';
 import { IngestionLockService } from '../src/modules/ingestion/services/ingestion-lock.service';
 import type { IngestionLogEntry } from '../src/modules/ingestion/services/ingestion-log.service';
 import { Policy } from '../src/modules/policies/entities/policy.entity';
@@ -77,7 +81,8 @@ describe('독립 CLI 두 개의 잠금 경쟁과 프로세스 종료 복구', ()
     await admin.initialize();
     await admin.query(`CREATE SCHEMA "${schema}"`);
     schemaCreated = true;
-    dataSource = createDataSource(environment).setOptions({ schema, entities: [Policy], migrations: [CreatePolicies1792162800000],
+    dataSource = createDataSource(environment).setOptions({ schema, entities: [Policy],
+      migrations: [CreatePolicies1792162800000, CreateRegions1792162801000],
       extra: { options: `-c timezone=${environment.TZ} -c search_path=${schema}` } });
     await dataSource.initialize();
     await dataSource.runMigrations();
@@ -146,4 +151,35 @@ describe('독립 CLI 두 개의 잠금 경쟁과 프로세스 종료 복구', ()
     expect(await table.count()).toBe(3);
     await expectUnlocked();
   }, 30000);
+
+  it.each(['API_PAUSE', 'SAVE_PAUSE'])(
+    'T-30: 독립 CLI의 %s 중에도 실제 검색 API가 기존 정책을 제공하고 완료 뒤 새 정책을 제공한다', async (mode) => {
+      // 읽기 API는 CLI와 다른 DB 연결을 사용하되 같은 임시 스키마의 자료를 읽는다.
+      const apiDataSource = createDataSource(environment).setOptions({ schema,
+        extra: { options: `-c timezone=${environment.TZ} -c search_path=${schema}` } });
+      const factory = jest.spyOn(database, 'createDataSource').mockReturnValue(apiDataSource);
+      let app: Awaited<ReturnType<typeof createApplication>> | undefined;
+      try {
+        try { app = await createApplication(); } finally { factory.mockRestore(); }
+        await app.listen(0, '127.0.0.1');
+        const before = await request(app.getHttpServer()).post('/api/v1/policies/search').send({}).expect(200);
+        expect(before.body.items.map((item: { title: string }) => item.title).sort())
+          .toEqual(['수집 밖의 기존 정책', '이전 제목']);
+        const run = startCli(`search-${mode}`, mode); processes.push(run);
+        await run.waitFor(mode === 'API_PAUSE' ? 'API_PAUSED' : 'SAVE_PAUSED');
+        // 외부 API 대기 중과 첫 묶음 저장 후 COMMIT 전 모두 부분 결과가 노출되지 않아야 한다.
+        const during = await request(app.getHttpServer()).post('/api/v1/policies/search').send({}).expect(200);
+        expect(during.body).toEqual(before.body);
+        run.child.send('RESUME');
+        expect(await run.finished).toMatchObject({ code: 0, signal: null });
+        const after = await request(app.getHttpServer()).post('/api/v1/policies/search').send({}).expect(200);
+        expect(after.body.items.map((item: { title: string }) => item.title).sort())
+          .toEqual(['CLI가 변경한 제목', 'CLI가 추가한 정책', '수집 밖의 기존 정책']);
+        expect((await records(run)).at(-1)).toMatchObject({ status: 'SUCCESS', saved: true });
+      } finally {
+        if (app) await app.close();
+        else if (apiDataSource.isInitialized) await apiDataSource.destroy();
+      }
+    }, 30000,
+  );
 });

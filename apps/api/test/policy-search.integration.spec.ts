@@ -222,6 +222,58 @@ describe('정책 검색 API 통합', () => {
     await request(app.getHttpServer()).post('/api/v1/policies/search').send({ keyword: null }).expect(400);
   });
 
+  it('T-12~T-15: 재수집 없이 한국 날짜가 바뀌면 검색·상세 상태와 기본 노출이 바뀐다', async () => {
+    const saved = await seed({ applicationStartDate: '2026-10-01', applicationEndDate: '2026-10-29',
+      applicationPeriodRaw: '20261001 ~ 20261029' });
+    const before = await dataSource.getRepository(Policy).findOneByOrFail({ id: saved.id });
+    for (const [today, status] of [
+      ['2026-09-30', 'UPCOMING'], ['2026-10-21', 'OPEN'], ['2026-10-22', 'CLOSING_SOON'],
+      ['2026-10-29', 'CLOSING_SOON'], ['2026-10-30', 'CLOSED'],
+    ]) {
+      jest.mocked(dates.getKoreaToday).mockReturnValue(today);
+      const result = await request(app.getHttpServer()).post('/api/v1/policies/search').send({}).expect(200);
+      expect(result.body.items.map((item: { applicationStatus: string }) => item.applicationStatus))
+        .toEqual(status === 'CLOSED' ? [] : [status]);
+      const included = await request(app.getHttpServer()).post('/api/v1/policies/search').send({ includeClosed: true }).expect(200);
+      expect(included.body.items[0].applicationStatus).toBe(status);
+      const detail = await request(app.getHttpServer()).get(`/api/v1/policies/${saved.id}`).expect(200);
+      expect(detail.body.applicationStatus).toBe(status);
+    }
+    // 날짜 계산 때문에 원문·저장 시각까지 바뀌지 않았는지 실제 행을 대조한다.
+    expect(await dataSource.getRepository(Policy).findOneByOrFail({ id: saved.id })).toEqual(before);
+    await dataSource.getRepository(Policy).update(saved.id, { applicationStartDate: '2026-10-29',
+      applicationEndDate: '2026-10-01', applicationPeriodRaw: '20261029 ~ 20261001' });
+    const unknown = await request(app.getHttpServer()).post('/api/v1/policies/search').send({}).expect(200);
+    expect(unknown.body.items[0].applicationStatus).toBe('UNKNOWN');
+  });
+
+  it('T-16·T-17·T-22: 명확한 부적합 제외 후 전체 맞춤 정렬의 21~40번째를 반환한다', async () => {
+    const saved: Policy[] = [];
+    // 저장 순서·조회수 순서와 다른 기대 정렬을 미리 만든다. 제품 정렬 함수를 기대값에 사용하지 않는다.
+    for (let index = 0; index < 45; index += 1) {
+      saved.push(await seed({ externalId: `rank-${String(index).padStart(2, '0')}`, viewCount: index,
+        ageMin: index < 5 ? 35 : 19, ageMax: index < 5 ? 39 : 34,
+        applicationEndDate: index % 2 === 0 ? '2026-10-28' : '2026-10-31',
+        applicationPeriodRaw: index % 2 === 0 ? '20261001 ~ 20261028' : '20261001 ~ 20261031' }));
+    }
+    const remaining = saved.filter((policy) => policy.ageMin === 19);
+    const expected = [
+      ...remaining.filter((policy) => Number(policy.viewCount) % 2 === 0).reverse(),
+      ...remaining.filter((policy) => Number(policy.viewCount) % 2 === 1).reverse(),
+    ];
+    const pages: string[] = [];
+    for (const page of [1, 2]) {
+      const result = await request(app.getHttpServer()).post('/api/v1/policies/search')
+        .send({ conditions: { age: 28 }, page }).expect(200);
+      expect(result.body.appliedSort).toBe('recommended');
+      expect(result.body.pagination).toEqual({ page, limit: 20, total: 40, totalPages: 2 });
+      expect(result.body.items.map((item: { id: string }) => item.id)).toEqual(expected.slice((page - 1) * 20, page * 20).map((policy) => policy.id));
+      expect(result.body.items.every((item: { score: number }) => item.score === 1)).toBe(true);
+      pages.push(...result.body.items.map((item: { id: string }) => item.id));
+    }
+    expect(new Set(pages).size).toBe(40);
+  });
+
   it('실제 DB 연결 종료 시 빈 정상 결과 대신 503을 반환한다', async () => {
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
     await dataSource.destroy();

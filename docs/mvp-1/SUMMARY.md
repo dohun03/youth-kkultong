@@ -2114,6 +2114,44 @@ git diff --check
 
 핵심 코드 읽는 순서: `main.ts`의 설정 순서 → `request-protection.ts`의 호출 제한/본문 형식 → `api-exception.filter.ts`의 파서 오류 정규화 → `environment.ts`의 출처 검증 → `request-protection.spec.ts`.
 
-## 72. 다음 작업을 위한 상태
+## 72. Step 55 핵심 사용자 흐름 통합 검증 (2026-10-23)
 
-다음 단계 대상은 **Step 55: 핵심 사용자 흐름 통합 검증**이다. Step 54는 완료했고 Step 55~57은 미착수다. 프록시 사용자의 호출 한도 공유·단일 프로세스 집계 한계는 SPEC 4.3에 기록했다. 다음 단계는 별도 요청을 기다린다.
+사용자 요청으로 Step 54를 `df95faa` (`fix: 공개 API 요청 보호와 민감정보 노출 방지`)로 먼저 커밋했다. 작업 규칙 → PLAN Step 55 → SPEC 4·6~9장 → 선행 완료 기록 → 상태·매칭·검색/상세·메타·CLI·브라우저 테스트를 대조했다. Step 55의 검증만 보강했으며 제품 동작·API 계약·스키마·의존성은 변경하지 않았다. Step 55 변경은 커밋하지 않았다.
+
+- `policy-search.integration.spec.ts`에 날짜별 상태 전환과 맞춤 정렬 뒤 페이지 경계를 추가했다. 임시 DB에 저장한 같은 정책을 재수집/수정하지 않고 기준 한국 날짜를 주입해 시작 전·종료 8일 전·7일 전·당일·다음날의 검색/상세와 마감 포함 여부를 확인한다. 저장 행 전체도 그대로인지 비교하고 역전 기간은 기본 목록에서 확인 필요로 유지한다.
+- 45개 정책에서 명확한 나이 부적합 5개를 먼저 제외하고, 같은 점수의 마감 임박 우선 → 조회수 내림차순으로 정렬한 40개를 20개씩 나누는 HTTP·DB 검증을 추가했다. 기대 순서는 제품 정렬 함수를 호출하지 않고 독립적으로 구성하며 두 페이지의 순서·건수·중복 없음을 비교한다.
+- `ingestion-cli-process.integration.spec.ts`에 T-30 두 사례를 추가했다. 실제 독립 CLI 프로세스를 외부 응답 대기와 첫 묶음 저장 후 COMMIT 전에서 각각 멈추고, 별도 DB 연결의 실제 NestJS 검색 API가 기존 전체 결과를 계속 반환하는지 확인한다. CLI 재개/정상 종료 후에는 변경·신규·수집 밖 기존 정책의 최종 목록을 검증한다. 외부 수집 응답만 기존 테스트 fixture로 대체하며 CLI 진입점·Advisory Lock·트랜잭션·DB·파일 로그는 실제로 실행한다.
+- 실제 저장 정책을 대상으로 `/` → 기본 목록 → 28세 조건·맞춤순/태그 → 상세 → 실제 신청 URL의 새 탭까지 이어지는 브라우저 시나리오를 추가했다. 신청 URL·target·noopener/noreferrer·opener 차단을 검사하고, 외부 신청 시스템의 응답만 테스트 HTML로 대체한다. 신청서를 제출하지 않는다.
+- `api-pacing.mjs`로 브라우저의 실제 API 요청과 기대값 조회에 공유 600ms 간격을 적용했다. 서버의 호출 제한·응답은 유지한다. 전체 검증은 단일 프로세스·순차 실행으로 대기열을 공유하며 `npm run test:e2e --workspace apps/web`에 실행 옵션을 고정했다. 제품 패키지는 추가하지 않았다.
+
+### SPEC 검증 범위
+
+| 시나리오 | 이번에 실행한 검증 근거 |
+| --- | --- |
+| T-01·T-01a·T-01b | 검색 HTTP, 응답 조립, 실제 기본 목록·조건 해제 브라우저 |
+| T-02~T-11 | 나이·취업·학력·지역·종합 매칭 단위 검증, 검색 후보·HTTP와 실제 조건 선택 브라우저 |
+| T-12~T-15 | 상태 계산·한국 자정 경계 단위 검증, 신규 날짜별 검색/상세 HTTP, 기간 원문 브라우저 |
+| T-16·T-17·T-22 | 정렬·응답 조립, 신규 45건 후보의 제외/전체 맞춤 정렬/두 페이지 HTTP |
+| T-23·T-24 | 상세 링크 없음 HTTP/화면, 검색의 DB·SQL·파일/기본 로그 미저장, 브라우저 URL/localStorage 미저장 |
+| T-28·T-29 | 실제 루트 이동·목록, DB 기반 지역/분야·서버 코드표 메타 HTTP/화면 |
+| T-30 | 실제 독립 CLI의 외부 응답 대기·COMMIT 전 검색 응답 유지 HTTP 2개 |
+
+### 검증
+
+```bash
+npm run typecheck
+npm test --workspace apps/api -- --runTestsByPath test/application-status.spec.ts test/age-match.spec.ts test/job-match.spec.ts test/school-match.spec.ts test/region-match.spec.ts test/evaluate-policy.spec.ts test/sort-policies.spec.ts test/policy-search-candidates.spec.ts test/policy-search-response.spec.ts test/policy-search.integration.spec.ts test/policy-detail.integration.spec.ts test/meta-options.integration.spec.ts test/meta-regions.integration.spec.ts test/ingestion-cli-process.integration.spec.ts
+FONTCONFIG_FILE=/tmp/youth-colors-fonts.conf LD_LIBRARY_PATH=/tmp/youth-colors-libs/root/usr/lib/x86_64-linux-gnu PLAYWRIGHT_MODULE=/home/leenohoon/youth-kkultong-before/node_modules/.pnpm/playwright@1.64.0/node_modules/playwright/index.mjs npm run test:e2e --workspace apps/web
+git diff --check
+```
+
+- 전체 타입 검사와 관련 API **14개 스위트 513개**가 통과했다. API 전체 테스트 트리를 실행한 것은 아니며 Step 55와 직접 관련된 상태·매칭·정렬·검색·상세·메타·CLI를 선택했다. DB URL은 기존 `/tmp/step54-db-tests.cjs`에서 `.env` 비밀값을 메모리로만 조합해 자식 프로세스 환경변수로 전달했으며 값은 출력하지 않았다.
+- 최초 전체 브라우저 실행은 65개 중 64개가 통과했다. 키보드 검증의 첫 목록 대기가 시간 초과됐고 독립 실행은 통과했다. 응답을 대체한 앞선 테스트들이 닫은 탭의 메타 요청도 대기 순번을 미리 차지해, 뒤의 실제 요청이 15초 제한을 넘길 수 있는 검증 도구 문제를 확인했다. 대기열 처리 시 취소/닫힌 탭 여부를 확인하고 실제 전송할 요청만 간격을 소비하도록 수정했다. 최종 전체 재검증은 **65개 모두 통과**했다. 기존 64개 회귀와 신규 실제 정책 전체 흐름 1개를 모두 확인했으며 요구사항·제품 제한·기존 검증 항목은 낮추지 않았다. 변경한 MJS 파일의 `node --check`와 `git diff --check`도 통과했다.
+- 실제 운영 정책은 **3,390건**, 전체 행 JSON MD5 **`46a965ded0407e47a7af9816cd3e7b6e`**로 Step 54 완료 시점과 같다. API 검증 종료 후 `step%` 임시 스키마는 0개다. 테스트 쓰기는 임시 스키마에만 수행했고 운영 정책 수집·UPDATE/삭제·Migration·시드는 실행하지 않았다.
+- 웹 화면·API 소스 변경이 없어 컨테이너는 재빌드/재생성하지 않았다. Step 56의 Docker 재기동·백업/복원 검증은 진행하지 않는다.
+
+핵심 코드 읽는 순서: `policy-search.integration.spec.ts`의 날짜/맞춤 페이지 → `ingestion-cli-process.integration.spec.ts`의 T-30 → `policy-exploration.e2e.mjs`의 실제 정책 전체 흐름 → `api-pacing.mjs`.
+
+## 73. 다음 작업을 위한 상태
+
+다음 단계 대상은 **Step 56: Docker 실행·운영 복구 점검**이다. Step 55까지 완료했으며 Step 56~57은 미착수다. Step 54는 커밋했고 Step 55는 커밋하지 않았다. Step 55의 미해결 실패는 없으며 프록시 사용자의 호출 한도 공유·단일 프로세스 집계 한계는 SPEC 4.3에 기록했다. 다음 단계는 별도 요청을 기다린다.

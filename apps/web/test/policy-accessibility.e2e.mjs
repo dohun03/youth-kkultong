@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
+import { pacedFetch as fetch, paceBrowserContext } from './api-pacing.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
 const base = process.env.WEB_TEST_URL ?? 'http://127.0.0.1:3000';
 const api = process.env.API_TEST_URL ?? 'http://127.0.0.1:4000';
@@ -15,8 +16,10 @@ after(async () => { await browser?.close(); });
 
 /** 테스트마다 브라우저 세션을 분리하고 키보드·화면 결과를 함께 확인한다. */
 async function withPage(run) {
-  const page = await browser.newPage();
-  try { await run(page); } finally { await page.close(); }
+  const context = await browser.newContext();
+  await paceBrowserContext(context);
+  const page = await context.newPage();
+  try { await run(page); } finally { await context.close(); }
 }
 
 /** 화면이 갱신된 뒤 실제 초점이 목표 요소에 도달했는지 확인한다. */
