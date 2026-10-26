@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-23 (Asia/Seoul) · **Step 1~53 완료, Step 54~57 미착수**
+최종 확인일: 2026-10-26 (Asia/Seoul) · **Step 1~56 완료, Step 57 미착수**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -2154,7 +2154,7 @@ git diff --check
 
 ## 73. 다음 작업을 위한 상태
 
-다음 단계 대상은 **Step 56: Docker 실행·운영 복구 점검**이다. Step 55까지 완료했으며 Step 56~57은 미착수다. Step 54는 커밋했고 Step 55는 커밋하지 않았다. Step 55의 미해결 실패는 없으며 프록시 사용자의 호출 한도 공유·단일 프로세스 집계 한계는 SPEC 4.3에 기록했다. 다음 단계는 별도 요청을 기다린다.
+다음 단계 대상은 **Step 57: MVP1 최종 인수·결과 기록**이다. Step 56까지 완료했으며 Step 57은 미착수다. Step 55는 `ce7627e`, 지역 검색 품질 추가 작업은 `5d619cb`로 커밋됐다. Step 56 변경은 커밋하지 않았다. 최신 운영 검증·백업 위치·제약은 아래 75장과 `OPERATIONS.md`를 참고한다. 다음 단계는 별도 요청을 기다린다.
 
 ## 74. PLAN 외 추가 작업: 지역 검색 품질 개선 (2026-10-24)
 
@@ -2187,3 +2187,62 @@ git diff --check
 핵심 코드 읽는 순서: `region-match.ts` → `sort-policies.ts` → `policy-search-response.ts` → `region-filter.tsx` → `policy-search.integration.spec.ts`.
 
 남은 한계: 지역 관련은 코드 관계만 나타내며 실제 재학·재직·전입 등 신청 자격을 확정하지 않는다. 다음 기존 PLAN 작업은 Step 56이며 별도 요청을 기다린다.
+
+
+## 75. Step 56 Docker 실행·운영 복구 점검 (2026-10-26)
+
+AGENT_RULES → PLAN Step 56 → SPEC 2·4·5장 → Step 55 및 지역 검색 추가 작업 완료 기록 → Compose·Dockerfile·Migration·지역 시드·수집 CLI·로그 코드를 대조했다. 선행 Step 55는 완료, Step 56은 미착수임을 확인한 뒤 이번 Step만 진행했다. Step 57의 최종 인수 작업과 Git 커밋은 실행하지 않았다.
+
+### 변경 내용
+
+- `OPERATIONS.md`에 최초 환경 준비 → 이미지 빌드 → DB 준비 → 명시적 Migration → 지역 시드 → 전체 기동 → 실제 수집 → 재기동 → DB·수집 로그 백업 → 별도 빈 DB 복원 → 검색/상세 검증 절차를 정리했다. API health만으로 테이블·지역 준비까지 판단하지 않도록 설명했다.
+- 백업 기본 경로는 호스트 `backups/<한국 날짜와 시각>/`이며 PostgreSQL custom dump와 로그 tar를 따로 보관한다. 권한 700 디렉터리·600 파일·SHA-256 검증·불완전 `.partial` 구분·운영 볼륨 유지·별도 DB 복원 절차를 기록했다. 정기 실행은 수동 운영 기준이며 자동 스케줄·외부 보관·보관 기한은 구성하지 않았다.
+- `backups/`를 `.gitignore`와 `.dockerignore`에 추가해 운영 데이터가 Git 및 Docker 빌드 컨텍스트에 포함되지 않도록 했다. ARCHITECTURE 7장의 백업 항목에서 운영 지침을 참조하고 PLAN Step 56을 완료 처리했다.
+- API/웹 기능 소스·요청/응답 계약·DB 스키마·Migration 파일·수집 규칙·패키지는 변경하지 않았다. PRD·SPEC의 설계 변경은 없고 `SPEC_SUMMARY.md`는 존재하지 않아 생성하지 않았다.
+
+### 실제 검증 결과
+
+| 검증 | 결과 |
+| --- | --- |
+| Compose 빌드 | 기존 `compose.yaml`·`compose.local.yaml`로 API·웹 빌드 성공 |
+| 깨끗한 DB 초기화 | 별도 프로젝트 `youth-kkultong-step56`, 새 `db_data`·`ingestion_logs` 볼륨, 호스트 3300/4400 사용 |
+| Migration·시드 | Migration 0개에서 2개 적용, 공식 지역 537개 저장, 새 웹·API·DB healthy |
+| 빈 DB 검색 | 새 웹 프록시 검색 HTTP 200, 정책 0건 |
+| 실제 `import:policies` | 온통청년 실제 API 73페이지, 신규 3,602건·변경 0건·동일 0건, 중복 0건, CLI 종료 0 |
+| 수집 로그 | `RUN_FINISHED`, `COMPLETE`, `SUCCESS`, `saved=true`, 저장 시도 1회, 실패 목록 없음 |
+| 검증 프로젝트 재생성 | DB·API·웹 모두 재생성 후 정책·지역·Migration 전체 행 체크섬과 수집 파일 로그 SHA-256 동일 |
+| Migration 재실행 | `No migrations are pending`, 데이터 동일 |
+| 기존 프로젝트 재생성 | 기존 볼륨 유지, 전체 행 체크섬 동일, 웹·API·DB healthy |
+| PostgreSQL 백업·복원 | PostgreSQL 17.11 `pg_dump -Fc` → 검증용 PostgreSQL의 새 `youth_kkultong_restore56` DB에 `pg_restore --exit-on-error`, 성공 |
+| 복원 데이터 | 원본 정책 3,390건·지역 537개·Migration 2개, 각 전체 행 체크섬 동일, 중복 0건, Migration 2개 `[X]` |
+| 로그 복원 | 원본 로그 tar를 별도 폴더에 추출한 뒤 원본 파일 SHA-256 일치 |
+| 실제 HTTP 조회 | 수집 DB·재기동 DB·복원 DB·기존 서비스의 API 직접 주소와 웹 프록시에서 지역 맞춤 검색·상세 200, 웹 `/policies` 200 |
+| 비밀값 비노출 | 실제 키·비밀번호를 원문 출력 없이 비교. API·웹 이미지 설정/레이어 이력, 기존/검증 컨테이너 출력, 수집 파일 로그에서 불검출. API 실행 이미지에 `.env`·개인 설정·백업 없음 |
+| 문서/파일 검사 | 운영 지침의 모든 Bash 코드 블록 `bash -n`, `git diff --check` 통과. 백업 4개 SHA-256 검증 통과 |
+
+- 새 프로젝트는 기본 이미지 이름도 달라진다. 첫 검증 시 이 차이로 웹 이미지를 찾지 못했으며, 검증 override에 이미 빌드한 `youth-kkultong-api:latest`·`youth-kkultong-web:latest`를 명시했다. 해당 검증 프로젝트의 테스트 볼륨만 정리하고 새 볼륨에서 전체 초기화를 다시 성공시켰다. 최종 운영 지침에는 수정된 절차만 기록했다. 검증 도구의 `pg_restore --list` 조회가 기존 DB 재생성과 겹쳐 한 번 실패했으며, DB healthy 이후 재실행해 custom 백업 목록을 정상 확인했다. 제품 동작 변경이나 우회는 없었다.
+- 검증에는 실제 Docker Compose 5.4.0·PostgreSQL 17.11·기존 프로덕션 이미지를 사용했다. 실제 인증키로 외부 API를 수집했으며 샘플 응답·모의 수집으로 대체하지 않았다. 실행기는 비밀값을 출력하지 않고 실제 값의 포함 여부를 검사한 후 안전한 결과만 출력했다. 외부 수집은 검증 DB에만 저장했으며 기존 정책 3,390건은 갱신하지 않았다.
+- 최종 검증 후 이번에 만든 `youth-kkultong-step56`의 컨테이너·네트워크·DB/로그 볼륨만 정리했다. 기존 프로젝트와 볼륨, 호스트 백업 파일은 유지했다. 백업 4개는 `backups/step56-20261026/production.dump`, `ingestion-logs-before.tar`, `imported.dump`, `ingestion-logs-imported.tar`이며 `SHA256SUMS`와 기준 체크섬 JSON도 같은 디렉터리에 있다. 복원 실증 대상은 기존 DB `production.dump`와 기존 수집 로그 tar이며 수집 DB dump도 별도로 보관했다.
+- 기존 정책의 변경 전후 전체 행 JSON MD5는 **`46a965ded0407e47a7af9816cd3e7b6e`**, 지역은 **`a51e60bd1ddaa0f13f1830ccbf751da2`**, Migration 이력은 **`88d9ef1b6c74843ecdcf924902df9dc2`**로 같다. 실제 수집한 검증 정책 3,602건은 재생성 전후 **`3d56ee7e24e866e9a930b684722e0d60`**으로 같았다. 검색 조건(28세/서울) 적용 결과는 기존·복원 DB 1,101건, 실제 수집 검증 DB 1,238건이었다.
+
+### 실행 명령과 검증 범위
+
+운영자가 재현할 명령은 `OPERATIONS.md`에 보관했다. 이번 검증은 그 명령을 `/tmp/step56-operations.mjs`에서 셸 없이 순차 실행하고 체크섬/HTTP/비밀값 검사도 함께 수행했다.
+
+```bash
+docker compose -f compose.yaml -f compose.local.yaml build api web
+node /tmp/step56-operations.mjs baseline
+node /tmp/step56-operations.mjs bootstrap
+node /tmp/step56-operations.mjs import
+node /tmp/step56-operations.mjs main-recreate
+node /tmp/step56-operations.mjs recreate
+node /tmp/step56-operations.mjs restore
+node /tmp/step56-operations.mjs security
+node /tmp/step56-operations.mjs cleanup
+(cd backups/step56-20261026 && sha256sum -c SHA256SUMS)
+git diff --check
+```
+
+애플리케이션 소스 변경이 없어 단위/전체 API 테스트·브라우저 E2E는 재실행하지 않았다. Step 55의 사용자 흐름 시험을 반복하는 대신 이번 Step의 실제 컨테이너·새 볼륨·실제 CLI·백업·복원·HTTP를 검증했다. 호스트 재부팅·다른 물리 서버로의 이전·백업 자동 스케줄·외부 저장소 복제는 실행하지 않았다. 확인된 Step 56 미해결 실패는 없다.
+
+핵심 문서/코드 읽는 순서: `OPERATIONS.md` 1~4장 → `compose.yaml`의 `db_data`/`ingestion_logs` → `Dockerfile`의 API/웹 실행 이미지 → `import-policies.ts`·`ingestion-log.service.ts`. 다음 단계는 Step 57이며 별도 요청을 기다린다.

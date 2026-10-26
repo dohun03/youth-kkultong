@@ -7,3 +7,4 @@ dist/
 *.tsbuildinfo
 apps/web/next-env.d.ts
 logs/
+backups/

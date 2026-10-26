@@ -216,7 +216,7 @@ youth-kkultong/
 | 공개 API 보호 | 정확한 출처의 CORS, NestJS 내장 보안 헤더, JSON 본문 한도, 단일 프로세스 접속 주소별 호출 제한. 설정·수치·프록시 한계는 MVP1 SPEC 4.3 참조 |
 | 외부 링크 | `https://`/`http://` URL만 렌더링, 새 탭 이동 시 `noopener noreferrer` 적용 |
 | 장애 대응 | 수집 실패 시 기존 DB 보존, 읽기 API는 기존 정상 정책 제공 |
-| 백업 | PostgreSQL 정기 백업 경로와 복원 절차를 배포 환경에 포함 |
+| 백업 | 호스트 `backups/`에 PostgreSQL custom dump·수집 로그 tar 보관. 초기 실행·재기동·별도 DB 복원 절차는 `mvp-1/OPERATIONS.md` 참조 |
 
 환경변수의 비밀값은 `.env` 또는 운영 비밀 저장소로 전달하며 Git에 커밋하지 않는다. TypeORM의 `synchronize`는 `false`로 고정하고 스키마 변경은 Migration으로 관리한다.
 

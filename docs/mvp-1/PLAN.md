@@ -2,7 +2,7 @@
 
 > 저장 위치: `docs/mvp-1/PLAN.md`  
 > 기준: `docs/PRD.md`(PRD v0.8), `docs/ARCHITECTURE.md`(v0.3), `docs/mvp-1/SPEC.md`(v0.4), `docs/AGENT_RULES.md`  
-> 상태: **Step 1~55 완료 · Step 56~57 미착수** · 작성일: 2026-10-16
+> 상태: **Step 1~56 완료 · Step 57 미착수** · 작성일: 2026-10-16
 
 ## 목차
 
@@ -474,10 +474,10 @@
 
 ### Step 56. Docker 실행·운영 복구 점검
 
-- [ ] Compose 빌드·재기동 후 데이터 볼륨 유지, Migration 적용, `import:policies` 실행, 검색 API 응답을 확인한다.
-- [ ] PostgreSQL 백업 경로와 복원 절차, 수집 로그 볼륨·API 키 비노출을 운영 지침에 정리하고 복원 확인을 수행한다.
+- [x] Compose 빌드·재기동 후 데이터 볼륨 유지, Migration 적용, `import:policies` 실행, 검색 API 응답을 확인한다.
+- [x] PostgreSQL 백업 경로와 복원 절차, 수집 로그 볼륨·API 키 비노출을 운영 지침에 정리하고 복원 확인을 수행한다.
 
-**검증/완료:** 깨끗한 환경에서 문서의 실행 절차를 재현하고 DB 백업·복원 가능성을 확인한다. **커밋:** `docs: MVP1 실행과 데이터 복구 절차 검증`.
+**검증/완료:** 깨끗한 환경에서 문서의 실행 절차를 재현하고 DB 백업·복원 가능성을 확인한다. 운영 지침은 `OPERATIONS.md`, 실제 검증은 `SUMMARY.md` 75장에 기록했다. **커밋:** `docs: MVP1 실행과 데이터 복구 절차 검증`.
 
 ### Step 57. MVP1 최종 인수·결과 기록
 
