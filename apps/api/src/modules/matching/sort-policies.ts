@@ -1,4 +1,4 @@
-import type { ApplicationStatus, SortKey } from '@youth-kkultong/shared';
+import type { ApplicationStatus, MatchTag, SortKey } from '@youth-kkultong/shared';
 import type { Policy } from '../policies/entities/policy.entity';
 
 /** 경량 정책 후보에 검색 시점의 신청 상태와 맞춤 점수를 붙인 정렬 입력 */
@@ -7,6 +7,7 @@ export type SortablePolicy = Pick<Policy,
 > & {
   applicationStatus: ApplicationStatus;
   score: number;
+  tags: readonly MatchTag[];
 };
 
 /** 마감순의 신청 상태 그룹 */
@@ -23,14 +24,16 @@ function compareValues<T extends string | number>(left: T | null, right: T | nul
 }
 
 /** 네 가지 목록 정렬을 적용한 새 배열을 반환하며 정책 자료와 입력 배열은 변경하지 않는다. */
-export function sortPolicies<T extends SortablePolicy>(policies: readonly T[], sort: SortKey): T[] {
+export function sortPolicies<T extends SortablePolicy>(policies: readonly T[], sort: SortKey, prioritizeRegion = false): T[] {
   return [...policies].sort((left, right) => {
     let order = 0;
 
     // 선택 정렬의 기준을 먼저 비교하고, 동점이면 아래 공통 기준으로 내려간다.
     switch (sort) {
       case 'recommended':
-        order = right.score - left.score
+        // 지역 우선 정렬
+        order = (prioritizeRegion ? Number(right.tags.includes('REGION_RELATED')) - Number(left.tags.includes('REGION_RELATED')) : 0)
+          || right.score - left.score
           || Number(right.applicationStatus === 'CLOSING_SOON') - Number(left.applicationStatus === 'CLOSING_SOON')
           || compareValues(left.viewCount, right.viewCount, 'DESC');
         break;

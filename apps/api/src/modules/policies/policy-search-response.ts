@@ -23,7 +23,7 @@ export function buildPolicySearchResponse(
   // 사용자 조건이 없는 맞춤순 요청은 실제 적용값도 인기순으로 돌려준다.
   if (appliedSort === 'recommended' && !hasConditions) appliedSort = 'popular';
 
-  const sorted = sortPolicies(candidates, appliedSort);
+  const sorted = sortPolicies(candidates, appliedSort, conditions?.regionCode !== undefined);
   const total = sorted.length;
   const totalPages = Math.ceil(total / limit);
   // 반드시 전체 정렬 후 자른다. 초과 페이지는 빈 배열이며 큰 페이지 번호의 곱셈도 피한다.

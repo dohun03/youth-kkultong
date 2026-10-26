@@ -86,6 +86,8 @@ test('현행 부모 관계로 시·도·시·구를 선택하고 해제해도 �
     await page.goto(`${base}/policies`);
     await page.locator('#region-0:not([disabled])').waitFor();
     assert.deepEqual(await page.locator('#region-0 option').evaluateAll((options) => options.slice(1).map((item) => item.value)), regions.filter((item) => item.parentCode === null).map((item) => item.code));
+    await page.getByText('‘지역 관련’은 신청 자격 충족을 뜻하지 않습니다.', { exact: false }).waitFor();
+    await page.getByText('재학·재직·전입 조건은 정책 상세에서 확인해 주세요.', { exact: false }).waitFor();
     await page.selectOption('#region-0', '41000');
     await page.selectOption('#region-1', '41110');
     assert.deepEqual(await page.locator('#region-2 option').evaluateAll((options) => options.slice(1).map((item) => item.value)), regions.filter((item) => item.parentCode === '41110').map((item) => item.code));

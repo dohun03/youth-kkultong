@@ -76,6 +76,32 @@ describe('정책 검색 API 통합', () => {
       contentHash: 'a'.repeat(64), ...changes });
   }
 
+  it('서울 전체·구 선택에서 지역 우선 정렬 후 페이지를 나누고 다른 지역도 유지한다', async () => {
+    const seoul = await seed({ title: '서울 전체', regionCodes: ['11000'], ageMin: null, ageMax: null,
+      jobCodes: ['0013010'], viewCount: 1 });
+    const guro = await seed({ title: '구로구', regionCodes: ['11530'], jobCodes: ['0013010'], viewCount: 2 });
+    const busan = await seed({ title: '부산', regionCodes: ['26000'], viewCount: 999 });
+    for (const regionCode of ['11000', '11530']) {
+      const bodies: PolicySearchResponse[] = [];
+      for (const page of [1, 2, 3]) {
+        const response = await request(app.getHttpServer()).post('/api/v1/policies/search')
+          .send({ conditions: { regionCode, age: 28, jobCode: '0013003' }, limit: 1, page }).expect(200);
+        bodies.push(response.body);
+      }
+      expect(bodies.map((body) => body.items[0].id)).toEqual([guro.id, seoul.id, busan.id]);
+      expect(bodies.map((body) => body.items[0].score)).toEqual([1.5, 0.5, 2]);
+      expect(bodies.every((body) => body.pagination.total === 3 && body.appliedSort === 'recommended')).toBe(true);
+      expect(bodies[0].items[0].tags).toContain('REGION_RELATED');
+      expect(bodies[2].items[0].tags).not.toContain('REGION_RELATED');
+    }
+    const withoutRegion = await request(app.getHttpServer()).post('/api/v1/policies/search')
+      .send({ conditions: { age: 28, jobCode: '0013003' } }).expect(200);
+    expect(withoutRegion.body.items.map((item: { id: string }) => item.id)).toEqual([busan.id, guro.id, seoul.id]);
+    const popular = await request(app.getHttpServer()).post('/api/v1/policies/search')
+      .send({ conditions: { regionCode: '11000' }, sort: 'popular' }).expect(200);
+    expect(popular.body.items.map((item: { id: string }) => item.id)).toEqual([busan.id, guro.id, seoul.id]);
+  });
+
   it('빈 DB도 POST 검색에 200과 공용 빈 응답을 반환한다', async () => {
     await request(app.getHttpServer()).post('/api/v1/policies/search').send({}).expect(200)
       .expect({ items: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 0 }, appliedSort: 'popular' });

@@ -2155,3 +2155,35 @@ git diff --check
 ## 73. 다음 작업을 위한 상태
 
 다음 단계 대상은 **Step 56: Docker 실행·운영 복구 점검**이다. Step 55까지 완료했으며 Step 56~57은 미착수다. Step 54는 커밋했고 Step 55는 커밋하지 않았다. Step 55의 미해결 실패는 없으며 프록시 사용자의 호출 한도 공유·단일 프로세스 집계 한계는 SPEC 4.3에 기록했다. 다음 단계는 별도 요청을 기다린다.
+
+## 74. PLAN 외 추가 작업: 지역 검색 품질 개선 (2026-10-24)
+
+사용자가 요청한 MVP1 추가 작업으로 진행했다. AGENT_RULES → PLAN의 기존 지역·정렬 Step과 선행 완료 기록 → SPEC 7·8·9장 → 관련 매칭·검색·화면 코드를 대조했다. 요청 자체로 승인된 판정·정렬 변경을 PRD·ARCHITECTURE·SPEC·PLAN에 반영했으며 Step 56~57은 진행하지 않았다.
+
+- `checkRegion`은 사용자와 정책 양쪽에서 공식 현행 부모 관계를 따라 같은 지역·상위·하위 지역을 판정한다. 서울 전체는 25개 구 각각과 관련이며 구로구는 구로구·서울 전체와 관련이다. 형제 지역은 관련으로 추정하지 않고, 폐지·미확인 코드와 잘못된 부모 관계는 확인 필요로 남긴다. 확인된 일치는 +0.5점 한 번만 부여한다.
+- 지역을 입력한 맞춤순에만 기존 `REGION_RELATED` 태그를 첫 정렬 기준으로 사용한다. 그다음 기존 점수 → 마감 임박 → 조회수 → 공통 동점 기준을 유지한다. 지역 미입력과 인기·마감·최신순, 나이·취업·학력 점수와 보수적 제외 규칙은 유지한다. 지역 불일치 정책도 전체 정렬 뒤 페이지에 남는다.
+- 지역 선택 영역에 관련 정책 우선 안내, ‘지역 관련’은 신청 자격 충족을 뜻하지 않는다는 설명, 재학·재직·전입 조건의 상세 확인 안내를 추가했다. 광범위한 코드 목록을 전국 신청 가능으로 해석하지 않는다.
+- API 경로·요청/응답 계약, DB 스키마·Migration·시드·수집·패키지는 변경하지 않았다. `SPEC_SUMMARY.md`는 현재 존재하지 않아 생성하지 않았다. Git 커밋은 실행하지 않았다.
+
+### 검증
+
+```bash
+npm run typecheck
+node /tmp/youth-region-db-tests.cjs
+docker compose -f compose.yaml -f compose.local.yaml build api web
+docker compose -f compose.yaml -f compose.local.yaml up -d --no-deps --force-recreate --wait --wait-timeout 60 api web
+LD_LIBRARY_PATH=/tmp/youth-region-browser-libs/root/usr/lib/x86_64-linux-gnu PLAYWRIGHT_MODULE=/home/leenohoon/youth-kkultong-before/node_modules/.pnpm/playwright@1.64.0/node_modules/playwright/index.mjs node --test --test-name-pattern='현행 부모 관계|네 가지 정렬|정렬 선택|조건.*정렬' apps/web/test/policy-exploration.e2e.mjs
+LD_LIBRARY_PATH=/tmp/youth-region-browser-libs/root/usr/lib/x86_64-linux-gnu PLAYWRIGHT_MODULE=/home/leenohoon/youth-kkultong-before/node_modules/.pnpm/playwright@1.64.0/node_modules/playwright/index.mjs node --test --test-name-pattern='^네 정렬은' apps/web/test/policy-exploration.e2e.mjs
+node --check apps/web/test/policy-exploration.e2e.mjs
+git diff --check
+```
+
+- 전체 타입 검사, API·웹 프로덕션 Docker 빌드, 관련 API 6개 스위트 217개 테스트가 통과했다. API 선택 범위는 지역·종합 매칭·정렬·검색 후보·응답·실제 DB/HTTP 검색이다. 전체 API/브라우저 테스트 트리를 재실행한 것은 아니다.
+- 실제 브라우저 4개 시나리오(지역 선택·해제와 안내, 페이지 이동, 저장된 정렬 복원, 네 정렬 전환)가 모두 통과했다.
+- 새 단위 검증은 공식 서울 25개 구 각각, 구로구의 상위·형제 관계, 여러 단계 하위 관계, 저득점 관련 정책 우선과 지역 미입력·다른 정렬 유지를 포함한다. HTTP 검증은 서울 전체/구로구와 28세·미취업 조건에서 구로구 1.5점 → 서울 전체 0.5점 → 부산 2점의 세 페이지 순서·총건수·태그를 확인했다. 지역 미입력 및 인기순은 부산이 먼저 나온다.
+- DB 테스트 실행기는 `.env` 비밀값을 메모리에서만 읽어 로컬 DB URL을 구성하고 자식 프로세스에 전달했다. 테스트 데이터는 기존 통합 테스트의 임시 스키마에만 생성·삭제했으며 비밀값은 출력하지 않았다. Chromium에 누락된 라이브러리는 `/tmp`에만 내려받아 추출했고 시스템 패키지는 변경하지 않았다.
+- DB 컨테이너·볼륨은 유지하고 API·웹만 새 이미지로 재생성했다. 최종 세 서비스 모두 healthy이며 `http://localhost:3000/policies`에서 확인할 수 있다. 운영 정책은 변경 전후 **3,390건**, 전체 행 JSON MD5 **`46a965ded0407e47a7af9816cd3e7b6e`**로 같고 `step41_test_%` 임시 스키마는 0개다.
+
+핵심 코드 읽는 순서: `region-match.ts` → `sort-policies.ts` → `policy-search-response.ts` → `region-filter.tsx` → `policy-search.integration.spec.ts`.
+
+남은 한계: 지역 관련은 코드 관계만 나타내며 실제 재학·재직·전입 등 신청 자격을 확정하지 않는다. 다음 기존 PLAN 작업은 Step 56이며 별도 요청을 기다린다.

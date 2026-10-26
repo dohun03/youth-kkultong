@@ -11,7 +11,7 @@ describe('정책 목록 정렬', () => {
   function policy(id: string, overrides: Partial<SortablePolicy> = {}): SortablePolicy {
     return { id, externalId: '000001', viewCount: 10, sourceRegisteredAt: new Date('2026-10-01T00:00:00Z'),
       applicationStatus: 'OPEN', applicationStartDate: '2026-10-01', applicationEndDate: '2026-10-31',
-      score: 1, ...overrides };
+      score: 1, tags: [], ...overrides };
   }
 
   /** 정렬된 내부 ID로 결과 순서를 읽기 쉽게 비교한다. */
@@ -22,6 +22,19 @@ describe('정책 목록 정렬', () => {
   it('맞춤순은 마감 임박·조회수보다 점수가 우선이다', () => {
     expect(ids([policy('low', { score: 0.5, applicationStatus: 'CLOSING_SOON', viewCount: 999 }),
       policy('high', { score: 3.5, viewCount: 0 })], 'recommended')).toEqual(['high', 'low']);
+  });
+
+  it('지역을 입력한 맞춤순은 고득점 다른 지역보다 지역 관련 정책을 우선한다', () => {
+    const rows = [policy('other', { score: 3, viewCount: 999, applicationStatus: 'CLOSING_SOON' }),
+      policy('related-low', { score: 0.5, tags: ['REGION_RELATED'] }),
+      policy('related-high', { score: 1.5, tags: ['REGION_RELATED'] })];
+    expect(sortPolicies(rows, 'recommended', true).map((row) => row.id))
+      .toEqual(['related-high', 'related-low', 'other']);
+    expect(sortPolicies(rows, 'recommended').map((row) => row.id))
+      .toEqual(['other', 'related-high', 'related-low']);
+    for (const sort of ['popular', 'deadline', 'newest'] as const) {
+      expect(sortPolicies(rows, sort, true)).toEqual(sortPolicies(rows, sort));
+    }
   });
 
   it('T-16 점수가 같으면 조회수가 낮아도 마감 임박이 우선이다', () => {
@@ -127,7 +140,7 @@ describe('정책 목록 정렬', () => {
 
   it.each(sorts)('%s는 빈 배열·단일 정책도 반환하고 추가 필드를 보존한다', (sort) => {
     expect(sortPolicies([], sort)).toEqual([]);
-    const row = { ...policy('only'), title: '정책 제목', tags: ['AGE_MATCH'] };
+    const row = { ...policy('only'), title: '정책 제목', tags: ['AGE_MATCH'] as const };
     const result = sortPolicies([row], sort);
     expect(result).toEqual([row]);
     expect(result[0].title).toBe('정책 제목');

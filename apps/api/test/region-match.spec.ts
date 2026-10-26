@@ -17,7 +17,7 @@ describe('지역 연관성 판정', () => {
     [['48120'], '48121', related], [['48121'], '48121', related],
     [['41111', '41110', '41000', '41111'], '41111', related],
     [['11110'], '41111', neutral], [['41113'], '41111', neutral],
-    [['41111'], '41110', neutral], [['48170'], '48121', neutral],
+    [['41111'], '41110', related], [['48170'], '48121', neutral],
     [['28110'], '41111', review], [['28260'], '41111', review],
     [['41195'], '41192', review], [['99999'], '41111', review],
     [[''], '41111', review], [[' '], '41111', review],
@@ -30,6 +30,17 @@ describe('지역 연관성 판정', () => {
     const result = checkRegion({ regionCodes }, regionCode, regions);
     expect(result).toEqual(expected);
     expect(result).not.toHaveProperty('excluded');
+  });
+
+  it('서울 전체는 공식 25개 구 각각과 관련이며 구 선택은 형제 구와 관련이 없다', () => {
+    const districts = snapshot.regions.filter((region) => region.isActive && region.parentCode === '11000');
+    expect(districts).toHaveLength(25);
+    for (const district of districts) {
+      expect(checkRegion({ regionCodes: [district.code] }, '11000', regions)).toEqual(related);
+    }
+    expect(checkRegion({ regionCodes: ['11000'] }, '11530', regions)).toEqual(related);
+    expect(checkRegion({ regionCodes: ['11110'] }, '11530', regions)).toEqual(neutral);
+    expect(checkRegion({ regionCodes: ['41111'] }, '41000', regions)).toEqual(related);
   });
 
   it.each<{ regionCodes: readonly string[] | null }>([

@@ -46,7 +46,7 @@ export function RegionFilter({ regionCode, onChange, state, retry }: { regionCod
           </select>
         </div>
       ))}
-      <p>지역은 관련 정책을 찾는 참고 조건이며 다른 지역의 정책도 표시됩니다.</p>
+      <p>지역을 선택하면 맞춤순에서 지역 관련 정책을 먼저 보여주며, 다른 지역의 정책도 표시됩니다. ‘지역 관련’은 신청 자격 충족을 뜻하지 않습니다. 재학·재직·전입 조건은 정책 상세에서 확인해 주세요.</p>
       {state.status === 'loading' && <p role="status">지역 선택지를 불러오는 중입니다.</p>}
       {state.status === 'error' && <div><p role="alert">지역 선택지를 불러오지 못했습니다. 다른 조건으로 조회할 수 있어요.</p>
         <button className="retry-button" type="button" onClick={retry}>지역 다시 시도</button></div>}
