@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP1 작업 결과
 
-최종 확인일: 2026-10-26 (Asia/Seoul) · **Step 1~56 완료, Step 57 미착수**
+최종 확인일: 2026-10-26 (Asia/Seoul) · **Step 1~57 완료**
 
 ## 1. 기준 문서와 Step 1 당시 구현 상태
 
@@ -2154,7 +2154,7 @@ git diff --check
 
 ## 73. 다음 작업을 위한 상태
 
-다음 단계 대상은 **Step 57: MVP1 최종 인수·결과 기록**이다. Step 56까지 완료했으며 Step 57은 미착수다. Step 55는 `ce7627e`, 지역 검색 품질 추가 작업은 `5d619cb`로 커밋됐다. Step 56 변경은 커밋하지 않았다. 최신 운영 검증·백업 위치·제약은 아래 75장과 `OPERATIONS.md`를 참고한다. 다음 단계는 별도 요청을 기다린다.
+**MVP1 Step 1~57과 PLAN의 전체 인수 기준을 완료했다.** Step 55는 `ce7627e`, 지역 검색 추가 작업은 `5d619cb`, Step 56은 `6be5655`로 커밋됐다. Step 57의 최종 문서 변경은 커밋하지 않았다. 최신 최종 인수·테스트·남은 한계는 76장, 운영 절차와 백업은 75장 및 `OPERATIONS.md`를 참고한다. 후속 MVP는 진행하지 않았으며 별도 요청을 기다린다.
 
 ## 74. PLAN 외 추가 작업: 지역 검색 품질 개선 (2026-10-24)
 
@@ -2246,3 +2246,73 @@ git diff --check
 애플리케이션 소스 변경이 없어 단위/전체 API 테스트·브라우저 E2E는 재실행하지 않았다. Step 55의 사용자 흐름 시험을 반복하는 대신 이번 Step의 실제 컨테이너·새 볼륨·실제 CLI·백업·복원·HTTP를 검증했다. 호스트 재부팅·다른 물리 서버로의 이전·백업 자동 스케줄·외부 저장소 복제는 실행하지 않았다. 확인된 Step 56 미해결 실패는 없다.
 
 핵심 문서/코드 읽는 순서: `OPERATIONS.md` 1~4장 → `compose.yaml`의 `db_data`/`ingestion_logs` → `Dockerfile`의 API/웹 실행 이미지 → `import-policies.ts`·`ingestion-log.service.ts`. 다음 단계는 Step 57이며 별도 요청을 기다린다.
+
+## 76. Step 57 MVP1 최종 인수·결과 기록 (2026-10-26)
+
+사용자 요청으로 Step 56의 실행·복구 지침을 `6be5655` (`docs: MVP1 실행과 데이터 복구 절차 검증`)로 먼저 커밋했다. AGENT_RULES → PLAN Step 57과 전체 인수 기준 → SPEC 검증 목록 → 이전 완료 기록 → 실제 소스·테스트를 대조했다. Step 1~56의 작업 항목에 미완료 체크가 없음을 확인했다.
+
+### 최종 구현 범위와 문서 정정
+
+- 온통청년 수동 전체 수집, 페이지/전체 자료 검증, 정규화·내용 해시, 중복 실행 잠금, 단일 트랜잭션의 묶음 저장, 신규/변경/동일 판정, 안전한 실패·재시도·파일 로그를 구현했다.
+- 정책 목록·상세·분야·제목 검색·마감 포함·선택 조건·정렬·페이지네이션·10/20/50개 표시와 탭 세션 복원을 구현했다. 모호한 자격은 보수적으로 유지하며 나이·취업·학력 각 +1점, 지역 +0.5점을 유지한다. 공식 부모·자식 관계의 지역 판정과 지역 입력 시 맞춤순의 지역 관련 우선 기준도 포함한다.
+- 신청 상태는 한국 날짜로 계산한다. 화면은 실제 신청 자격 확정을 주장하지 않으며 상세 원문·신청/참고 링크·확인 안내·오류/재시도·키보드 조작·좁은 화면을 지원한다. 공개 API 입력·요청 보호와 운영 실행·백업·복원 지침까지 MVP1 범위로 확인했다.
+- PRD 6.2에는 반영됐지만 4.2 정렬 표에는 누락됐던 지역 관련 우선 기준을 기존 승인 내용과 맞췄다. SPEC T-16·T-17의 동점 조건도 '지역 관련 여부가 같은 경우'임을 명확히 했다. 새 기능·판정 규칙 변경이 아닌 기존 승인/구현 내용의 문서 정정이다.
+- 최종 인수 결과에 따라 PLAN Step 57과 전체 완료 기준 11개를 완료 표시했다. 이 기록 이전의 장은 각 작업 당시 상태다. `SPEC_SUMMARY.md`는 현재 존재하지 않아 생성하지 않았다. API/웹 소스·DB 스키마·Migration·의존성·운영 정책 데이터는 변경하지 않았다.
+
+### SPEC 검증 목록과 근거
+
+SPEC 9장의 **39개 시나리오**를 아래 근거에 연결했다. 단위 테스트는 순수 계산·HTTP 대체 응답을, 통합 테스트는 실제 PostgreSQL·NestJS HTTP·독립 CLI 프로세스를 검증한다. 수집 실패를 재현하는 테스트에서는 외부 응답만 제어하며 실제 외부 API 전체 수집은 Step 56의 별도 DB 검증 기록을 근거로 한다.
+
+| SPEC 시나리오 | 최종 인수 근거 |
+| --- | --- |
+| T-01·T-01a·T-01b | `policy-search-response.spec.ts`, `policy-search.integration.spec.ts`, 브라우저 기본 인기순·조건 해제·맞춤순 비활성화 |
+| T-02~T-08 | `age-match.spec.ts`, `job-match.spec.ts`, `school-match.spec.ts`, `evaluate-policy.spec.ts`, 실제 검색 HTTP |
+| T-09·T-10·T-10a·T-10b·T-11 | `region-match.spec.ts`, `sort-policies.spec.ts`, 검색 HTTP의 서울 전체/구로구·저득점 관련 정책 우선·다른 지역 유지·페이지 분리, 실제 지역 선택 브라우저 |
+| T-12~T-15 | `application-status.spec.ts`, 검색 HTTP의 날짜 전환/7일 경계·상세 상태, 브라우저 복수 기간/확인 필요 안내 |
+| T-16·T-17·T-22 | `sort-policies.spec.ts`, `policy-search-response.spec.ts`, 검색 HTTP의 전체 정렬 후 두 페이지 경계 |
+| T-18·T-18a·T-19 | `youth-center-retry.spec.ts`, `ingestion-failure.integration.spec.ts`: 중간 페이지 타임아웃·e003·429/503 한도 초과·중복 ID 후 DB 유지 |
+| T-20·T-21 | `youth-center-policy-hash.spec.ts`, `ingestion-success.integration.spec.ts`: 조회수만 증가 시 동일 판정, 동일 자료 반복 수집 및 200건 경계의 중복 없음 |
+| T-23·T-24 | `policy-detail.integration.spec.ts`, `policy-search.integration.spec.ts`, `request-protection.spec.ts`, `ingestion-log.spec.ts`, 브라우저 링크 없음·URL/localStorage 미저장 |
+| T-25·T-26·T-30 | `ingestion-cli-process.integration.spec.ts`, `ingestion-lock.integration.spec.ts`: 실제 두 CLI 잠금 경쟁·COMMIT 전 강제 종료·다음 실행 복구·수집 중 실제 검색 응답 |
+| T-27·T-27a·T-27b·T-27c·T-27d | `ingestion-failure.integration.spec.ts`, `policy-storage.integration.spec.ts`, `policy-storage-retry.integration.spec.ts`, `ingestion-run.integration.spec.ts`, `ingestion-log.spec.ts`: 2,000번째 CHECK 오류 전체 롤백·실제 교착/직렬화 충돌·변환/해시 실패·파일 로그 대체·실제 연결 끊김 |
+| T-28·T-29 | 실제 루트 이동 브라우저, `meta-options.integration.spec.ts`, `meta-regions.integration.spec.ts`: DB 기반 지역/분야·정적 취업/학력 코드표 |
+| PLAN Step 56 운영 인수 | 위 75장 및 `OPERATIONS.md`: 새 볼륨 초기화·실제 3,602건 수집·재생성·기존 3,390건 백업 복원·DB/로그 체크섬·HTTP |
+
+제목 검색·복수 분야 정리·목록 조작·세션 복원·요청 보호 등 추가 승인 기능도 전체 API/브라우저 테스트 실행 대상에 포함했다.
+
+### 이번 Step의 실행·검증
+
+```bash
+npm run typecheck
+node /tmp/step57-api-tests.cjs
+FONTCONFIG_FILE=/tmp/step57-fonts.conf LD_LIBRARY_PATH=/tmp/step57-browser-libs/root/usr/lib/x86_64-linux-gnu PLAYWRIGHT_MODULE=/home/leenohoon/youth-kkultong-before/node_modules/.pnpm/playwright@1.64.0/node_modules/playwright/index.mjs npm run test:e2e --workspace apps/web
+git diff --check
+```
+
+- 전체 타입 검사 통과. API 테스트는 선택 파일 없이 전체 **50개 스위트·1,332개 테스트**를 실행해 모두 통과했고 실패·건너뜀은 0개다. 이 중 파일명 기준 실제 DB/HTTP 통합 스위트는 15개이며 `database`·스키마 검증 등의 실제 DB 테스트도 별도로 포함한다.
+- 호스트 테스트용 DB URL은 `/tmp/step57-api-tests.cjs`에서 `.env`를 메모리로 읽어 구성해 자식 프로세스에 전달했다. 비밀값은 출력에서 가렸으며 테스트 데이터는 테스트가 만든 임시 스키마에서만 생성·정리했다. 전체 API 실행 결과는 `/tmp/step57-api-results.json`, 가려진 출력은 `/tmp/step57-api-output.log`에 기록했다.
+- 전체 브라우저 **65개 시나리오 모두 통과**했다. 실패·취소·건너뜀은 0개이며 실행 시간은 약 259초다. 실제 목록→조건·맞춤순→상세→신청 링크 새 탭, 네 정렬, 서울 전체/하위 지역, 제목 검색·복수 분야·세션 복원·오류/재시도·키보드·모바일을 확인했다. 외부 신청 제출은 하지 않았다. 320px 목록·상세 캡처도 직접 확인했고 320px·640px의 넘침/조작 영역 검증을 통과했다.
+- 브라우저 실행에 필요한 공유 라이브러리와 한글 Noto 글꼴은 `/tmp/step57-browser-libs`에만 내려받아 추출했다. 시스템 패키지·제품 의존성·화면 코드는 변경하지 않았다. 실제 서버의 호출 제한은 유지하고 기존 검증 도구의 600ms 순차 요청 간격을 사용했다.
+- Step 56에서 빌드·초기 실행·실제 수집·백업 복원을 이미 검증했고 이후 애플리케이션 소스 변경이 없어 해당 작업은 반복하지 않았다. 이번 Step은 전체 코드·계약·사용자 흐름의 최종 회귀 검증과 문서 인수에 집중했다.
+
+### 남은 한계·후속 검토·미실행 구분
+
+- 지역 관련은 코드 관계이고 실제 거주·재학·재직·전입 자격 확정이 아니다. 모호한 추가 설명·연령 0~0·미확인 지역 코드 등은 확인 필요로 남긴다. `e003`의 원인과 외부 API 정확한 호출 한도·삭제/비공개 규약은 미확인 상태이며 SPEC의 안전한 실패/기존 정책 유지 규칙으로 처리한다.
+- 현재 프록시 경유 사용자는 API 접속 주소의 분당 한도를 공유한다. API 재기동 시 집계가 초기화되고 다중 인스턴스에서는 공유하지 않는다. 실제 배포 구성에 맞춘 제한 방식은 SPEC 4.3의 후속 검토 사항이다.
+- 백업 자동 스케줄·보관 기한·외부 저장소 복제·다른 물리 서버 이전·호스트 재부팅 검증은 수행하지 않았다. 문서의 수동 백업·새 DB 복원 검증까지 완료했으며 외부 신청 서비스 자체의 가용성·신청 제출도 검증 범위에서 제외했다. 실제 스크린리더 음성 출력과 실물 모바일 기기 검증은 수행하지 않았다.
+- 매일 자동 수집(MVP2), 회원/로그인, 관리자 검수, 북마크/캘린더/알림, 다른 정책 출처는 PRD의 후속 MVP 범위이며 이번 MVP1 미완료 항목으로 취급하지 않는다. 현재 완료 판단은 명세의 로컬 Docker MVP1 범위다.
+
+### 권장 읽는 순서
+
+1. `PRD.md` 3~6장 → `SPEC.md` 4~8장: 사용자 기능과 판정/정렬 기준.
+2. `policies.controller.ts` → `policies-search.service.ts`: 요청 수신, 현행 지역/자격 코드 검증.
+3. `policy-search-candidates.ts` → `evaluate-policy.ts` → `region-match.ts`: 상태/분야/제목 필터, 보수적 제외·점수·지역 연관성.
+4. `policy-search-response.ts` → `sort-policies.ts` → `policy-card.ts`: 전체 정렬, 페이지 분리, 공용 카드 조립.
+5. `policies/page.tsx` → `policy-card.tsx` → 상세 페이지·세션 훅: 실제 사용자 탐색.
+6. `import-policies.ts` → `ingestion.service.ts` → 잠금/저장/로그 서비스: 수동 수집과 실패 복구.
+7. `OPERATIONS.md` → `compose.yaml` → `Dockerfile`: 실행·백업·복원. 테스트는 위 SPEC 대응표를 기준으로 읽는다.
+
+
+### 최종 상태
+
+MVP1 Step 1~57 및 전체 완료 기준 11개를 완료했다. 이번 최종 회귀에서 미해결 실패는 없다. 기존 정책은 변경 전후 **3,390건**, 전체 행 JSON MD5 **`46a965ded0407e47a7af9816cd3e7b6e`**로 같고 테스트 임시 스키마는 0개다. 기존 웹·API·DB는 healthy 상태로 유지한다. `http://localhost:3000/policies`에서 검수할 수 있다. 이번 Step은 PRD·SPEC 설명 정정과 PLAN·SUMMARY 최종 결과 기록만 변경했으며 새 기능이나 후속 MVP를 진행하지 않았다. Step 57 변경은 커밋하지 않았다.
