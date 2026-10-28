@@ -94,12 +94,13 @@ MVP 1 Step 3 진행해.
 - 가능하면 한 Step에서 핵심적으로 읽을 코드 파일 수를 적게 유지한다. 단, 책임을 억지로 한 파일에 몰아넣지는 않는다.
 - 이미 작성된 정상 동작이나 사용자 변경사항을 불필요하게 덮어쓰지 않는다.
 
-## 6. MVP1 아키텍처 준수
+## 6. MVP1·MVP2 아키텍처 준수
 
-현재 MVP1의 기술·구조 기준은 `ARCHITECTURE.md`, 세부 처리 방식은 `mvp-1/SPEC.md`를 따른다.
+기술·구조 기준은 `ARCHITECTURE.md`, 세부 처리 방식은 해당 MVP의 `mvp-N/SPEC.md`를 따른다.
 
 - 기반: **Next.js · NestJS · PostgreSQL · TypeORM · Zod · Docker Compose**.
-- `Policies`는 정책 조회·저장, `Ingestion`은 외부 API 수집·검증, `Matching`은 매칭·점수, `Meta`는 선택 항목 제공을 담당한다.
+- `Policies`는 공개·원본·검수 데이터의 조회·저장과 검수 처리, `Ingestion`은 외부 API 수집·검증, `Matching`은 매칭·점수, `Meta`는 선택 항목, `Admin`은 관리자 인증·권한 검사와 검수 API를 담당한다.
+- MVP2 정기 수집은 API의 NestJS `@Cron`이 공통 수집 서비스를 호출한다. 수동 CLI도 같은 서비스를 사용하며 수집·Migration·시드 CLI에는 스케줄러를 등록하지 않는다.
 - 수집 중복 실행에는 설계에 정해진 **PostgreSQL Advisory Lock(중복 실행 잠금)** 을 사용한다.
 - 수집의 재시도 대상·횟수, 변환 검증, 묶음 저장 및 전체 트랜잭션 처리 기준은 SPEC에 따른다. 모든 종료 경로에서 오류 기록·자원 정리를 확인한다.
 - 이후 기능을 위한 Redis, BullMQ, 분산 작업 처리, 캐시, 별도 Worker 등은 실제 필요와 승인된 설계에 따라 도입한다.
