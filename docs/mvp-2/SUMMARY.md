@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-10-28 · 상태: Step 1~2 완료 · Step 3~41 미착수
+수정일: 2026-10-28 · 상태: Step 1~3 완료 · Step 4~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -98,7 +98,7 @@ API 실행기는 `.env`를 메모리에서 읽어 로컬 DATABASE_URL을 구성�
 - 기존 백업은 2026-10-26 자료다. Step 4의 실제 이관 전에는 쓰기를 중단하고 당시 DB·로그를 새로 백업해야 하며, 과거 백업 해시 확인으로 대신하지 않는다.
 - 외부 API 정확한 호출 한도·e003 원인·삭제/비공개 규약·지역과 실제 거주 자격 대응·0~0 연령 의미는 MVP1에서 이어지는 미확인 사항이다. 기존 보수적 판정과 실패 시 데이터 유지 규칙을 따른다.
 - 프록시를 통한 접속 주소별 호출 제한 공유, 수동 백업의 보관 기한·외부 복제 등 기존 운영 한계는 유지된다. MVP2 한도 분리는 SPEC 7.2대로 구현하되 실제 사용자별 제한을 해결한 것으로 보고하지 않는다.
-- 다음 요청 대상은 **Step 3: 수집 원본과 검수 데이터 모델**이다. Step 2는 아래와 같이 완료했고 Step 3 이후 구현은 진행하지 않았다.
+- 다음 요청 대상은 **Step 4: 테이블 생성과 기존 정책 이관**이다. Step 3까지 완료했고 Step 4 이후 구현은 진행하지 않았다.
 
 Step 1 핵심 읽는 순서: MVP2 SPEC 2·5·6장 → `ingestion.service.ts` → `policies-write.service.ts`·`policy.repository.ts` → 잠금·로그 서비스 → 기존 수집/저장/CLI 통합 테스트. 관리자 계약 기준은 SPEC 3·4·7장이다.
 
@@ -129,4 +129,35 @@ git diff --check
 - 정책 3,390건·지역 537개·Migration 2개 및 전체 행 체크섬이 검증 전후 동일하다. 원본 해시 불일치·중복·잔여 임시 스키마·ORM 스키마 차이는 모두 0건이며 기존 웹·API·DB는 healthy다.
 - 공개 API·DB 스키마·의존성·웹 화면 변경은 없다. 브라우저 E2E는 Step 1의 65개 통과 기록을 유지하고 이번에는 재실행하지 않았다. PLAN에서 Step 2만 완료 표시했으며 SPEC의 계약 변경은 없다.
 
-Step 2 핵심 읽는 순서: `packages/shared/src/admin.ts` → `admin.schema.ts` → `index.ts` → `apps/api/test/admin-validation.spec.ts`. 이번 Step의 미해결 실패는 없으며 Step 2 변경은 커밋하지 않았다.
+Step 2 핵심 읽는 순서: `packages/shared/src/admin.ts` → `admin.schema.ts` → `index.ts` → `apps/api/test/admin-validation.spec.ts`. 미해결 실패는 없으며 사용자 요청으로 `9ffac15` (`feat: 관리자 API 공용 타입과 입력 검증 추가`)에 커밋했다.
+
+## 8. Step 3 수집 원본과 검수 데이터 모델 (2026-10-28)
+
+Step 2를 커밋한 뒤 SPEC 2.1~2.3과 PLAN Step 3에 따라 두 엔티티를 `apps/api/src/modules/policies/entities/`에 추가했다.
+
+- `SourcePolicy`는 최신 원본·해시·조회수·실제 첫/최근 수집 시각·수집 결과·연속 누락을 정의한다. `(source, external_id)` 복합 UNIQUE, 누락 기본값 0, 실제 수집 시각·결과의 NULL 허용, 원본 객체·해시·0 이상 조회수/누락 횟수 CHECK를 둔다.
+- `PolicyReview`는 변경본·공개 기준본 스냅샷과 처리 이력을 정의한다. 원본은 필수 다대일, 과거 공개본은 선택 다대일이며 두 FK 모두 ON DELETE RESTRICT다. 원본과 공개 정책은 별도 UUID를 갖고 기존 출처·외부 ID로 대응한다.
+- NEW는 기준 ID·해시·원본 세 값이 모두 NULL, CHANGED는 모두 필수다. 상태 CHECK는 대기/승인/거절/대체의 처리자·사유·종료 시각 조합을 검사하며 SQL NULL이 제약을 우회하지 않도록 필수값에 IS NOT NULL을 명시했다.
+- 후보의 원본 ID·종류·변경본/기준본 스냅샷·해시는 `update: false`로 일반 ORM 갱신에서 제외했다. 실제 저장 전 해시 일치·스냅샷 보존과 검수 충돌 판단은 해당 후속 Step에서 구현한다.
+- 원본당 대기 최대 한 건인 부분 UNIQUE와 누락·목록·이력·거절 해시 인덱스는 이름과 `synchronize: false`를 선언하고 정확한 키 순서·부분 조건을 주석에 적었다. 실제 생성·유일성/방향/조건 검증은 Step 4 Migration에서 수행한다. `(source_policy_id, content_hash)` 전체 UNIQUE는 추가하지 않았다.
+- 기존 DataSource의 엔티티 파일 자동 탐색을 사용한다. 공개 엔티티·API 계약·수집 저장 흐름·패키지·Migration은 변경하지 않았다.
+
+### 검증
+
+```bash
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+node /tmp/mvp2-step3-checks.cjs tests
+node /tmp/mvp2-step3-verify.cjs before
+node /tmp/mvp2-step3-verify.cjs tests
+node /tmp/mvp2-step3-tables.cjs after
+git diff --check
+```
+
+- 전체 타입 검사·shared/API 빌드 통과. `policy-review-model.spec.ts`에서 13개 원본 컬럼·15개 검수 컬럼·기본값·다대일 관계·삭제 제한·스냅샷 갱신 제외·Migration 소유 인덱스를 확인했다.
+- `policy-review-checks.integration.spec.ts`는 읽기 전용 PostgreSQL 연결에서 엔티티의 필수값·CHECK 식을 SELECT로 평가한다. 새 테이블·스키마를 만들지 않고 실제 NULL·정규식·상태별 판정을 확인했다. 두 신규 스위트의 **67개 테스트 모두 통과**했다. 최초 검증 도구가 nullable JSON을 JSONB 'null'로 전달하던 부분은 ORM과 같은 SQL NULL 전달로 정정했다.
+- 전체 API·DB 회귀는 **53개 스위트·1,631개 모두 통과**, 실패·건너뜀 0건이다. 결과와 가린 출력은 `/tmp/mvp2-step3-api-full-results.json`, `/tmp/mvp2-step3-api-full-output.log`에 보관했다.
+- 정책 3,390건·지역 537개·Migration 2개와 전체 행 체크섬이 검증 전후 동일하다. 원본 해시 불일치·중복·잔여 테스트 임시 스키마는 0건이며 기존 policies/regions만 대상으로 한 ORM 스키마 차이도 0건이다. 새 두 테이블은 아직 없음을 확인했다. **새 엔티티를 포함한 전체 스키마 차이·실제 FK/CHECK/인덱스 검증은 Step 4에서 수행한다.**
+- 웹·API·DB는 healthy 상태로 유지한다. 웹 화면 변경이 없어 브라우저 E2E·컨테이너 재빌드는 반복하지 않았다. PLAN Step 3을 완료 표시했고 SPEC의 계약 변경은 없다.
+
+Step 3 핵심 읽는 순서: `source-policy.entity.ts` → `policy-review.entity.ts` → `policy-review-model.spec.ts` → `policy-review-checks.integration.spec.ts`. 이번 Step의 미해결 실패는 없으며 Step 3 변경은 커밋하지 않았다.
