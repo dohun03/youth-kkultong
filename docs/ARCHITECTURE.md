@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) ARCHITECTURE v0.7
 
-기준: PRD v0.12 (2026-10-27) · 상태: MVP1 실제 구조 유지 · MVP2 설계 확정안
+기준: PRD v0.12 (2026-10-28) · 상태: MVP1 실제 구조 유지 · MVP2 설계 확정안
 
 이 문서는 실행 구조·모듈 경계·데이터 흐름을 정의한다. 제품 정책은 PRD, 컬럼·API·상태 전이·예외·테스트 기준은 `mvp-2/SPEC.md`를 따른다. MVP1 구현 기록은 `mvp-1/SUMMARY.md`이며 MVP2 추가 구조는 아직 구현 전이다.
 
@@ -71,7 +71,7 @@ flowchart TD
 | 모듈 | 핵심 역할 |
 | --- | --- |
 | `PoliciesModule` | 기존 공개 목록·상세·분야 조회, 공개 저장 서비스, 수집 원본·검수 후보의 저장/조회 및 검수 서비스 |
-| `MatchingModule` | 나이·취업·학력 제외 판단, 지역 관련 점수, 맞춤 정렬 |
+| 매칭 순수 함수 (`modules/matching/`) | 나이·취업·학력 제외 판단, 지역 관련 점수, 맞춤 정렬. 별도 NestJS 모듈 클래스 없이 정책 서비스에서 사용 |
 | `IngestionModule` | 온통청년 공통 수집 서비스·HTTP 전용 스케줄러·수동 CLI·검증·변환·잠금·로그, 수집분 저장 요청 |
 | `AdminModule` (MVP2) | 최소 관리자 인증·권한 검증, 보호된 검수·이력·누락 조회 API. `PoliciesModule`의 업무 서비스 호출 |
 | `MetaModule` | DB의 지역 목록(`RegionRepository`)·정책 분야 목록, 서버에 정의한 취업·학력 코드표 제공 |
