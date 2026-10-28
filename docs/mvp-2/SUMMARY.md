@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-10-28 · 상태: Step 1 완료 · Step 2~41 미착수
+수정일: 2026-10-28 · 상태: Step 1~2 완료 · Step 3~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -66,7 +66,7 @@
 - 75장 및 OPERATIONS: 별도 새 볼륨 초기화·Migration 2개·지역 537개·실제 API 73페이지/3,602건 수집·재기동·기존 3,390건의 새 DB 복원을 검증했다. 기존 운영 정책은 갱신하지 않았다.
 - 당시 웹·API·DB는 healthy였다. 이 기록만으로 현재 서비스가 실행 중이라고 판단하지 않는다.
 
-## 5. 이번 Step의 실제 검증
+## 5. Step 1의 실제 검증
 
 실행 환경은 Node.js v24.18.0·npm 11.16.0이며 기존 Docker 컨테이너와 로컬 PostgreSQL 연결을 사용했다.
 
@@ -98,6 +98,35 @@ API 실행기는 `.env`를 메모리에서 읽어 로컬 DATABASE_URL을 구성�
 - 기존 백업은 2026-10-26 자료다. Step 4의 실제 이관 전에는 쓰기를 중단하고 당시 DB·로그를 새로 백업해야 하며, 과거 백업 해시 확인으로 대신하지 않는다.
 - 외부 API 정확한 호출 한도·e003 원인·삭제/비공개 규약·지역과 실제 거주 자격 대응·0~0 연령 의미는 MVP1에서 이어지는 미확인 사항이다. 기존 보수적 판정과 실패 시 데이터 유지 규칙을 따른다.
 - 프록시를 통한 접속 주소별 호출 제한 공유, 수동 백업의 보관 기한·외부 복제 등 기존 운영 한계는 유지된다. MVP2 한도 분리는 SPEC 7.2대로 구현하되 실제 사용자별 제한을 해결한 것으로 보고하지 않는다.
-- 다음 요청 대상은 **Step 2: 관리자 API 타입과 입력 검증**이다. Step 2 이후 구현은 진행하지 않았다.
+- 다음 요청 대상은 **Step 3: 수집 원본과 검수 데이터 모델**이다. Step 2는 아래와 같이 완료했고 Step 3 이후 구현은 진행하지 않았다.
 
-핵심 읽는 순서: MVP2 SPEC 2·5·6장 → `ingestion.service.ts` → `policies-write.service.ts`·`policy.repository.ts` → 잠금·로그 서비스 → 기존 수집/저장/CLI 통합 테스트. Step 2 구현 시에는 SPEC 3·4·7장의 관리자 계약을 우선 확인한다.
+Step 1 핵심 읽는 순서: MVP2 SPEC 2·5·6장 → `ingestion.service.ts` → `policies-write.service.ts`·`policy.repository.ts` → 잠금·로그 서비스 → 기존 수집/저장/CLI 통합 테스트. 관리자 계약 기준은 SPEC 3·4·7장이다.
+
+## 7. Step 2 관리자 API 타입과 입력 검증 (2026-10-28)
+
+사용자가 확인한 Step 1 문서를 `6d72027` (`docs: MVP2 Step 1 기존 구현 대조와 시작 상태 기록`)로 커밋한 뒤 Step 2만 진행했다.
+
+- `packages/shared/src/admin.ts`에 SPEC 3장의 요청·응답·스냅샷·필드 차이·상태 타입 20개를 정의했다. TypeScript 구문으로 비교해 SPEC의 선언과 일치함을 확인했다. DB 엔티티·트랜잭션 타입은 추가하지 않았다.
+- `admin.schema.ts`에 로그인·빈 객체 로그아웃·검수 UUID·승인·거절·검수 query·누락 query 검증을 정의하고 `index.ts`에서 타입과 함께 내보냈다. 기존 공개 타입·검색 스키마는 유지했다.
+- 요청 객체는 정의한 필드만 받는다. 두 해시는 소문자 16진수 64자리이며 신규 기준 해시의 NULL과 필드 생략을 구분한다. 거절 사유는 앞뒤 공백 제거 후 1~1000자이고 비밀번호는 1~256자 원문 공백을 보존한다.
+- query는 정수 문자열을 검증한 뒤 안전한 정수로 변환한다. 기본 page=1·limit=20, 최대 limit=50이며 검수 기본 상태는 PENDING, 최소 누락 횟수는 기본 1·최대 2147483647이다. 중복 query의 배열·NULL·잘못된 필터·추가 필드를 거부하고 검색어의 앞뒤 공백만 제거한다.
+- `apps/api/test/admin-validation.spec.ts`의 232개 테스트로 정상·경계·오류 입력을 확인했다. T2-31·T2-41의 입력 검증 부분이며 실제 관리자 HTTP 응답·목록 조회·정렬은 해당 후속 Step에서 검증한다.
+
+### 검증
+
+```bash
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+npm test --workspace apps/api -- --runTestsByPath test/admin-validation.spec.ts test/policy-search-validation.spec.ts --json --outputFile=/tmp/mvp2-step2-validation-results.json
+node /tmp/mvp2-step2-verify.cjs before
+node /tmp/mvp2-step2-verify.cjs tests
+node /tmp/mvp2-step2-verify.cjs after
+git diff --check
+```
+
+- 전체 타입 검사·shared/API 빌드 통과. 신규 관리자 232개와 기존 공개 검색 60개, **2개 스위트·292개** 모두 통과했다.
+- 실제 PostgreSQL·HTTP·독립 CLI를 포함한 전체 API 회귀는 **51개 스위트·1,564개 모두 통과**, 실패·건너뜀 0건이다. 실행기는 `.env`를 메모리에서 읽어 127.0.0.1:5433에 연결하고 기존 방식의 임시 스키마만 생성·정리했다. 결과와 가린 출력은 `/tmp/mvp2-step2-api-full-results.json`, `/tmp/mvp2-step2-api-full-output.log`에 보관했다.
+- 정책 3,390건·지역 537개·Migration 2개 및 전체 행 체크섬이 검증 전후 동일하다. 원본 해시 불일치·중복·잔여 임시 스키마·ORM 스키마 차이는 모두 0건이며 기존 웹·API·DB는 healthy다.
+- 공개 API·DB 스키마·의존성·웹 화면 변경은 없다. 브라우저 E2E는 Step 1의 65개 통과 기록을 유지하고 이번에는 재실행하지 않았다. PLAN에서 Step 2만 완료 표시했으며 SPEC의 계약 변경은 없다.
+
+Step 2 핵심 읽는 순서: `packages/shared/src/admin.ts` → `admin.schema.ts` → `index.ts` → `apps/api/test/admin-validation.spec.ts`. 이번 Step의 미해결 실패는 없으며 Step 2 변경은 커밋하지 않았다.
