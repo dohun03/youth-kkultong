@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-10-29 · 상태: Step 1~4 완료 · Step 5~41 미착수
+수정일: 2026-10-29 · 상태: Step 1~5 완료 · Step 6~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -98,7 +98,7 @@ API 실행기는 `.env`를 메모리에서 읽어 로컬 DATABASE_URL을 구성�
 - 최신 이관 전 DB·로그 백업은 `backups/mvp2-step4-20261028225754/`에 보관했다. 새 수집 저장 흐름으로 전환하는 Step 11 전까지 기존 수동 수집 CLI 실행은 중단한다. 이후 실제 쓰기·운영 전환 전에는 해당 시점 백업을 다시 만든다.
 - 외부 API 정확한 호출 한도·e003 원인·삭제/비공개 규약·지역과 실제 거주 자격 대응·0~0 연령 의미는 MVP1에서 이어지는 미확인 사항이다. 기존 보수적 판정과 실패 시 데이터 유지 규칙을 따른다.
 - 프록시를 통한 접속 주소별 호출 제한 공유, 수동 백업의 보관 기한·외부 복제 등 기존 운영 한계는 유지된다. MVP2 한도 분리는 SPEC 7.2대로 구현하되 실제 사용자별 제한을 해결한 것으로 보고하지 않는다.
-- 다음 요청 대상은 **Step 5: 수집 원본 조회·저장**이다. Step 4까지 완료했고 Step 5 이후 구현은 진행하지 않았다.
+- 다음 요청 대상은 **Step 6: 검수 후보와 스냅샷 보관**이다. Step 5까지 완료했고 Step 6 이후 구현은 진행하지 않았다.
 
 Step 1 핵심 읽는 순서: MVP2 SPEC 2·5·6장 → `ingestion.service.ts` → `policies-write.service.ts`·`policy.repository.ts` → 잠금·로그 서비스 → 기존 수집/저장/CLI 통합 테스트. 관리자 계약 기준은 SPEC 3·4·7장이다.
 
@@ -201,3 +201,36 @@ git diff --check
 2026-10-29 코드 검수: TypeORM 선언과 구현을 확인해 deprecated인 `QueryRunner.connection`을 권장 `dataSource`로 교체하고, 주석을 1~9번 핵심 실행 행위로 정리했다. API 타입 검사·shared/API 빌드·별도 DB 이관 통합 테스트 15개가 통과했다. 최초 재검증은 DB 연결 거부로 실패했고 기존 컨테이너를 시작한 뒤 통과했다. 결과는 `/tmp/mvp2-step4-review-results.json`에 보관했다.
 
 Step 4 핵심 읽는 순서: `1793199600000-create-policy-review-tables.ts` → `policy-review-migration.integration.spec.ts` → Step 3 엔티티의 제약 정의. 이번 Step의 미해결 실패는 없다.
+
+## 10. Step 5 수집 원본 조회·저장 (2026-10-29)
+
+AGENT_RULES → PLAN Step 5 → SPEC 2.1·5.3~5.4 → Step 4 결과 → 기존 저장소·트랜잭션·통합 테스트를 확인하고 원본 저장소만 추가했다.
+
+- `source-policy.repository.ts`의 `SourcePolicyRepository`를 PoliciesModule에 등록·내보냈다. 별도 연결을 만들지 않고 호출자가 전달한 진행 중인 트랜잭션의 EntityManager만 사용한다. 확정·취소·연결 반환은 호출자가 맡는다. 자동 확정 연결은 거부한다.
+- `findBySourceForUpdate()`는 해당 출처의 원본 전체를 한 번에 조회하면서 `(source, external_id)` 오름차순으로 `FOR UPDATE` 잠금을 잡는다. 후보·공개본 판단 전에 호출할 메서드이며, 저장 서비스에서의 연결은 Step 10 범위다.
+- `upsertCollectedPolicies()`는 복합 식별자 중복을 전체 입력에서 먼저 거부하고 정렬된 원본을 `POLICY_IMPORT_BATCH_SIZE`(기본·최대 200건)씩 저장한다. 원문·해시·제목·조회수·수집 결과를 갱신하고, 전달받은 공통 관찰 시각으로 최근 수집 시각을 기록한다. 첫 수집 시각은 NULL일 때만 채우며 UUID·생성 시각은 보존한다. 재관찰한 원본의 누락 횟수는 0으로 초기화한다.
+- `updateMissingPolicies()`는 상위 서비스가 계산한 누락 횟수와 MISSING 결과·DB 갱신 시각만 묶음 갱신한다. 원문·해시·조회수·실제 첫/최근 수집 시각은 유지한다. 누락 ID 중복도 쓰기 전에 거부한다.
+- 신규 입력 타입은 서버 저장소에만 정의했다. NEW·CHANGED·UNCHANGED 비교와 누락 증가·상한 계산은 Step 8, 후보 저장은 Step 6, 전체 저장 연결·CLI 전환은 Step 10~11에서 진행한다. 기존 공개 저장·수동 CLI는 변경하지 않았고 실제 외부 수집도 실행하지 않았다.
+- `source-policy-storage.integration.spec.ts`는 무작위 임시 스키마에 기존 Migration을 적용해 실제 PostgreSQL에서 검증하고 종료 시 정리한다. 별도 연결의 잠금 시간 초과·일반 SELECT·다른 출처 갱신·잠금 반환 후 쓰기, 401건의 200·200·1건 저장/누락 갱신, 설정된 묶음 크기, 이관 NULL 시각, 첫 수집·UUID 보존, 중복·특수문자·NULL 조회수, 뒤 묶음 제약 실패와 호출자 전체 취소를 확인한다.
+
+### 검증
+
+```bash
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+node /tmp/mvp2-step5-verify.cjs before
+node /tmp/mvp2-step5-verify.cjs focused
+node /tmp/mvp2-step5-verify.cjs full
+node /tmp/mvp2-step5-verify.cjs after
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml ps
+git diff --check
+```
+
+- 전체 타입 검사·shared/API 빌드·diff 검사 통과. 신규 실제 DB 통합 **17개**, 전체 API·DB **55개 스위트·1,663개 테스트 모두 통과**, 실패·건너뜀 0건이다. 실제 PostgreSQL·HTTP·독립 CLI를 포함하며 기존 수집 기대값은 그대로 유지했다.
+- 실행기는 `.env`의 비밀값을 출력하지 않고 로컬 PostgreSQL URL을 구성한다. 결과와 가린 출력은 `/tmp/mvp2-step5-{focused,full}-results.json`, `/tmp/mvp2-step5-{focused,full}-output.log`에 보관했다. 최초 테스트의 타입 오류와 기존 원본 준비 전에 트랜잭션을 시작하던 자료 준비 순서를 바로잡은 뒤 재검증했다. PostgreSQL의 CURRENT_TIMESTAMP는 트랜잭션 시작 시각이므로 실제처럼 기존 원본을 먼저 확정한 뒤 수집 트랜잭션을 시작하도록 맞췄다.
+- 검증 전후 공개 정책 3,390건·원본 3,390건·검수 0건·지역 537개·Migration 3개와 각 테이블 전체 행 체크섬이 동일하다. 공개 정책 체크섬은 기존 `46a965ded0407e47a7af9816cd3e7b6e`를 유지하고 잔여 테스트 임시 스키마는 0개다. 전후 비교 자료는 `/tmp/mvp2-step5-before.json`, `/tmp/mvp2-step5-after.json`에 있다.
+- 기존 웹·API·DB는 모두 healthy다. 공개 API 계약·DB 스키마·Migration·의존성·환경변수·웹 화면 변경은 없다. 화면 변경이 없어 브라우저 E2E와 컨테이너 재빌드는 반복하지 않았다. PLAN Step 5만 완료 표시했으며 SPEC의 설계 변경은 없다.
+
+Step 5 핵심 읽는 순서: `source-policy.repository.ts`의 입력 타입 → 원본 잠금 조회 → 관찰·누락 저장 → `policies.module.ts` → `source-policy-storage.integration.spec.ts`. 이번 Step의 미해결 실패는 없다. 누락 판정·후보 저장·CLI 연결은 각 후속 Step에서 진행하며, Step 11 전까지 기존 수동 수집 CLI 실행 중단 원칙을 유지한다.
+
+2026-10-29 주석 정리: 사용자가 수정한 AGENT_RULES 10장에 맞춰 위 세 코드 파일의 주석을 역할과 실행 단계 중심으로 정리했다. 명사형 표현을 사용하고 가운데 점과 현재 로직에 불필요한 설명을 줄였다. TypeScript 구문 비교로 주석을 제외한 코드가 수정 전과 동일함을 확인했고 `git diff --check`를 통과했다. 주석만 수정했으므로 동작 테스트는 재실행하지 않았다.
