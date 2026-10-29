@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-10-28 · 상태: Step 1~3 완료 · Step 4~41 미착수
+수정일: 2026-10-29 · 상태: Step 1~4 완료 · Step 5~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -94,11 +94,11 @@ API 실행기는 `.env`를 메모리에서 읽어 로컬 DATABASE_URL을 구성�
 
 ## 6. 남은 문제와 다음 작업
 
-- Step 1의 대조·시작 상태 기록과 기존 서비스·DB 보존 검증을 완료했다. 기존 웹·API·DB는 healthy 상태로 유지하며 `http://localhost:3000/policies`에서 확인할 수 있다.
-- 기존 백업은 2026-10-26 자료다. Step 4의 실제 이관 전에는 쓰기를 중단하고 당시 DB·로그를 새로 백업해야 하며, 과거 백업 해시 확인으로 대신하지 않는다.
+- 로컬 DB는 Step 4 이관을 완료했다. 공개 정책 3,390건·원본 3,390건·검수 0건·지역 537개·Migration 3개이며 웹·API·DB는 healthy다. `http://localhost:3000/policies`에서 확인할 수 있다.
+- 최신 이관 전 DB·로그 백업은 `backups/mvp2-step4-20261028225754/`에 보관했다. 새 수집 저장 흐름으로 전환하는 Step 11 전까지 기존 수동 수집 CLI 실행은 중단한다. 이후 실제 쓰기·운영 전환 전에는 해당 시점 백업을 다시 만든다.
 - 외부 API 정확한 호출 한도·e003 원인·삭제/비공개 규약·지역과 실제 거주 자격 대응·0~0 연령 의미는 MVP1에서 이어지는 미확인 사항이다. 기존 보수적 판정과 실패 시 데이터 유지 규칙을 따른다.
 - 프록시를 통한 접속 주소별 호출 제한 공유, 수동 백업의 보관 기한·외부 복제 등 기존 운영 한계는 유지된다. MVP2 한도 분리는 SPEC 7.2대로 구현하되 실제 사용자별 제한을 해결한 것으로 보고하지 않는다.
-- 다음 요청 대상은 **Step 4: 테이블 생성과 기존 정책 이관**이다. Step 3까지 완료했고 Step 4 이후 구현은 진행하지 않았다.
+- 다음 요청 대상은 **Step 5: 수집 원본 조회·저장**이다. Step 4까지 완료했고 Step 5 이후 구현은 진행하지 않았다.
 
 Step 1 핵심 읽는 순서: MVP2 SPEC 2·5·6장 → `ingestion.service.ts` → `policies-write.service.ts`·`policy.repository.ts` → 잠금·로그 서비스 → 기존 수집/저장/CLI 통합 테스트. 관리자 계약 기준은 SPEC 3·4·7장이다.
 
@@ -160,4 +160,44 @@ git diff --check
 - 정책 3,390건·지역 537개·Migration 2개와 전체 행 체크섬이 검증 전후 동일하다. 원본 해시 불일치·중복·잔여 테스트 임시 스키마는 0건이며 기존 policies/regions만 대상으로 한 ORM 스키마 차이도 0건이다. 새 두 테이블은 아직 없음을 확인했다. **새 엔티티를 포함한 전체 스키마 차이·실제 FK/CHECK/인덱스 검증은 Step 4에서 수행한다.**
 - 웹·API·DB는 healthy 상태로 유지한다. 웹 화면 변경이 없어 브라우저 E2E·컨테이너 재빌드는 반복하지 않았다. PLAN Step 3을 완료 표시했고 SPEC의 계약 변경은 없다.
 
-Step 3 핵심 읽는 순서: `source-policy.entity.ts` → `policy-review.entity.ts` → `policy-review-model.spec.ts` → `policy-review-checks.integration.spec.ts`. 이번 Step의 미해결 실패는 없으며 Step 3 변경은 커밋하지 않았다.
+Step 3 핵심 읽는 순서: `source-policy.entity.ts` → `policy-review.entity.ts` → `policy-review-model.spec.ts` → `policy-review-checks.integration.spec.ts`. 미해결 실패는 없으며 사용자 요청으로 `19df3ba` (`feat: 수집 원본과 검수 데이터 모델 정의`)에 커밋했다.
+
+## 9. Step 4 테이블 생성과 기존 정책 이관 (2026-10-28)
+
+Step 3을 커밋한 뒤 `1793199600000-create-policy-review-tables.ts`와 `policy-review-migration.integration.spec.ts`를 추가했다. SPEC의 DB·API 계약과 Step 3 엔티티 정의는 변경하지 않았다.
+
+- Migration은 트랜잭션 안에서만 실행한다. 기존 policies에 SHARE 잠금을 잡아 공개 SELECT를 유지하면서 쓰기를 막고, 중복 식별자·JSON 객체·기존 내용 해시를 검증한 뒤 두 테이블과 FK/CHECK/인덱스를 생성한다.
+- 기존 공개본의 출처·외부 ID·제목·원본·해시·조회수를 INSERT SELECT로 초기 원본에 복사한다. 새 원본 UUID를 생성하고 실제 수집 시각·결과=NULL, 누락=0, 생성·갱신 시각=이관 시각으로 둔다. 공개 UUID·전체 행·지역은 수정하지 않으며 검수 후보·가상 승인 이력도 만들지 않는다.
+- 부분·DESC 인덱스 6개는 이름·키 순서·부분 조건·유일성을 SQL로 고정했다. 원본당 PENDING은 최대 한 건이고 종료된 같은 해시 이력은 여러 건 저장할 수 있다. 자동 down은 데이터 삭제 없이 오류로 중단하고 백업 복원을 안내한다.
+- 별도 생성한 검증 DB에서 정상 이관·빈 DB·해시 불일치·중복·원본 복사 후 실제 DB 오류의 롤백, 재실행 없음, 실제 FK/CHECK·대기 유일성·전체 ORM 스키마 일치를 확인했다. 검증 코드의 배열 파싱·삽입 객체 재사용·실패 주입 반환 형식을 정정한 뒤 전체 회귀를 다시 통과했다.
+
+### 실제 백업·복원·로컬 적용
+
+- 기존 출처별 Advisory Lock을 확보해 다른 CLI 수집을 막고, 현재 DB custom dump와 수집 로그 tar를 새로 백업했다. 보관 위치는 `backups/mvp2-step4-20261028225754/`이며 디렉터리 700·파일 600, 두 백업의 SHA-256 확인을 통과했다. Git·이미지 빌드 대상에서는 제외된다.
+- 새 빈 복원 DB에 백업을 실제 복원하고 공개·지역·기존 Migration 전체 행의 일치를 확인한 뒤 새 Migration을 적용했다. 이관 결과와 전체 ORM 스키마 차이 0건을 먼저 확인한 다음 원래 로컬 DB에도 적용했다. 검증 DB는 이번에 생성한 것만 정리했다.
+- 최종 상태는 **공개 3,390건·원본 3,390건·검수 0건·지역 537개·Migration 3개**다. 원본 대응·해시·조회수·초기 시각/누락 정보 불일치와 전체 ORM 스키마 차이는 0건이다. Migration 재실행은 반영 0개다.
+- 공개 전체 행 JSON MD5 `46a965ded0407e47a7af9816cd3e7b6e`, 지역 `a51e60bd1ddaa0f13f1830ccbf751da2`는 이관 전후 동일하다. 새 원본·검수 인덱스 정의는 백업 폴더의 `restored-result.json`·`migration-result.json`에, 이전 기준값은 `baseline.json`에 보관했다.
+- 새 API 이미지를 빌드하고 API 컨테이너만 갱신했다. 컨테이너의 migration:show에서 세 Migration 모두 `[X]`이며 웹·API·DB는 healthy다. 실제 API와 기존 웹 프록시의 health·지역·분야·서울/28세 맞춤 검색·상세 및 웹 목록은 모두 200이다. 기존 웹 컨테이너와 DB·수집 로그 볼륨은 유지했고 잔여 검증 DB·임시 스키마·Advisory Lock은 0개다.
+
+### 실행·검증
+
+```bash
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+node /tmp/mvp2-step4-migration-tests.cjs tests
+node /tmp/mvp2-step4-verify.cjs before
+node /tmp/mvp2-step4-verify.cjs tests
+node /tmp/mvp2-step4-verify.cjs after
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml build api
+node /tmp/mvp2-step4-operations.cjs
+(cd backups/mvp2-step4-20261028225754 && sha256sum -c SHA256SUMS)
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml up -d --no-deps --force-recreate --wait --wait-timeout 60 api
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml exec -T api npm run migration:show --workspace apps/api
+git diff --check
+```
+
+전체 타입 검사·shared/API 빌드·Docker API 빌드·diff 검사 통과. 신규 별도 DB 통합 **15개**, 전체 API·DB **54개 스위트·1,646개 테스트 모두 통과**, 실패·건너뜀 0건이다. 전체 결과와 가린 출력은 `/tmp/mvp2-step4-api-full-results.json`, `/tmp/mvp2-step4-api-full-output.log`에 있다. T2-01~02의 이관·롤백 기준을 확인했으며 동일 자료 재수집 판정은 새 수집 흐름을 연결하는 Step 11에서 검증한다. 웹 화면 변경이 없어 브라우저 전체 E2E는 반복하지 않았다.
+
+2026-10-29 코드 검수: TypeORM 선언과 구현을 확인해 deprecated인 `QueryRunner.connection`을 권장 `dataSource`로 교체하고, 주석을 1~9번 핵심 실행 행위로 정리했다. API 타입 검사·shared/API 빌드·별도 DB 이관 통합 테스트 15개가 통과했다. 최초 재검증은 DB 연결 거부로 실패했고 기존 컨테이너를 시작한 뒤 통과했다. 결과는 `/tmp/mvp2-step4-review-results.json`에 보관했다.
+
+Step 4 핵심 읽는 순서: `1793199600000-create-policy-review-tables.ts` → `policy-review-migration.integration.spec.ts` → Step 3 엔티티의 제약 정의. 이번 Step의 미해결 실패는 없다.
