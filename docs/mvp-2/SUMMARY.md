@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-10-30 · 상태: Step 1~9 완료 · Step 10~41 미착수
+수정일: 2026-10-30 · 상태: Step 1~10 완료 · Step 11~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -98,7 +98,7 @@ API 실행기는 `.env`를 메모리에서 읽어 로컬 DATABASE_URL을 구성�
 - 최신 이관 전 DB·로그 백업은 `backups/mvp2-step4-20261028225754/`에 보관했다. 새 수집 저장 흐름으로 전환하는 Step 11 전까지 기존 수동 수집 CLI 실행은 중단한다. 이후 실제 쓰기·운영 전환 전에는 해당 시점 백업을 다시 만든다.
 - 외부 API 정확한 호출 한도·e003 원인·삭제/비공개 규약·지역과 실제 거주 자격 대응·0~0 연령 의미는 MVP1에서 이어지는 미확인 사항이다. 기존 보수적 판정과 실패 시 데이터 유지 규칙을 따른다.
 - 프록시를 통한 접속 주소별 호출 제한 공유, 수동 백업의 보관 기한·외부 복제 등 기존 운영 한계는 유지된다. MVP2 한도 분리는 SPEC 7.2대로 구현하되 실제 사용자별 제한을 해결한 것으로 보고하지 않는다.
-- 다음 요청 대상은 **Step 10: 수집분 일괄 저장 연결**이다. Step 9까지 완료했고 Step 10 이후 구현은 진행하지 않았다.
+- 다음 요청 대상은 **Step 11: 기존 CLI를 새 수집 흐름으로 전환**이다. Step 10까지 완료했고 Step 11 이후 구현은 진행하지 않았다.
 
 Step 1 핵심 읽는 순서: MVP2 SPEC 2·5·6장 → `ingestion.service.ts` → `policies-write.service.ts`·`policy.repository.ts` → 잠금·로그 서비스 → 기존 수집/저장/CLI 통합 테스트. 관리자 계약 기준은 SPEC 3·4·7장이다.
 
@@ -367,4 +367,38 @@ git diff --check
 - 공개 정책 3,390건, 원본 3,390건, 검수 0건, 지역 537개, Migration 3개와 각 테이블 전체 행 체크섬이 검증 전후 동일하다. 공개 정책 체크섬은 `46a965ded0407e47a7af9816cd3e7b6e`이며 잔여 임시 검증 스키마는 0개다. 전후 자료는 `/tmp/mvp2-step9-before.json`, `/tmp/mvp2-step9-after.json`에 있다.
 - DB는 healthy이며 기존 웹과 API의 중지 상태를 유지했다. API 계약과 DB 스키마, Migration, 의존성, 환경변수, 웹 화면 변경은 없다. 브라우저 E2E와 컨테이너 재빌드는 수행하지 않았다. PLAN Step 9만 완료 표시했고 SPEC 변경은 없다.
 
-Step 9 핵심 읽는 순서: `policy-review-decision.ts`의 입력과 반환 타입 → `decidePolicyReview()`의 판단 순서 → `policy-review-decision.spec.ts` → `policy-review-storage.integration.spec.ts`의 추가 시나리오. 미해결 실패는 없다. 다음은 Step 10 수집분 일괄 저장 연결이며 이번 변경사항은 검토를 위해 미커밋 상태로 둔다.
+Step 9 핵심 읽는 순서: `policy-review-decision.ts`의 입력과 반환 타입 → `decidePolicyReview()`의 판단 순서 → `policy-review-decision.spec.ts` → `policy-review-storage.integration.spec.ts`의 추가 시나리오. 미해결 실패는 없다.
+
+2026-10-30 사용자 요청으로 Step 9 코드와 검증 문서를 확인한 뒤 `db03edc` (`feat: 검수 후보 생성과 유지 및 대체 판단 구현`)로 커밋했다.
+
+## 15. Step 10 수집분 일괄 저장 연결 (2026-10-30)
+
+AGENT_RULES → PLAN Step 10 → SPEC 5.3~5.5 → Step 9 결과 → 기존 원본과 검수 저장소, 판정 함수, 공개 저장과 수집 잠금 코드를 확인했다. `PolicyCollectionWriteService`를 PoliciesModule에 등록하고 내보냈으며 기존 CLI는 Step 11 전환을 위해 유지했다.
+
+- `saveCollection()`은 수집 잠금을 잡은 QueryRunner와 출처, 전체 검증과 변환 및 해시 계산을 마친 정책 목록, 공통 실제 수집 시각을 받는다. 같은 연결에서 READ COMMITTED 트랜잭션을 시작하고 기존 원본 전체를 정렬해 잠근 뒤 `classifyPolicyCollection()`으로 판정과 누락 계획을 계산한다.
+- 원본과 누락 정보를 묶음으로 저장한 뒤 신규 원본 UUID를 포함한 현재 원본을 일괄 재조회한다. 관찰된 원본의 공개 기준본과 대기, 거절 이력은 원본 잠금 이후 묶음 조회한다. 공개 기준 조회를 위해 `PolicyRepository.findPublicSnapshots()`와 서버 내부 `PublicPolicySnapshot` 타입을 추가했다. 원본마다 DB를 조회하지 않는다.
+- 원본 ID별 대기와 거절 정보를 준비하고 `decidePolicyReview()`로 생성과 유지, 대체를 판단한다. 기존 Step 6 서비스가 모든 대기를 먼저 대체하고 새 후보를 추가한다. 누락 원본은 후보 판단과 공개 조회수 갱신 대상에서 제외해 기존 검수 스냅샷과 실제 수집 시각을 유지한다.
+- 공개 조회수는 기존 공개 행에 한해 최대 설정된 묶음 크기로 갱신한다. 공개 본문 저장 메서드는 호출하지 않는다. 신규 미승인 정책의 공개 행 생성과 기존 공개 원문 및 해시 변경 없이 최신 조회수만 NULL과 0을 포함해 반영한다.
+- 모든 조회와 쓰기는 같은 `runner.manager`를 사용한다. 모든 저장이 성공한 뒤 한 번만 COMMIT하고 네 판정과 후보 생성 및 대체, 공개 조회수 갱신의 확정 건수를 반환한다. 오류가 나면 전체 트랜잭션을 취소하고 취소 실패는 원래 오류와 함께 전달한다. 연결과 수집 잠금 반환은 기존 호출자에게 맡긴다.
+- 기존 저장 규칙대로 40P01과 40001만 최초 포함 최대 2회 시도한다. 롤백 후 같은 연결을 확인하고 원본 잠금과 판정부터 다시 수행한다. 재시도 횟수를 기록할 선택적 콜백을 제공한다. 이번에는 오류 코드 주입으로 기본 분기를 검증했으며 실제 교착과 직렬화 충돌 재현은 Step 12, 연결 및 COMMIT 결과 불명과 로그 정리는 Step 13에서 검증한다.
+- `policy-collection-write.integration.spec.ts`의 실제 DB 테스트 20개로 T2-04~05의 원본과 후보 생성, 미승인 신규 공개 차단과 변경 본문 보존, 조회수 갱신, 이관 원본 첫 관찰, 대기 유지와 교체, 공개본 복귀와 거절 이력, 누락 및 재등장, 같은 관리자와 단일 트랜잭션을 확인했다. 401건에서 원본 전체 조회 2회와 공개 및 대기, 거절 각각 3회로 총 11회 조회를 확인했다. 후반 조회수 묶음의 실제 PostgreSQL 정수 범위 오류로 앞서 저장한 원본과 후보, 조회수까지 모두 취소되는 것도 검증했다.
+
+### 검증
+
+```bash
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+node /tmp/mvp2-step10-verify.cjs before
+node /tmp/mvp2-step10-verify.cjs focused
+node /tmp/mvp2-step10-verify.cjs full
+node /tmp/mvp2-step10-verify.cjs after
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml ps -a
+git diff --check
+```
+
+- 전체 타입 검사와 shared/API 빌드, diff 검사 통과. 신규 실제 DB 통합 **20개**, 전체 API와 DB **60개 스위트, 1,816개 테스트 모두 통과**했다. 실패와 건너뜀은 0건이다. 전체 회귀에는 실제 PostgreSQL과 HTTP, 독립 CLI를 포함하며 CLI의 기존 저장 기대값은 유지했다.
+- 테스트 결과와 가린 출력은 `/tmp/mvp2-step10-{focused,full}-results.json`, `/tmp/mvp2-step10-{focused,full}-output.log`에 보관했다. 검증 실행기는 `.env`의 비밀값을 출력하지 않고 메모리에서 로컬 DB URL을 구성한다.
+- 공개 정책 3,390건, 원본 3,390건, 검수 0건, 지역 537개, Migration 3개와 각 테이블 전체 행 체크섬이 검증 전후 동일하다. 공개 정책 체크섬은 `46a965ded0407e47a7af9816cd3e7b6e`이며 잔여 임시 검증 스키마는 0개다. 전후 자료는 `/tmp/mvp2-step10-before.json`, `/tmp/mvp2-step10-after.json`에 있다.
+- DB는 healthy이며 기존 웹과 API의 중지 상태를 유지했다. API 계약과 DB 스키마, Migration, 의존성, 환경변수, 웹 화면 변경은 없다. 브라우저 E2E와 컨테이너 재빌드는 수행하지 않았다. PLAN Step 10만 완료 표시했고 SPEC 변경은 없다.
+
+Step 10 핵심 읽는 순서: `policy-collection-write.service.ts`의 `saveCollection()`과 `saveTransaction()` → `policy.repository.ts`의 `findPublicSnapshots()` → `policy-collection-write.integration.spec.ts`. 미해결 실패는 없다. 다음은 Step 11 CLI 전환과 수집 결과 로그 및 기존 통합 테스트 기대값 갱신이며, 실제 온통청년 수집은 이번에 실행하지 않았다. Step 10 변경사항은 검토를 위해 미커밋 상태로 둔다.

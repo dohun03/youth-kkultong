@@ -9,6 +9,7 @@ import { PoliciesDetailService } from './services/policies-detail.service';
 import { SourcePolicyRepository } from './repositories/source-policy.repository';
 import { PolicyReviewRepository } from './repositories/policy-review.repository';
 import { PolicyReviewsWriteService } from './services/policy-reviews-write.service';
+import { PolicyCollectionWriteService } from './services/policy-collection-write.service';
 
 /** 공개 정책 조회와 원본 저장에 필요한 저장소와 서비스를 등록하는 모듈 */
 @Module({
@@ -17,8 +18,11 @@ import { PolicyReviewsWriteService } from './services/policy-reviews-write.servi
   controllers: [PoliciesController],
   providers: [
     PolicyRepository, SourcePolicyRepository, PolicyReviewRepository,
-    PoliciesWriteService, PolicyReviewsWriteService, PoliciesSearchService, PoliciesDetailService,
+    PoliciesWriteService, PolicyReviewsWriteService, PolicyCollectionWriteService, PoliciesSearchService, PoliciesDetailService,
   ],
-  exports: [PolicyRepository, SourcePolicyRepository, PolicyReviewRepository, PoliciesWriteService, PolicyReviewsWriteService],
+  exports: [
+    PolicyRepository, SourcePolicyRepository, PolicyReviewRepository,
+    PoliciesWriteService, PolicyReviewsWriteService, PolicyCollectionWriteService,
+  ],
 })
 export class PoliciesModule {}

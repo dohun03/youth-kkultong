@@ -18,6 +18,9 @@ export type PolicyCandidate = Pick<Policy,
 /** 수집 후 공개 정책의 조회수 갱신에 필요한 식별자와 최신 조회수 */
 export type PolicyViewCountInput = Pick<Policy, 'source' | 'externalId' | 'viewCount'>;
 
+/** 검수 후보의 공개 기준을 확인하고 원문을 복사하는 데 필요한 공개 정책 정보 */
+export type PublicPolicySnapshot = Pick<Policy, 'id' | 'source' | 'externalId' | 'contentHash' | 'rawJson'>;
+
 /** 공개 정책 조회와 본문 저장, 조회수 갱신을 담당하는 저장소 */
 @Injectable()
 export class PolicyRepository {
@@ -75,6 +78,20 @@ export class PolicyRepository {
     // 변경 여부 비교에 필요한 출처·외부 ID·해시만 가져오기
     return manager.getRepository(Policy).find({
       select: { source: true, externalId: true, contentHash: true },
+      where: keys.map(({ source, externalId }) => ({ source, externalId })),
+    });
+  }
+
+  /** 수집된 정책 묶음에 대응하는 현재 공개 기준본을 조회 */
+  async findPublicSnapshots(
+    manager: EntityManager, keys: readonly Pick<Policy, 'source' | 'externalId'>[],
+  ): Promise<PublicPolicySnapshot[]> {
+    this.requireTransaction(manager);
+    if (keys.length === 0) return [];
+
+    // 후보 판단과 기준 스냅샷 저장에 필요한 컬럼만 함께 조회
+    return manager.getRepository(Policy).find({
+      select: { id: true, source: true, externalId: true, contentHash: true, rawJson: true },
       where: keys.map(({ source, externalId }) => ({ source, externalId })),
     });
   }
