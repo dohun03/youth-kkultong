@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-10-29 · 상태: Step 1~6 완료 · Step 7~41 미착수
+수정일: 2026-10-30 · 상태: Step 1~7 완료 · Step 8~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -94,11 +94,11 @@ API 실행기는 `.env`를 메모리에서 읽어 로컬 DATABASE_URL을 구성�
 
 ## 6. 남은 문제와 다음 작업
 
-- 로컬 DB는 Step 4 이관을 완료했다. 공개 정책 3,390건·원본 3,390건·검수 0건·지역 537개·Migration 3개이며 웹·API·DB는 healthy다. `http://localhost:3000/policies`에서 확인할 수 있다.
+- 로컬 DB는 Step 4 이관을 완료했다. 공개 정책 3,390건·원본 3,390건·검수 0건·지역 537개·Migration 3개다. Step 7 검증을 위해 기존 DB만 시작해 healthy 상태이며, 착수 시 중지되어 있던 웹과 API는 그대로 유지했다.
 - 최신 이관 전 DB·로그 백업은 `backups/mvp2-step4-20261028225754/`에 보관했다. 새 수집 저장 흐름으로 전환하는 Step 11 전까지 기존 수동 수집 CLI 실행은 중단한다. 이후 실제 쓰기·운영 전환 전에는 해당 시점 백업을 다시 만든다.
 - 외부 API 정확한 호출 한도·e003 원인·삭제/비공개 규약·지역과 실제 거주 자격 대응·0~0 연령 의미는 MVP1에서 이어지는 미확인 사항이다. 기존 보수적 판정과 실패 시 데이터 유지 규칙을 따른다.
 - 프록시를 통한 접속 주소별 호출 제한 공유, 수동 백업의 보관 기한·외부 복제 등 기존 운영 한계는 유지된다. MVP2 한도 분리는 SPEC 7.2대로 구현하되 실제 사용자별 제한을 해결한 것으로 보고하지 않는다.
-- 다음 요청 대상은 **Step 7: 공개 본문 저장과 조회수 갱신 분리**다. Step 6까지 완료했고 Step 7 이후 구현은 진행하지 않았다.
+- 다음 요청 대상은 **Step 8: 수집 결과와 누락 판정**이다. Step 7까지 완료했고 Step 8 이후 구현은 진행하지 않았다.
 
 Step 1 핵심 읽는 순서: MVP2 SPEC 2·5·6장 → `ingestion.service.ts` → `policies-write.service.ts`·`policy.repository.ts` → 잠금·로그 서비스 → 기존 수집/저장/CLI 통합 테스트. 관리자 계약 기준은 SPEC 3·4·7장이다.
 
@@ -266,4 +266,38 @@ git diff --check
 - 제품 DB의 공개 정책 3,390건, 원본 3,390건, 검수 0건, 지역 537개, Migration 3개와 각 테이블 전체 행 체크섬이 검증 전후 동일하다. 공개 정책 체크섬은 `46a965ded0407e47a7af9816cd3e7b6e`이며 잔여 임시 검증 스키마는 0개다. 전후 자료는 `/tmp/mvp2-step6-before.json`, `/tmp/mvp2-step6-after.json`에 있다.
 - 기존 웹과 API, DB는 모두 healthy다. API 계약과 DB 스키마, Migration, 의존성, 환경변수, 웹 화면 변경은 없다. 화면 변경이 없어 브라우저 E2E와 컨테이너 재빌드는 반복하지 않았다. PLAN Step 6만 완료 표시했으며 SPEC 변경은 없다.
 
-Step 6 핵심 읽는 순서: `policy-review.repository.ts`의 대기와 거절 조회 → `policy-reviews-write.service.ts`의 스냅샷 검증과 저장 순서 → 저장소의 대체와 추가 → `policy-review-storage.integration.spec.ts`. 미해결 실패는 없다. Step 7은 공개 저장과 조회수 갱신 분리이며, 실제 CLI 전환과 외부 수집은 이번에 수행하지 않았다. Step 6 변경사항은 검토를 위해 미커밋 상태로 둔다.
+Step 6 핵심 읽는 순서: `policy-review.repository.ts`의 대기와 거절 조회 → `policy-reviews-write.service.ts`의 스냅샷 검증과 저장 순서 → 저장소의 대체와 추가 → `policy-review-storage.integration.spec.ts`. 미해결 실패는 없다. 실제 CLI 전환과 외부 수집은 이번에 수행하지 않았다.
+
+2026-10-30 사용자 요청으로 전체 타입 검사와 검수 저장 통합 28개를 다시 통과시킨 뒤 `ee7d2e6` (`feat: 검수 후보와 스냅샷 저장 구현`)로 Step 6을 커밋했다. 재검증 명령은 `node /tmp/mvp2-step7-verify.cjs commit6`이며 결과는 `/tmp/mvp2-step7-commit6-results.json`에 보관했다. 중지되어 있던 기존 DB 컨테이너만 볼륨을 유지해 시작했다.
+
+## 12. Step 7 공개 본문 저장과 조회수 갱신 분리 (2026-10-30)
+
+AGENT_RULES → PLAN Step 7 → SPEC 2.3·5.4·6.3·T2-13 → Step 6 결과 → 기존 정책 저장소와 수집 저장 서비스, 관련 통합 테스트를 확인했다. 공개 본문 저장과 수집 조회수 갱신에 사용할 두 메서드를 기존 `PolicyRepository`에 추가했다.
+
+- `saveApprovedPolicy(manager, policy, basePolicyId)`는 최초 승인일 때 INSERT로 공개 UUID를 생성한다. 기존 승인은 검수 기준 UUID와 출처, 외부 ID가 모두 일치하는 행만 UPDATE한다. 갱신할 본문 컬럼을 명시해 기존 UUID와 식별자, 생성 시각을 보존하고 대상이 없으면 오류를 전달한다. 신규 식별자가 이미 공개되어 있으면 UNIQUE 오류로 중단해 기존 본문을 보호한다.
+- 승인 저장 입력은 이후 승인 서비스가 검수 스냅샷을 기존 변환 함수로 변환한 값이며 조회수는 최신 원본 값을 전달한다. 원본의 시간대 없는 시각과 JSON은 매개변수로 저장한다. 실제 검수 조건 재확인, 해시 검증과 승인 이력 저장은 Step 24에서 연결한다.
+- `refreshViewCounts(manager, policies)`는 출처와 외부 ID, 조회수만 받는다. 같은 식별자의 중복 입력을 거부하고 공개 행이 있는 정책의 `view_count`와 `updated_at`만 한 쿼리로 갱신한다. NULL과 0도 그대로 반영하며 갱신한 공개 행 수를 반환한다. 공개본이 없는 입력은 0건으로 처리하고 새 공개 정책을 생성하지 않는다. 묶음 크기는 기존 저장소 방식처럼 상위 저장 서비스에서 관리하며 200건의 단일 쿼리 처리를 검증했다.
+- 두 메서드는 진행 중인 트랜잭션 관리자를 필수로 요구하고 확정과 취소는 호출자가 맡는다. 기존 공개 테이블에는 음수 조회수 CHECK가 없어 최초 테스트에서 DB가 음수를 허용하는 것을 확인했다. 스키마를 변경하지 않고 두 새 저장 경로에서 NULL 또는 0~2147483647 정수만 받도록 입력 검증을 추가했다. 음수, 소수, 정수 범위 초과, NaN, Infinity를 SQL 실행 전에 거부한다.
+- 기존 `upsertPolicies()`와 `refreshPolicies()`, 수집 저장 서비스와 CLI는 Step 11 전환을 위해 유지했다. 새 수집 저장의 조회수 연결은 Step 10, CLI의 기존 공개 저장 경로 교체는 Step 11, 승인 전용 본문 저장 연결은 Step 24에서 수행한다. 실제 수동 수집은 실행하지 않았다.
+- `policy-public-write.integration.spec.ts`는 임시 스키마의 실제 PostgreSQL에서 신규 UUID 생성, 기존 전체 본문 갱신과 UUID 보존, 기준 식별자 불일치와 중복 최초 승인 거부, 검수 원문의 과거 조회수와 최신 조회수 분리, NULL과 0 조회수, 원문과 해시를 포함한 나머지 전체 컬럼 보존, 미공개 입력, 200건 묶음, 입력 중복과 잘못된 조회수, 후반 실패 시 전체 취소를 검증한다. T2-13의 저장 계층 기준이며 UNCHANGED 판정과 실제 CLI 연결은 후속 Step에서 검증한다.
+
+### 검증
+
+```bash
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+node /tmp/mvp2-step7-verify.cjs before
+node /tmp/mvp2-step7-verify.cjs commit6
+node /tmp/mvp2-step7-verify.cjs focused
+node /tmp/mvp2-step7-verify.cjs full
+node /tmp/mvp2-step7-verify.cjs after
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml ps -a
+git diff --check
+```
+
+- 전체 타입 검사와 shared/API 빌드, diff 검사 통과. 신규 실제 DB 통합 **24개**, 전체 API와 DB **57개 스위트, 1,715개 테스트 모두 통과**했다. 실패와 건너뜀은 0건이다. 기존 수집과 독립 CLI의 기대값은 유지했다.
+- 테스트 결과와 가린 출력은 `/tmp/mvp2-step7-{commit6,focused,full}-results.json`, `/tmp/mvp2-step7-{commit6,focused,full}-output.log`에 있다. 실행기는 `.env`의 비밀값을 출력하지 않고 메모리에서 로컬 PostgreSQL URL을 구성한다.
+- 제품 DB의 공개 정책 3,390건, 원본 3,390건, 검수 0건, 지역 537개, Migration 3개와 각 테이블 전체 행 체크섬이 검증 전후 동일하다. 공개 정책 체크섬은 `46a965ded0407e47a7af9816cd3e7b6e`이며 잔여 임시 검증 스키마는 0개다. 전후 자료는 `/tmp/mvp2-step7-before.json`, `/tmp/mvp2-step7-after.json`에 있다.
+- 기존 DB는 healthy로 유지하고 중지 상태였던 웹과 API는 변경하지 않았다. API 계약과 DB 스키마, Migration, 의존성, 환경변수, 웹 화면 변경은 없다. 화면 변경이 없어 브라우저 E2E와 컨테이너 재빌드는 수행하지 않았다. PLAN Step 7만 완료 표시했고 SPEC 변경은 없다.
+
+Step 7 핵심 읽는 순서: `policy.repository.ts`의 `saveApprovedPolicy()` → `refreshViewCounts()` → `policy-public-write.integration.spec.ts`. 미해결 실패는 없다. 다음 요청은 Step 8 수집 결과와 누락 판정이며 Step 7 변경사항은 검토를 위해 미커밋 상태로 둔다.
