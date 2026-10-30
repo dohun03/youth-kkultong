@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-10-30 · 상태: Step 1~7 완료 · Step 8~41 미착수
+수정일: 2026-10-30 · 상태: Step 1~8 완료 · Step 9~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -98,7 +98,7 @@ API 실행기는 `.env`를 메모리에서 읽어 로컬 DATABASE_URL을 구성�
 - 최신 이관 전 DB·로그 백업은 `backups/mvp2-step4-20261028225754/`에 보관했다. 새 수집 저장 흐름으로 전환하는 Step 11 전까지 기존 수동 수집 CLI 실행은 중단한다. 이후 실제 쓰기·운영 전환 전에는 해당 시점 백업을 다시 만든다.
 - 외부 API 정확한 호출 한도·e003 원인·삭제/비공개 규약·지역과 실제 거주 자격 대응·0~0 연령 의미는 MVP1에서 이어지는 미확인 사항이다. 기존 보수적 판정과 실패 시 데이터 유지 규칙을 따른다.
 - 프록시를 통한 접속 주소별 호출 제한 공유, 수동 백업의 보관 기한·외부 복제 등 기존 운영 한계는 유지된다. MVP2 한도 분리는 SPEC 7.2대로 구현하되 실제 사용자별 제한을 해결한 것으로 보고하지 않는다.
-- 다음 요청 대상은 **Step 8: 수집 결과와 누락 판정**이다. Step 7까지 완료했고 Step 8 이후 구현은 진행하지 않았다.
+- 다음 요청 대상은 **Step 9: 검수 후보 생성·유지·교체 판단**이다. Step 8까지 완료했고 Step 9 이후 구현은 진행하지 않았다.
 
 Step 1 핵심 읽는 순서: MVP2 SPEC 2·5·6장 → `ingestion.service.ts` → `policies-write.service.ts`·`policy.repository.ts` → 잠금·로그 서비스 → 기존 수집/저장/CLI 통합 테스트. 관리자 계약 기준은 SPEC 3·4·7장이다.
 
@@ -300,4 +300,36 @@ git diff --check
 - 제품 DB의 공개 정책 3,390건, 원본 3,390건, 검수 0건, 지역 537개, Migration 3개와 각 테이블 전체 행 체크섬이 검증 전후 동일하다. 공개 정책 체크섬은 `46a965ded0407e47a7af9816cd3e7b6e`이며 잔여 임시 검증 스키마는 0개다. 전후 자료는 `/tmp/mvp2-step7-before.json`, `/tmp/mvp2-step7-after.json`에 있다.
 - 기존 DB는 healthy로 유지하고 중지 상태였던 웹과 API는 변경하지 않았다. API 계약과 DB 스키마, Migration, 의존성, 환경변수, 웹 화면 변경은 없다. 화면 변경이 없어 브라우저 E2E와 컨테이너 재빌드는 수행하지 않았다. PLAN Step 7만 완료 표시했고 SPEC 변경은 없다.
 
-Step 7 핵심 읽는 순서: `policy.repository.ts`의 `saveApprovedPolicy()` → `refreshViewCounts()` → `policy-public-write.integration.spec.ts`. 미해결 실패는 없다. 다음 요청은 Step 8 수집 결과와 누락 판정이며 Step 7 변경사항은 검토를 위해 미커밋 상태로 둔다.
+Step 7 핵심 읽는 순서: `policy.repository.ts`의 `saveApprovedPolicy()` → `refreshViewCounts()` → `policy-public-write.integration.spec.ts`. 미해결 실패는 없다.
+
+2026-10-30 사용자 요청으로 검증된 Step 7 코드와 문서를 확인한 뒤 `3ed7353` (`feat: 승인 본문 저장과 공개 조회수 갱신 분리`)으로 커밋했다.
+
+## 13. Step 8 수집 결과와 누락 판정 (2026-10-30)
+
+AGENT_RULES → PLAN Step 8 → SPEC 5.2~5.4 → Step 7 결과 → 수집 원본 저장소와 기존 수집 변환 및 해시 코드를 확인했다. 정상 전체 수집 결과를 직전 원본과 비교하는 순수 함수 `classifyPolicyCollection()`을 `modules/policies/policy-collection.ts`에 추가했다.
+
+- 입력은 한 출처, 해당 출처의 직전 원본 목록, 전체 검증과 변환을 마친 이번 수집 목록이다. 식별자와 해시 및 기존 누락 횟수만 사용하고 원문과 DB 연결, 현재 시각에 의존하지 않는다. 다른 출처가 섞이거나 외부 ID가 중복되면 예외를 전달한다.
+- 반환값은 수신 정책의 판정 목록 `collected`, 누락 원본의 ID와 새 누락 횟수 `missing`, 네 판정의 건수 `counts`다. 직전 원본이 없으면 NEW, 해시가 다르면 CHANGED, 같으면 UNCHANGED다. 비교 기준으로 공개 정책을 받지 않는다. 실제 최상위 inqCnt 제외 해시를 사용해 조회수만 변경된 자료는 UNCHANGED로 판정한다.
+- 관찰된 정책은 누락 횟수 0을 반환하고, 미수신 기존 원본은 한 번 증가시켜 2147483647에서 유지한다. 정상 0건 응답이면 기존 원본 모두 누락으로 계산한다. 날짜별 중복 제거를 적용하지 않아 같은 날 성공한 실행마다 누락 횟수를 센다. 재등장은 직전 원본 해시와 비교해 CHANGED 또는 UNCHANGED로 판단한다.
+- 입력 배열과 원본 객체는 수정하지 않는다. 누락 반환값에는 ID와 횟수만 포함해 원문과 조회수, 실제 첫 수집과 최근 수집 시각을 유지한다. 실제 관찰 시각 기록과 첫 수집 시각 보존은 Step 5 저장소가 담당하며, 전체 수집과 변환 완료 시각을 전달하는 연결은 Step 10~11에서 진행한다. 취소된 저장의 계산 결과는 다음 시도의 기존 상태로 사용하지 않는다.
+- `policy-collection.spec.ts`의 34개 단위 테스트로 네 판정 혼합, 이관 원본의 동일 판정, 최상위와 중첩 조회수의 해시 차이, 정상 0건, 연속 누락, 같은 날 재실행, 재등장, 정수 상한, 입력 보존과 중복 및 출처 오류, 대량 수집 건수를 검증했다. T2-03·13·16~17·19~20의 비교 계산 부분이며 실제 CLI와 후보 판단 연결은 해당 후속 Step에서 검증한다.
+
+### 검증
+
+```bash
+npm test --workspace apps/api -- --runTestsByPath test/policy-collection.spec.ts --json --outputFile=/tmp/mvp2-step8-unit-results.json
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+node /tmp/mvp2-step8-verify.cjs before
+node /tmp/mvp2-step8-verify.cjs full
+node /tmp/mvp2-step8-verify.cjs after
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml ps -a
+git diff --check
+```
+
+- 전체 타입 검사와 shared/API 빌드, diff 검사 통과. 신규 단위 테스트 **34개**, 실제 PostgreSQL과 HTTP, 독립 CLI를 포함한 전체 API와 DB **58개 스위트, 1,749개 테스트 모두 통과**했다. 실패와 건너뜀은 0건이다.
+- 단위 테스트 결과는 `/tmp/mvp2-step8-unit-results.json`, 전체 결과와 가린 출력은 `/tmp/mvp2-step8-full-results.json`, `/tmp/mvp2-step8-full-output.log`에 보관했다. 전체 실행기는 `.env`의 비밀값을 출력하지 않고 메모리에서 로컬 PostgreSQL URL을 구성한다.
+- 공개 정책 3,390건, 원본 3,390건, 검수 0건, 지역 537개, Migration 3개와 각 테이블 전체 행 체크섬이 검증 전후 동일하다. 공개 정책 체크섬은 `46a965ded0407e47a7af9816cd3e7b6e`이며 잔여 임시 검증 스키마는 0개다. 전후 자료는 `/tmp/mvp2-step8-before.json`, `/tmp/mvp2-step8-after.json`에 있다.
+- DB는 healthy이며 기존 웹과 API의 중지 상태를 유지했다. API 계약과 DB 스키마, Migration, 의존성, 환경변수, 웹 화면 변경은 없다. 브라우저 E2E와 컨테이너 재빌드는 수행하지 않았다. PLAN Step 8만 완료 표시했고 SPEC 변경은 없다.
+
+Step 8 핵심 읽는 순서: `policy-collection.ts`의 반환 타입 → 직전 원본 준비 → 수신 정책 판정 → 누락 횟수 계산 → `policy-collection.spec.ts`. 미해결 실패는 없다. 다음은 Step 9 검수 후보 생성과 유지 및 교체 판단이며, 이번 변경사항은 검토를 위해 미커밋 상태로 둔다.
