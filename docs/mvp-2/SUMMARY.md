@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-10-29 · 상태: Step 1~5 완료 · Step 6~41 미착수
+수정일: 2026-10-29 · 상태: Step 1~6 완료 · Step 7~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -98,7 +98,7 @@ API 실행기는 `.env`를 메모리에서 읽어 로컬 DATABASE_URL을 구성�
 - 최신 이관 전 DB·로그 백업은 `backups/mvp2-step4-20261028225754/`에 보관했다. 새 수집 저장 흐름으로 전환하는 Step 11 전까지 기존 수동 수집 CLI 실행은 중단한다. 이후 실제 쓰기·운영 전환 전에는 해당 시점 백업을 다시 만든다.
 - 외부 API 정확한 호출 한도·e003 원인·삭제/비공개 규약·지역과 실제 거주 자격 대응·0~0 연령 의미는 MVP1에서 이어지는 미확인 사항이다. 기존 보수적 판정과 실패 시 데이터 유지 규칙을 따른다.
 - 프록시를 통한 접속 주소별 호출 제한 공유, 수동 백업의 보관 기한·외부 복제 등 기존 운영 한계는 유지된다. MVP2 한도 분리는 SPEC 7.2대로 구현하되 실제 사용자별 제한을 해결한 것으로 보고하지 않는다.
-- 다음 요청 대상은 **Step 6: 검수 후보와 스냅샷 보관**이다. Step 5까지 완료했고 Step 6 이후 구현은 진행하지 않았다.
+- 다음 요청 대상은 **Step 7: 공개 본문 저장과 조회수 갱신 분리**다. Step 6까지 완료했고 Step 7 이후 구현은 진행하지 않았다.
 
 Step 1 핵심 읽는 순서: MVP2 SPEC 2·5·6장 → `ingestion.service.ts` → `policies-write.service.ts`·`policy.repository.ts` → 잠금·로그 서비스 → 기존 수집/저장/CLI 통합 테스트. 관리자 계약 기준은 SPEC 3·4·7장이다.
 
@@ -234,3 +234,36 @@ git diff --check
 Step 5 핵심 읽는 순서: `source-policy.repository.ts`의 입력 타입 → 원본 잠금 조회 → 관찰·누락 저장 → `policies.module.ts` → `source-policy-storage.integration.spec.ts`. 이번 Step의 미해결 실패는 없다. 누락 판정·후보 저장·CLI 연결은 각 후속 Step에서 진행하며, Step 11 전까지 기존 수동 수집 CLI 실행 중단 원칙을 유지한다.
 
 2026-10-29 주석 정리: 사용자가 수정한 AGENT_RULES 10장에 맞춰 위 세 코드 파일의 주석을 역할과 실행 단계 중심으로 정리했다. 명사형 표현을 사용하고 가운데 점과 현재 로직에 불필요한 설명을 줄였다. TypeScript 구문 비교로 주석을 제외한 코드가 수정 전과 동일함을 확인했고 `git diff --check`를 통과했다. 주석만 수정했으므로 동작 테스트는 재실행하지 않았다.
+
+사용자 요청으로 최종 코드의 전체 타입 검사와 원본 저장 통합 17개를 다시 통과시킨 뒤, 주석 규칙 수정을 포함해 `7bc553f` (`feat: 수집 원본 조회와 잠금 및 묶음 저장 구현`)로 Step 5를 커밋했다.
+
+## 11. Step 6 검수 후보와 스냅샷 보관 (2026-10-29)
+
+AGENT_RULES → PLAN Step 6 → SPEC 2.2·5.4·6.1~6.2·T2-34 → Step 5 결과 → 기존 엔티티와 저장소를 확인했다. 이번 범위는 후보 조회와 스냅샷 저장이며 후보 생성 여부 판단은 Step 9, 전체 수집 저장 연결은 Step 10에서 진행한다.
+
+- `PolicyReviewRepository`는 전달받은 트랜잭션에서 대기 후보와 거절 해시를 최대 200개 원본 ID씩 조회한다. 입력 원본 ID는 중복 제거하며 거절 조회는 원본 ID와 해시만 DISTINCT로 반환한다. 원본 잠금 후 호출할 조회이므로 후보를 먼저 잠그지 않는다.
+- `supersedePendingReviews()`는 대체 사유별로 묶어 PENDING 상태만 SUPERSEDED로 갱신한다. 상태와 대체 사유, 종료 시각만 변경하고 과거 스냅샷과 처리 이력을 보존한다. 대상이 없거나 이미 종료되어 예상 갱신 건수와 다르면 오류를 전달한다.
+- `insertPendingReviews()`는 새 후보를 묶음 INSERT한다. 조회와 쓰기는 쿼리빌더를 사용하고 두 스냅샷은 JSON 매개변수로 전달한다. 신규 기준본은 SQL NULL로 저장하며 후보 원본당 대기 한 건 제약을 유지한다.
+- `PolicyReviewsWriteService.saveReviewChanges()`는 전체 입력의 중복, 원본과 공개 기준본의 출처와 외부 ID, 두 스냅샷의 해시 일치를 쓰기 전에 검증한다. 검증한 원문은 깊은 복사로 보관하며 공개 기준본의 존재 여부에 따라 NEW 또는 CHANGED로 저장한다. 모든 대기 대체를 먼저 끝낸 뒤 새 후보를 추가한다.
+- 트랜잭션 시작과 확정, 취소는 호출자가 맡는다. 같은 EntityManager로 원본과 후보 저장을 묶을 수 있으며 오류는 호출자에게 전달한다. 저장소와 서비스는 PoliciesModule에 등록하고 내보냈다. 승인과 거절 처리, 후보 판단, CLI 전환은 추가하지 않았다.
+- `policy-review-storage.integration.spec.ts`는 임시 스키마의 실제 PostgreSQL에서 신규 기준본 NULL, 변경 기준본 보존, 이후 원본과 공개본 변경에도 과거 스냅샷 보존, 입력 객체의 중첩 값 변경 방어, 대기 유일성, 대체 후 추가 순서, 종료 이력 보호, 401건 묶음 처리, 잘못된 식별자와 해시, 후반 FK 오류 시 전체 취소를 검증한다. T2-34의 스냅샷 저장 보존 부분을 확인했으며 과거 상세 API와 차이 결과는 Step 20과 22에서 검증한다.
+
+### 검증
+
+```bash
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+node /tmp/mvp2-step6-verify.cjs before
+node /tmp/mvp2-step6-verify.cjs focused
+node /tmp/mvp2-step6-verify.cjs full
+node /tmp/mvp2-step6-verify.cjs after
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml ps
+git diff --check
+```
+
+- 전체 타입 검사와 shared/API 빌드, diff 검사 통과. 신규 실제 DB 통합 **28개**, 전체 API와 DB **56개 스위트, 1,691개 테스트 모두 통과**했다. 실패와 건너뜀은 0건이다. HTTP와 독립 CLI를 포함한 기존 수집 기대값도 유지한다.
+- 검증 실행기는 `.env`의 비밀값을 메모리에서 읽어 로컬 PostgreSQL에 연결하고 가린 출력만 보관한다. 테스트 결과와 출력은 `/tmp/mvp2-step6-{focused,full}-results.json`, `/tmp/mvp2-step6-{focused,full}-output.log`에 있다.
+- 제품 DB의 공개 정책 3,390건, 원본 3,390건, 검수 0건, 지역 537개, Migration 3개와 각 테이블 전체 행 체크섬이 검증 전후 동일하다. 공개 정책 체크섬은 `46a965ded0407e47a7af9816cd3e7b6e`이며 잔여 임시 검증 스키마는 0개다. 전후 자료는 `/tmp/mvp2-step6-before.json`, `/tmp/mvp2-step6-after.json`에 있다.
+- 기존 웹과 API, DB는 모두 healthy다. API 계약과 DB 스키마, Migration, 의존성, 환경변수, 웹 화면 변경은 없다. 화면 변경이 없어 브라우저 E2E와 컨테이너 재빌드는 반복하지 않았다. PLAN Step 6만 완료 표시했으며 SPEC 변경은 없다.
+
+Step 6 핵심 읽는 순서: `policy-review.repository.ts`의 대기와 거절 조회 → `policy-reviews-write.service.ts`의 스냅샷 검증과 저장 순서 → 저장소의 대체와 추가 → `policy-review-storage.integration.spec.ts`. 미해결 실패는 없다. Step 7은 공개 저장과 조회수 갱신 분리이며, 실제 CLI 전환과 외부 수집은 이번에 수행하지 않았다. Step 6 변경사항은 검토를 위해 미커밋 상태로 둔다.
