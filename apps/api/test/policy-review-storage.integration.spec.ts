@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DataSource, QueryRunner } from 'typeorm';
-import type { ReviewStatus, SupersededReason } from '@youth-kkultong/shared';
+import type { CollectionResult, ReviewStatus, SupersededReason } from '@youth-kkultong/shared';
 import { loadEnvironment } from '../src/common/environment';
 import { createDataSource } from '../src/database/data-source';
 import { CreatePolicies1792162800000 } from '../src/database/migrations/1792162800000-create-policies';
@@ -15,6 +15,7 @@ import { SourcePolicyRepository } from '../src/modules/policies/repositories/sou
 import { PolicyReviewRepository } from '../src/modules/policies/repositories/policy-review.repository';
 import { PolicyReviewsWriteService } from '../src/modules/policies/services/policy-reviews-write.service';
 import type { ReviewCandidateInput } from '../src/modules/policies/services/policy-reviews-write.service';
+import { decidePolicyReview } from '../src/modules/policies/policy-review-decision';
 
 const collectedAt = new Date('2026-10-29T03:00:00.123Z');
 const closedAt = new Date('2026-10-29T04:00:00.456Z');
@@ -110,6 +111,29 @@ describe('검수 후보와 스냅샷 저장의 실제 PostgreSQL 검증', () => 
       rejectionReason: status === 'REJECTED' ? '테스트 거절 사유' : null,
       supersededReason: status === 'SUPERSEDED' ? 'SOURCE_CHANGED' : null,
     });
+  }
+
+  /** 실제 DB에서 읽은 상태로 판단한 결과를 기존 검수 저장 서비스에 적용 */
+  async function applyDecision(sourcePolicyId: string, collectionResult: CollectionResult = 'CHANGED') {
+    const sourcePolicy = await runner.manager.getRepository(SourcePolicy).findOneByOrFail({ id: sourcePolicyId });
+    const publicPolicy = await runner.manager.getRepository(Policy).findOneBy({
+      source: sourcePolicy.source, externalId: sourcePolicy.externalId,
+    });
+    const pendingReview = (await repository.findPendingReviews(runner.manager, [sourcePolicyId]))[0] ?? null;
+    const rejectedHashes = await repository.findRejectedHashes(runner.manager, [sourcePolicyId]);
+    const decision = decidePolicyReview({ sourcePolicy, publicPolicy, pendingReview, rejectedHashes, collectionResult });
+    if (decision.action !== 'KEEP') {
+      await service.saveReviewChanges(runner.manager, decision.superseded ? [decision.superseded] : [],
+        decision.action === 'CREATE' ? [{ sourcePolicy, basePolicy: publicPolicy }] : [], closedAt);
+    }
+    return decision;
+  }
+
+  /** 테스트 원본을 재수집한 내용으로 갱신 */
+  async function observe(externalId: string, title: string, views = '10'): Promise<void> {
+    const value = raw(externalId, title, views);
+    await sources.upsertCollectedPolicies(runner.manager, [{ ...transformYouthCenterPolicy(value), rawJson: value,
+      contentHash: createYouthCenterPolicyContentHash(value), lastCollectionResult: 'CHANGED' }], closedAt);
   }
 
   it('빈 입력은 조회와 저장 쿼리를 실행하지 않는다', async () => {
@@ -330,6 +354,91 @@ describe('검수 후보와 스냅샷 저장의 실제 PostgreSQL 검증', () => 
     // 다음 사례를 위해 이 테스트에서 확정한 전용 스키마의 행을 FK 순서로 정리
     await connection.getRepository(PolicyReview).deleteAll();
     await connection.getRepository(SourcePolicy).deleteAll();
+  });
+
+  it('같은 B는 기존 대기를 유지하고 C를 거쳐 B로 복귀하면 과거 B와 다른 최신 후보를 생성한다', async () => {
+    const candidate = await withBase((await candidates())[0]);
+    const { id, externalId } = candidate.sourcePolicy;
+    await applyDecision(id);
+    const [firstB] = await reviews();
+    await observe(externalId, '검수할 정책', '99');
+    expect(await applyDecision(id, 'UNCHANGED')).toEqual({ action: 'KEEP', pendingReviewId: firstB.id });
+    expect(await reviews()).toEqual([firstB]);
+
+    await observe(externalId, '변경 C');
+    await applyDecision(id);
+    const closedB = (await reviews()).find((row) => row.id === firstB.id)!;
+    expect(closedB).toEqual({ ...firstB, status: 'SUPERSEDED', supersededReason: 'SOURCE_CHANGED', closedAt });
+    await observe(externalId, '검수할 정책');
+    await applyDecision(id);
+    const [latestB] = await repository.findPendingReviews(runner.manager, [id]);
+    expect(latestB.id).not.toBe(firstB.id);
+    expect(latestB.contentHash).toBe(firstB.contentHash);
+    expect((await reviews()).find((row) => row.id === firstB.id)).toEqual(closedB);
+    expect(await reviews()).toHaveLength(3);
+  });
+
+  it('거절 B는 반복과 공개 기준 변경 후에도 후보를 만들지 않고 새 C만 검수 대상으로 삼는다', async () => {
+    const candidate = await withBase((await candidates())[0]);
+    const { id, externalId } = candidate.sourcePolicy;
+    await applyDecision(id);
+    const [firstB] = await reviews();
+    await finish(firstB.id, 'REJECTED');
+    const [rejectedB] = await reviews();
+    expect(await applyDecision(id, 'UNCHANGED')).toEqual({ action: 'SKIP', superseded: null });
+
+    await observe(externalId, '변경 C');
+    expect((await applyDecision(id)).action).toBe('CREATE');
+    const [pendingC] = await repository.findPendingReviews(runner.manager, [id]);
+    // 공개 기준 변경 방어 경로를 테스트 스키마의 공개 행 변경으로 재현
+    const publicRaw = raw(externalId, '공개 기준 D');
+    await new PolicyRepository().upsertPolicies(runner.manager, [{ ...transformYouthCenterPolicy(publicRaw),
+      contentHash: createYouthCenterPolicyContentHash(publicRaw) }]);
+    await observe(externalId, '검수할 정책');
+    expect(await applyDecision(id)).toEqual({ action: 'SKIP',
+      superseded: { id: pendingC.id, reason: 'PREVIOUSLY_REJECTED' } });
+    expect(await repository.findPendingReviews(runner.manager, [id])).toEqual([]);
+    expect((await reviews()).find((row) => row.id === firstB.id)).toEqual(rejectedB);
+  });
+
+  it('과거 승인 A가 현재 공개 B와 다른 내용으로 돌아오면 승인 이력을 보존하며 새 후보를 생성한다', async () => {
+    const candidate = await withBase((await candidates())[0]);
+    const { id, externalId } = candidate.sourcePolicy;
+    await applyDecision(id);
+    const [pendingA] = await reviews();
+    const approvedRaw = raw(externalId);
+    await new PolicyRepository().saveApprovedPolicy(runner.manager, { ...transformYouthCenterPolicy(approvedRaw),
+      contentHash: createYouthCenterPolicyContentHash(approvedRaw) }, candidate.basePolicy!.id);
+    await finish(pendingA.id, 'APPROVED');
+    const [approvedA] = await reviews();
+    const publicRaw = raw(externalId, '현재 공개 B');
+    await new PolicyRepository().upsertPolicies(runner.manager, [{ ...transformYouthCenterPolicy(publicRaw),
+      contentHash: createYouthCenterPolicyContentHash(publicRaw) }]);
+    expect(await applyDecision(id, 'UNCHANGED')).toEqual({ action: 'CREATE', kind: 'CHANGED', superseded: null });
+    const [latest] = await repository.findPendingReviews(runner.manager, [id]);
+    expect(latest.contentHash).toBe(approvedA.contentHash);
+    expect(latest.baseRawSnapshot).toEqual(publicRaw);
+    expect(latest.id).not.toBe(approvedA.id);
+    expect((await reviews()).find((row) => row.id === approvedA.id)).toEqual(approvedA);
+  });
+
+  it('원본 B는 그대로여도 공개 기준 변경 뒤에는 현재 기준 스냅샷으로 대기를 교체한다', async () => {
+    const candidate = await withBase((await candidates())[0]);
+    const { id, externalId } = candidate.sourcePolicy;
+    await applyDecision(id);
+    const [before] = await reviews();
+    const publicRaw = raw(externalId, '바뀐 공개 기준 C');
+    await new PolicyRepository().upsertPolicies(runner.manager, [{ ...transformYouthCenterPolicy(publicRaw),
+      contentHash: createYouthCenterPolicyContentHash(publicRaw) }]);
+    expect(await applyDecision(id, 'UNCHANGED')).toEqual({ action: 'CREATE', kind: 'CHANGED',
+      superseded: { id: before.id, reason: 'PUBLIC_BASE_CHANGED' } });
+    const [latest] = await repository.findPendingReviews(runner.manager, [id]);
+    expect(latest.contentHash).toBe(before.contentHash);
+    expect(latest.baseRawSnapshot).toEqual(publicRaw);
+    expect(latest.baseContentHash).toBe(createYouthCenterPolicyContentHash(publicRaw));
+    expect((await reviews()).find((row) => row.id === before.id)).toEqual({
+      ...before, status: 'SUPERSEDED', supersededReason: 'PUBLIC_BASE_CHANGED', closedAt,
+    });
   });
 
   it('자동 확정 연결에서는 후보 조회와 저장을 거부한다', async () => {

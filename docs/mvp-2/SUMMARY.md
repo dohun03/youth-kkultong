@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-10-30 · 상태: Step 1~8 완료 · Step 9~41 미착수
+수정일: 2026-10-30 · 상태: Step 1~9 완료 · Step 10~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -98,7 +98,7 @@ API 실행기는 `.env`를 메모리에서 읽어 로컬 DATABASE_URL을 구성�
 - 최신 이관 전 DB·로그 백업은 `backups/mvp2-step4-20261028225754/`에 보관했다. 새 수집 저장 흐름으로 전환하는 Step 11 전까지 기존 수동 수집 CLI 실행은 중단한다. 이후 실제 쓰기·운영 전환 전에는 해당 시점 백업을 다시 만든다.
 - 외부 API 정확한 호출 한도·e003 원인·삭제/비공개 규약·지역과 실제 거주 자격 대응·0~0 연령 의미는 MVP1에서 이어지는 미확인 사항이다. 기존 보수적 판정과 실패 시 데이터 유지 규칙을 따른다.
 - 프록시를 통한 접속 주소별 호출 제한 공유, 수동 백업의 보관 기한·외부 복제 등 기존 운영 한계는 유지된다. MVP2 한도 분리는 SPEC 7.2대로 구현하되 실제 사용자별 제한을 해결한 것으로 보고하지 않는다.
-- 다음 요청 대상은 **Step 9: 검수 후보 생성·유지·교체 판단**이다. Step 8까지 완료했고 Step 9 이후 구현은 진행하지 않았다.
+- 다음 요청 대상은 **Step 10: 수집분 일괄 저장 연결**이다. Step 9까지 완료했고 Step 10 이후 구현은 진행하지 않았다.
 
 Step 1 핵심 읽는 순서: MVP2 SPEC 2·5·6장 → `ingestion.service.ts` → `policies-write.service.ts`·`policy.repository.ts` → 잠금·로그 서비스 → 기존 수집/저장/CLI 통합 테스트. 관리자 계약 기준은 SPEC 3·4·7장이다.
 
@@ -332,4 +332,39 @@ git diff --check
 - 공개 정책 3,390건, 원본 3,390건, 검수 0건, 지역 537개, Migration 3개와 각 테이블 전체 행 체크섬이 검증 전후 동일하다. 공개 정책 체크섬은 `46a965ded0407e47a7af9816cd3e7b6e`이며 잔여 임시 검증 스키마는 0개다. 전후 자료는 `/tmp/mvp2-step8-before.json`, `/tmp/mvp2-step8-after.json`에 있다.
 - DB는 healthy이며 기존 웹과 API의 중지 상태를 유지했다. API 계약과 DB 스키마, Migration, 의존성, 환경변수, 웹 화면 변경은 없다. 브라우저 E2E와 컨테이너 재빌드는 수행하지 않았다. PLAN Step 8만 완료 표시했고 SPEC 변경은 없다.
 
-Step 8 핵심 읽는 순서: `policy-collection.ts`의 반환 타입 → 직전 원본 준비 → 수신 정책 판정 → 누락 횟수 계산 → `policy-collection.spec.ts`. 미해결 실패는 없다. 다음은 Step 9 검수 후보 생성과 유지 및 교체 판단이며, 이번 변경사항은 검토를 위해 미커밋 상태로 둔다.
+Step 8 핵심 읽는 순서: `policy-collection.ts`의 반환 타입 → 직전 원본 준비 → 수신 정책 판정 → 누락 횟수 계산 → `policy-collection.spec.ts`. 미해결 실패는 없다.
+
+2026-10-30 사용자 요청으로 Step 8 코드와 문서를 확인한 뒤 `c0765ab` (`feat: 수집 결과와 연속 누락 판정 구현`)로 커밋했다.
+
+## 14. Step 9 검수 후보 생성과 유지, 교체 판단 (2026-10-30)
+
+AGENT_RULES → PLAN Step 9 → SPEC 6.1~6.2 → Step 8 결과 → 검수 저장 서비스와 저장소, 기존 스냅샷 통합 테스트를 확인했다. 원본 하나의 검수 처리를 결정하는 순수 함수 `decidePolicyReview()`를 `modules/policies/policy-review-decision.ts`에 추가했다.
+
+- 입력은 수집 결과, 최신 원본의 식별자와 해시, 현재 공개본, 기존 대기, 거절 원본 ID와 해시 목록이다. 공개본의 출처와 외부 ID, 대기의 원본 ID와 PENDING 상태를 확인한다. 실제 DB 접근과 일괄 조회는 상위 수집 저장 서비스에서 연결할 Step 10 범위다.
+- 반환값은 KEEP(기존 대기 ID 유지), SKIP(새 후보 생략과 필요한 기존 대기 대체), CREATE(후보 종류와 필요한 기존 대기 대체) 중 하나다. 누락 원본은 기존 대기를 유지하고 대기가 없으면 후보를 만들지 않는다.
+- 수집된 원본은 SPEC 순서대로 공개본 일치 → 같은 원본의 거절 해시 일치 → 대기의 변경본 해시와 공개 기준 ID 및 해시 일치 → 기존 대기 대체와 새 후보 생성으로 판단한다. 공개본과 같아지면 MATCHES_PUBLIC, 거절했던 내용이면 PREVIOUSLY_REJECTED를 먼저 적용한다. 원본과 공개 기준이 함께 바뀌면 SOURCE_CHANGED를 우선하며 원본은 같고 기준만 바뀌면 PUBLIC_BASE_CHANGED다.
+- 새 후보 종류는 현재 공개본의 존재 여부로 NEW와 CHANGED를 정한다. UNCHANGED 수집도 현재 공개 기준을 비교하며 UUID만 달라진 경우도 대체한다. 거절 이력은 같은 원본 ID의 해시에 한정하고 공개 기준이 달라져도 유효하다. 과거 승인 또는 대체 이력의 해시로 복귀한 내용은 현재 공개본과 다르고 거절 이력이 없으면 새 후보를 허용한다.
+- 단위 테스트 43개로 명세 우선순위, 같은 대기 유지, 공개본과 거절본 복귀, 과거 승인과 대체 해시 복귀, 공개 기준의 UUID와 해시 변경, 후보 종류, 누락, 잘못된 식별자와 종료 이력, 입력 보존을 확인했다. 원문 복사와 스냅샷 해시 검증은 기존 Step 6 저장 서비스에 유지했다.
+- 기존 `policy-review-storage.integration.spec.ts`에 실제 DB 시나리오 4개를 추가했다. B 대기 반복 후 C와 B 복귀, B 거절 뒤 C 생성과 공개 기준 변경 후 B 재검수 방지, 과거 승인 A와 현재 공개 B에서 A 새 후보 생성, 동일 원본에서 공개 기준을 직접 변경한 후 스냅샷 교체를 재현했다. 과거 승인과 거절, 대체 이력의 전체 행 보존과 대기 한 건을 확인한다. 공개 기준 변경은 격리된 테스트 스키마에서만 수행한다.
+- T2-06~12와 T2-28의 후보 판단 및 저장 결과를 검증했다. 전체 수집 저장 연결과 재시도 및 동시 실행은 후속 Step에서 검증하며 기존 CLI와 공개 API는 변경하지 않았다.
+
+### 검증
+
+```bash
+npm test --workspace apps/api -- --runTestsByPath test/policy-review-decision.spec.ts --json --outputFile=/tmp/mvp2-step9-unit-results.json
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+node /tmp/mvp2-step9-verify.cjs before
+node /tmp/mvp2-step9-verify.cjs focused
+node /tmp/mvp2-step9-verify.cjs full
+node /tmp/mvp2-step9-verify.cjs after
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml ps -a
+git diff --check
+```
+
+- 전체 타입 검사와 shared/API 빌드, diff 검사 통과. 신규 단위 **43개**, 기존 28개에 4개를 추가한 검수 저장 통합 **32개**, 전체 API와 DB **59개 스위트, 1,796개 테스트 모두 통과**했다. 실패와 건너뜀은 0건이다. 전체 회귀에는 실제 PostgreSQL과 HTTP, 독립 CLI를 포함한다.
+- 단위 결과는 `/tmp/mvp2-step9-unit-results.json`, 통합 및 전체 결과와 가린 출력은 `/tmp/mvp2-step9-{focused,full}-results.json`, `/tmp/mvp2-step9-{focused,full}-output.log`에 보관했다. 검증 실행기는 `.env`의 비밀값을 출력하지 않고 메모리에서 DB URL을 구성한다.
+- 공개 정책 3,390건, 원본 3,390건, 검수 0건, 지역 537개, Migration 3개와 각 테이블 전체 행 체크섬이 검증 전후 동일하다. 공개 정책 체크섬은 `46a965ded0407e47a7af9816cd3e7b6e`이며 잔여 임시 검증 스키마는 0개다. 전후 자료는 `/tmp/mvp2-step9-before.json`, `/tmp/mvp2-step9-after.json`에 있다.
+- DB는 healthy이며 기존 웹과 API의 중지 상태를 유지했다. API 계약과 DB 스키마, Migration, 의존성, 환경변수, 웹 화면 변경은 없다. 브라우저 E2E와 컨테이너 재빌드는 수행하지 않았다. PLAN Step 9만 완료 표시했고 SPEC 변경은 없다.
+
+Step 9 핵심 읽는 순서: `policy-review-decision.ts`의 입력과 반환 타입 → `decidePolicyReview()`의 판단 순서 → `policy-review-decision.spec.ts` → `policy-review-storage.integration.spec.ts`의 추가 시나리오. 미해결 실패는 없다. 다음은 Step 10 수집분 일괄 저장 연결이며 이번 변경사항은 검토를 위해 미커밋 상태로 둔다.
