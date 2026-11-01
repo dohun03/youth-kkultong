@@ -252,29 +252,46 @@ describe('전체 수집분의 원본과 검수 및 공개 조회수 저장', () 
       firstCollectedAt?.getTime() === firstAt.getTime() && lastCollectedAt?.getTime() === firstAt.getTime())).toBe(true);
   });
 
-  it('후반 조회수 묶음의 실제 DB 오류는 앞서 저장한 원본과 후보, 조회수를 모두 취소한다', async () => {
+  it('세 번째 조회수 묶음의 CHECK 실패는 원본과 누락, 후보 생성과 대체, 앞 묶음 조회수를 모두 취소한다', async () => {
     const values = Array.from({ length: 401 }, (_, i) => incoming(`policy-${i}`));
-    await seedPublished(values);
+    await seedPublished([...values, incoming('missing')]);
+    await save(values.map(({ externalId }) => incoming(externalId, '대기 B')));
     const before = await state();
+    // 임시 스키마의 마지막 공개 행에서만 실제 CHECK 위반을 일으켜 후반 묶음 실패를 재현
+    await connection.query(`ALTER TABLE "${schema}".policies ADD CONSTRAINT step12_late_views_check
+      CHECK (external_id <> 'policy-400' OR view_count <> 99)`);
     const updateViews = policies.refreshViewCounts.bind(policies);
     let batches = 0;
     jest.spyOn(policies, 'refreshViewCounts').mockImplementation(async (manager, batch) => {
       batches += 1;
       if (batches === 3) {
-        expect(await manager.getRepository(PolicyReview).countBy({ status: 'PENDING' })).toBe(401);
+        expect(await manager.getRepository(PolicyReview).countBy({ status: 'PENDING' })).toBe(402);
+        expect(await manager.getRepository(PolicyReview).countBy({ status: 'SUPERSEDED' })).toBe(401);
+        expect(await manager.getRepository(SourcePolicy).count()).toBe(403);
+        expect(await manager.getRepository(SourcePolicy).findOneByOrFail({ externalId: 'missing' }))
+          .toMatchObject({ missingCount: 2 });
         expect(await manager.getRepository(Policy).countBy({ viewCount: 99 })).toBe(400);
+        // 다른 연결에서는 확정 전의 원본과 검수, 공개 조회수가 그대로 보이는지 확인
         expect(await state()).toEqual(before);
-        // 저장 후반에 실제 PostgreSQL 정수 범위 오류를 발생시켜 전체 취소를 검증
-        await manager.query('SELECT $1::integer', [2147483648]);
       }
       return updateViews(manager, batch);
     });
-    await expect(save(values.map(({ externalId }) => incoming(externalId, '새 내용 B', '99'))))
-      .rejects.toMatchObject({ driverError: { code: '22003' } });
-    expect(batches).toBe(3);
-    expect(await state()).toEqual(before);
-    expect(runner.isTransactionActive).toBe(false);
-    expect(runner.isReleased).toBe(false);
+    const starts = jest.spyOn(runner, 'startTransaction');
+    const rollbacks = jest.spyOn(runner, 'rollbackTransaction');
+    const commits = jest.spyOn(runner, 'commitTransaction');
+    try {
+      await expect(save([...values.map(({ externalId }) => incoming(externalId, '새 내용 C', '99')), incoming('new')], nextAt))
+        .rejects.toMatchObject({ driverError: { code: '23514', constraint: 'step12_late_views_check' } });
+      expect(batches).toBe(3);
+      expect(starts).toHaveBeenCalledTimes(1);
+      expect(rollbacks).toHaveBeenCalledTimes(1);
+      expect(commits).not.toHaveBeenCalled();
+      expect(await state()).toEqual(before);
+      expect(runner.isTransactionActive).toBe(false);
+      expect(runner.isReleased).toBe(false);
+    } finally {
+      await connection.query(`ALTER TABLE "${schema}".policies DROP CONSTRAINT step12_late_views_check`);
+    }
   });
 
   it('후보 스냅샷 해시 오류도 먼저 저장한 신규 원본을 취소한다', async () => {

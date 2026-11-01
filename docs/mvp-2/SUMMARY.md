@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-10-30 · 상태: Step 1~11 완료 · Step 12~41 미착수
+수정일: 2026-11-01 · 상태: Step 1~12 완료 · Step 13~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -439,3 +439,36 @@ git diff --check
 - 공개 API 계약, DB 스키마, 의존성, 환경변수와 웹 화면은 변경하지 않았다. PLAN과 SUMMARY를 현재 상태로 갱신했으며 SPEC 의미 변경은 없다. 웹 화면 변경이 없어 브라우저 전체 E2E와 컨테이너 재빌드는 반복하지 않았다. 기존 DB는 healthy이며 착수 시 중지되어 있던 웹과 API는 그대로 유지했다. 외부 API는 격리 테스트 자료로 대체했으며 실제 온통청년 수집은 실행하지 않았다.
 
 Step 11 핵심 읽는 순서: `import-policies.ts` → `ingestion.service.ts`의 `importPolicies()` → `policy-collection-write.service.ts`의 `saveCollection()` → `ingestion-log.service.ts` → CLI와 수집 통합 테스트. 미해결 실패는 없다. 2026-11-01 사용자 요청으로 Step 11 코드와 테스트, 문서를 커밋에 포함했다. 다음 작업은 Step 12다.
+
+## 17. Step 12 수집 저장 실패와 재시도 검증 (2026-11-01)
+
+AGENT_RULES → PLAN Step 12 → SPEC 5.3~5.5와 T2-21~22 → Step 10~11 완료 기록 → 실제 수집 저장 서비스와 저장 및 재시도 테스트를 확인했다. 기존 서비스가 명세를 충족해 실행 코드는 유지하고 실제 PostgreSQL 통합 테스트 두 파일을 보강했다.
+
+- `policy-collection-write.integration.spec.ts`: 격리 스키마의 마지막 공개 행에 테스트용 CHECK 제약을 추가해 세 번째 조회수 묶음에서 실제 `23514` 오류를 발생시킨다. 같은 트랜잭션에서 원본 403건, 대기 생성 402건과 기존 대기 대체 401건, 누락 횟수 증가와 앞 두 묶음의 공개 조회수 400건 갱신이 진행된 것을 확인한다. 별도 연결에서는 확정 전 상태를 유지하고 오류 후에는 세 테이블 전체 행이 실행 전과 일치한다. 트랜잭션 시작과 취소는 각 한 번이며 COMMIT과 자동 재시도는 없다. 제약은 테스트 후 제거한다. 기존 2,000번째 원본의 CHECK 실패 검증도 유지했다.
+- `policy-storage-retry.integration.spec.ts`: 별도 연결의 원본 잠금 순서를 뒤집어 실제 `40P01` 교착을 재현한다. 경쟁 연결이 확정한 최신 원본과 해시를 재시도에서 읽어 수집 판정을 UNCHANGED 2건으로 다시 계산하고, 이전 대기 두 건을 대체한 뒤 최신 해시의 후보 두 건만 남긴다.
+- 실제 `40001`은 테스트 연결의 격리 수준을 REPEATABLE READ로 높인 뒤 별도 연결에서 공개본을 갱신해 재현한다. 기존 공개 기준 재조회 검증에 더해, 첫 시도의 전체 취소 후 별도 연결이 원본 B와 공개 기준 C의 후보를 확정한 경우를 추가했다. 재시도 시 최신 원본으로 UNCHANGED를 판정하고 최신 대기는 유지하며 최신 거절 이력에는 후보를 만들지 않는다. 두 경우 모두 공개본과 대기 및 거절 이력을 다시 조회하고, 확정된 검수 전체 행과 첫 수집 시각을 보존한다. 취소된 시도의 누락 횟수는 합산되지 않는다. 이 설정과 직접 상태 준비는 격리 테스트에만 적용하며 실제 서비스의 READ COMMITTED와 수집 잠금 규칙은 유지한다.
+- 최대 시도 횟수는 DB의 `RAISE EXCEPTION`으로 `40P01`과 `40001`을 각 두 번 반환해 검증한다. 원본과 누락, 후보 생성 및 대체, 공개 조회수까지 쓴 후 두 시도 모두 취소되고 세 테이블 전체 행이 보존된다. 최초 포함 두 번에서 멈추며 COMMIT은 없다. 반복 한도 검증의 오류 주입과 위 실제 경쟁에 의한 충돌 재현을 구분한다.
+- 기존 단위 테스트의 재시도 제외 코드와 COMMIT 및 롤백 경계, 실제 DB의 충돌 후 연결 종료 시 새 연결로 재시도하지 않는 검증도 함께 통과했다. T2-21~22를 충족하며 로그와 연결 장애 조합은 Step 13 범위로 남긴다.
+
+### 검증
+
+```sh
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+node /tmp/mvp2-step12-verify.cjs before
+node /tmp/mvp2-step12-verify.cjs focused
+node /tmp/mvp2-step12-verify.cjs full
+node /tmp/mvp2-step12-verify.cjs after
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml ps -a
+git diff --check
+```
+
+- 전체 타입 검사와 shared/API 빌드, diff 검사를 통과했다. 전체 API/DB **60개 스위트 1,804개 테스트**, 최종 테스트 코드 정리 후 대상 **4개 스위트 65개 테스트**가 통과했다. 실패와 건너뜀은 0건이며, 기존 1,801개에서 재시도 시 최신 대기와 거절 이력 두 경우 및 직렬화 오류 반복 한도 한 경우를 추가했다. 전체 회귀에는 실제 PostgreSQL과 HTTP, 독립 CLI를 포함한다.
+- 초기 타입 검사에서 테스트의 원문 타입과 TypeORM의 재귀적 JSON 갱신 타입 오류를 발견해 수정했다. 교착을 준비하는 원본 갱신은 매개변수 SQL로 정리했고 최종 전체 타입 검사와 관련 테스트를 다시 통과했다.
+- 검증 실행기는 `.env`의 비밀값을 출력하지 않고 메모리에서 로컬 DB URL을 구성한다. 결과와 가린 출력은 `/tmp/mvp2-step12-{focused,full}-results.json`, `/tmp/mvp2-step12-{focused,full}-output.log`에 보관했다.
+- 공개 정책 3,390건, 원본 3,390건, 검수 0건, 지역 537개, Migration 3개와 각 테이블 전체 행 체크섬이 검증 전후 동일하다. 공개 정책 체크섬은 `46a965ded0407e47a7af9816cd3e7b6e`이며 잔여 테스트 임시 스키마는 0개다. 전후 기록은 `/tmp/mvp2-step12-before.json`, `/tmp/mvp2-step12-after.json`에 있다.
+- 착수 시 DB와 웹, API가 중지되어 있어 기존 볼륨을 유지한 채 DB만 시작했고 현재 healthy다. 웹과 API의 중지 상태는 유지했다. 공개 API 계약, 운영 DB 스키마와 Migration, 의존성, 환경변수, 웹 화면 변경은 없다. 브라우저 E2E와 컨테이너 재빌드는 수행하지 않았고 실제 온통청년 수집도 실행하지 않았다. PLAN Step 12와 SUMMARY만 현재 상태로 갱신했으며 SPEC 의미 변경은 없다.
+
+Step 12 핵심 읽는 순서: `policy-collection-write.service.ts`의 `saveCollection()`과 `saveTransaction()` → `policy-collection-write.integration.spec.ts`의 세 번째 조회수 묶음 CHECK 실패 → `policy-storage-retry.integration.spec.ts`의 실제 교착과 직렬화 충돌, 최신 이력 재조회 및 두 번 실패. 미해결 실패는 없다. 다음 작업은 Step 13이다.
+
+2026-11-01 사용자 요청으로 Step 12 테스트와 검증 문서를 커밋에 포함하고 Step 13~14를 이어서 진행한다.
