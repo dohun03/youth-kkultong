@@ -36,6 +36,7 @@ process.channel?.unref();
 let firstRequest = true;
 globalThis.fetch = async () => {
   process.send?.({ event: 'API_REQUEST' });
+  if (process.env.INGESTION_TEST_MODE === 'API_FAIL') return Response.json({}, { status: 403 });
   if (firstRequest && process.env.INGESTION_TEST_MODE === 'API_PAUSE') {
     firstRequest = false;
     process.send?.({ event: 'API_PAUSED' });
@@ -62,5 +63,28 @@ if (process.env.INGESTION_TEST_MODE === 'SAVE_PAUSE') {
       process.send?.({ event: 'SAVE_PAUSED' });
       await gate;
     }
+  };
+}
+
+if (process.env.INGESTION_TEST_MODE === 'REVIEW_PAUSE') {
+  const { PolicyReviewsWriteService } = require('../../src/modules/policies/services/policy-reviews-write.service.ts');
+  const originalSave = PolicyReviewsWriteService.prototype.saveReviewChanges;
+  PolicyReviewsWriteService.prototype.saveReviewChanges = async function (...args) {
+    await originalSave.apply(this, args);
+    // 원본과 후보까지 저장했지만 COMMIT 전인 시점에서 부모의 조회와 종료 검증을 기다림
+    process.send?.({ event: 'REVIEW_PAUSED' });
+    await gate;
+  };
+}
+
+if (process.env.INGESTION_TEST_MODE === 'COMMIT_PAUSE') {
+  const { PolicyCollectionWriteService } = require('../../src/modules/policies/services/policy-collection-write.service.ts');
+  const originalSave = PolicyCollectionWriteService.prototype.saveCollection;
+  PolicyCollectionWriteService.prototype.saveCollection = async function (...args) {
+    const result = await originalSave.apply(this, args);
+    // DB 확정 직후에도 세션 잠금을 보유한 채 종료되는 경우를 검증
+    process.send?.({ event: 'COMMIT_PAUSED' });
+    await gate;
+    return result;
   };
 }

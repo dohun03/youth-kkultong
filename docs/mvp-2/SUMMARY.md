@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-01 · 상태: Step 1~12 완료 · Step 13~41 미착수
+수정일: 2026-11-01 · 상태: Step 1~14 완료 · Step 15~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -472,3 +472,61 @@ git diff --check
 Step 12 핵심 읽는 순서: `policy-collection-write.service.ts`의 `saveCollection()`과 `saveTransaction()` → `policy-collection-write.integration.spec.ts`의 세 번째 조회수 묶음 CHECK 실패 → `policy-storage-retry.integration.spec.ts`의 실제 교착과 직렬화 충돌, 최신 이력 재조회 및 두 번 실패. 미해결 실패는 없다. 다음 작업은 Step 13이다.
 
 2026-11-01 사용자 요청으로 Step 12 테스트와 검증 문서를 커밋에 포함하고 Step 13~14를 이어서 진행한다.
+
+
+## 18. Step 13 수집 로그와 연결 장애, 종료 정리 검증 (2026-11-01)
+
+사용자 요청에 따라 Step 12 커밋 `aee50f4` 이후 Step 13~14를 연속 진행한다. PLAN Step 13과 SPEC 5.5, T2-44, 기존 수집 및 로그 서비스와 잠금 코드, 파일 로그와 CLI 통합 테스트를 대조했다. 실제 장애 검증을 보강했고 실행 코드는 기존 명세를 충족해 유지했다.
+
+- `ingestion-run.integration.spec.ts`에서 PAGE_ATTEMPT와 SAVE_ATTEMPT, WORK_FINISHED와 RUN_FINISHED의 파일 및 기본 로그 이중 실패를 검증한다. 저장 전 실패는 saved=false와 확정 건수 0, 저장 후 실패는 saved=true와 확정 건수를 유지하며 COMMIT은 최대 한 번이다. 모든 경우 수집 연결을 반환하고 다른 연결에서 잠금을 재획득한다. 이후 전체 수집도 성공하고 이미 확정된 후보 전체 행은 바뀌지 않는다.
+- 테스트가 확보한 수집 전용 PID만 `pg_terminate_backend()`로 종료하고 클라이언트의 실제 오류 통지를 기다린다. 저장 중 연결 종료는 NOT_COMMITTED와 건수 0, COMMIT 호출 시 연결 종료는 UNKNOWN과 모든 확정 건수 NULL, COMMIT 성공을 확인한 뒤 연결 종료는 COMMITTED와 확정 건수를 유지한다. 저장 중과 COMMIT 전 종료는 세 테이블 전체 행이 실행 전으로 돌아온다. 연결을 잃은 실행은 새 연결로 저장을 재시도하지 않는다.
+- 실제 COMMIT 반영과 미반영 각각에 대해 응답 유실과 WORK_FINISHED의 파일 및 기본 로그 이중 실패를 함께 재현했다. 최종 기록에 COMMIT_OUTCOME_UNKNOWN과 FILE_AND_FALLBACK_FAILED, 잠금 정리 실패 원인을 함께 보존하고 saved 및 확정 건수는 NULL로 남긴다. 실제 세션 종료로 잠금이 해제되고 다음 수집은 반영된 상태라면 UNCHANGED, 미반영 상태라면 NEW로 계산한다. 확정된 후보와 첫 수집 결과를 중복 생성하지 않는다.
+- 기존 파일 실패 시 기본 Logger 대체 기록, 비밀값 비노출, 실제 CLI 종료 및 잠금 정리 테스트도 함께 통과했다. 임시 스키마와 파일, 해당 테스트의 연결만 사용했으며 운영 DB 세션 종료와 실제 외부 API 호출은 수행하지 않았다.
+
+### 검증
+
+```sh
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+node /tmp/mvp2-step13-verify.cjs before
+node /tmp/mvp2-step13-verify.cjs focused
+node /tmp/mvp2-step13-verify.cjs after
+git diff --check
+```
+
+- 전체 타입 검사와 shared/API 빌드 통과. 수집 결과와 로그, 잠금 및 CLI **6개 스위트 71개 테스트 모두 통과**했으며 실패와 건너뜀은 0건이다. 기존 테스트 보강 외 실제 연결 종료 세 경우와 응답 유실 및 로그 실패 조합 두 경우를 추가했다. 전체 회귀는 이어지는 Step 14 변경까지 포함해 수행한다.
+- 결과와 가린 출력은 `/tmp/mvp2-step13-focused-results.json`, `/tmp/mvp2-step13-focused-output.log`에 보관했다. 기존 공개 정책 3,390건, 원본 3,390건, 검수 0건, 지역 537개, Migration 3개와 전체 행 체크섬이 전후 동일하고 잔여 임시 스키마는 0개다. 전후 기록은 `/tmp/mvp2-step13-{before,after}.json`에 있다.
+- API 계약과 운영 DB 스키마, Migration, 의존성, 환경변수, 웹 화면 변경은 없다. PLAN Step 13을 완료 표시했다. 미해결 실패는 없으며 다음 작업은 Step 14다.
+
+Step 13 핵심 읽는 순서: `ingestion.service.ts`의 확정 상태와 최종 기록 → `ingestion-lock.service.ts`의 finally 정리 → `ingestion-run.integration.spec.ts`의 disconnect()와 로그 이중 실패, 연결 종료 및 응답 유실 테스트.
+
+## 19. Step 14 동시 수집과 공개 조회 검증 (2026-11-01)
+
+PLAN Step 14와 SPEC 5.4~5.5, T2-23과 T2-45, 기존 독립 CLI 프로세스 테스트와 테스트 전용 로더를 확인했다. 실제 CLI 진입점을 별도 Node 프로세스로 실행하고 외부 API만 fixture로 대체한다. 실행 코드는 기존 기준을 충족해 유지했다.
+
+- `fixtures/ingestion-cli.preload.cjs`에 후보 저장 후 대기(REVIEW_PAUSE), DB 확정 직후 대기(COMMIT_PAUSE), API 403 실패(API_FAIL)를 추가했다. 임시 스키마 이름을 검사하고 각 자식 프로세스의 임시 로그 경로를 사용한다. 기존 API 대기와 원본 저장 후 대기도 유지하며 프로세스 간 IPC(진행 알림과 재개 신호)로 검증 시점을 맞춘다.
+- `ingestion-cli-process.integration.spec.ts`에서 API 대기, 원본 저장 후, 후보 저장 후, COMMIT 직후의 네 지점마다 독립 CLI 두 개를 실행한다. 첫 CLI만 API를 한 번 호출하고 두 번째 CLI는 호출과 저장 없이 종료 코드 2와 확정 건수 0을 기록한다. 첫 CLI는 종료 코드 0과 확정된 신규/변경/누락, 후보 생성 및 공개 조회수 건수를 남긴다.
+- API 대기와 원본 및 후보 저장 후에 SIGKILL로 종료하면 원본과 검수, 공개 정책의 전체 행이 실행 전과 일치한다. 다른 연결에서 잠금을 다시 획득한 뒤 다음 CLI가 정상 수집한다. COMMIT 직후 강제 종료하면 확정된 전체 행은 보존되고 다음 CLI는 UNCHANGED로 판단해 기존 후보 전체 행을 유지한다. 정상 완료된 수집마다 누락 횟수는 한 번씩 증가한다. 강제 종료된 프로세스에는 최종 로그가 없을 수 있음을 검증한다.
+- API 403으로 종료 코드 1을 반환하는 경우에도 세 테이블 전체 행이 보존되고 다음 CLI가 정상 수집한다. 프로세스 종료와 무관하게 해당 테스트의 자식 프로세스와 임시 로그를 정리한다.
+- 실제 NestJS HTTP 서버를 CLI와 별도 DB 연결로 시작하고, API 대기와 원본 및 후보 저장 후 각각 검색과 기존 정책 두 건의 상세를 조회한다. CLI를 재개하기 전에 기존 응답과 같은 본문을 반환하고, 잠금 때문에 조회가 멈추면 응답 제한 시간으로 실패하도록 검증한다. 수집 확정 후에도 공개 UUID와 본문은 그대로이며 조회수만 최신 값이다. 미승인 신규 원본 UUID의 상세는 404이고 미승인 제목 검색은 빈 결과다. 읽기 API 호출 전후 DB 전체 행도 동일하다.
+- T2-23의 독립 CLI 경쟁과 종료 복구, T2-45의 수집 중 공개 조회 범위를 충족했다. 스케줄러와 CLI 경쟁은 Step 36, 검수와 수집 경쟁 및 승인 중 공개 조회는 해당 검수 구현과 후속 검증 범위에 유지한다.
+
+### 검증
+
+```sh
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+node /tmp/mvp2-step14-verify.cjs before
+node /tmp/mvp2-step14-verify.cjs focused
+node /tmp/mvp2-step14-verify.cjs full
+node /tmp/mvp2-step14-verify.cjs after
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml ps -a
+git diff --check
+```
+
+- 전체 타입 검사와 shared/API 빌드, diff 검사 통과. Step 14 대상 **4개 스위트 85개 테스트**, Step 13~14 최종 변경을 포함한 전체 API/DB **60개 스위트 1,817개 테스트 모두 통과**했다. 실패와 건너뜀은 0건이다. Step 12의 1,804개에서 Step 13 연결 장애 조합 5개와 Step 14 독립 CLI 시나리오 8개를 추가했다. 독립 CLI 파일 자체는 기존 4개에서 12개 테스트가 됐다.
+- 검증 실행기는 `.env`를 메모리에서 읽어 로컬 DB URL을 구성하고 비밀값을 출력하지 않는다. 결과와 가린 출력은 `/tmp/mvp2-step14-{focused,full}-results.json`, `/tmp/mvp2-step14-{focused,full}-output.log`에 보관했다. Step 13 대상 검증 기록은 18절을 따른다.
+- 공개 정책 3,390건, 원본 3,390건, 검수 0건, 지역 537개, Migration 3개와 모든 테이블 전체 행 체크섬이 검증 전후 동일하다. 공개 정책 체크섬은 `46a965ded0407e47a7af9816cd3e7b6e`이며 잔여 임시 테스트 스키마는 0개다. 전후 기록은 `/tmp/mvp2-step14-{before,after}.json`에 있다.
+- DB는 healthy이며 웹과 API의 기존 중지 상태를 유지했다. 테스트 HTTP 서버와 CLI만 별도로 실행하고 정리했다. API 계약, 운영 DB 스키마, Migration, 의존성, 환경변수, 웹 화면 변경은 없다. 브라우저 E2E와 컨테이너 재빌드, 실제 온통청년 수집은 수행하지 않았다. PLAN Step 14 완료와 SUMMARY를 갱신했으며 SPEC 의미 변경은 없다.
+
+Step 14 핵심 읽는 순서: `fixtures/ingestion-cli.preload.cjs`의 진행 제어 → `ingestion-cli-process.integration.spec.ts`의 startCli()와 state()/expectCollected() → 잠금 경쟁과 강제 종료 복구 → 검색 및 상세 조회 시나리오. 미해결 실패는 없다. 사용자 요청 범위인 Step 14에서 중단하며 다음 작업은 Step 15다.

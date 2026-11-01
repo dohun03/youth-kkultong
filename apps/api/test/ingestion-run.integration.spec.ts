@@ -2,11 +2,12 @@ import { SourcePolicy } from '../src/modules/policies/entities/source-policy.ent
 import { PolicyReview } from '../src/modules/policies/entities/policy-review.entity';
 import { CreatePolicyReviewTables1793199600000 } from '../src/database/migrations/1793199600000-create-policy-review-tables';
 import { randomUUID } from 'node:crypto';
+import type { EventEmitter } from 'node:events';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
-import type { DataSource } from 'typeorm';
+import type { DataSource, QueryRunner } from 'typeorm';
 import { loadEnvironment } from '../src/common/environment';
 import { createDataSource } from '../src/database/data-source';
 import { CreatePolicies1792162800000 } from '../src/database/migrations/1792162800000-create-policies';
@@ -49,6 +50,30 @@ describe('수집 결과 파일과 실제 DB 자원 정리', () => {
   /** 임시 파일에 기록된 JSON 행 목록 읽기 */
   async function records(): Promise<IngestionLogEntry[]> {
     return (await readFile(join(directory, 'policies-import.jsonl'), 'utf8')).trimEnd().split('\n').map((line) => JSON.parse(line));
+  }
+
+  /** 별도 연결에서 확정된 원본과 검수, 공개 정책의 전체 행을 정렬 조회 */
+  async function state() {
+    return {
+      sources: await dataSource.getRepository(SourcePolicy).find({ order: { externalId: 'ASC' } }),
+      reviews: await dataSource.getRepository(PolicyReview).find({ order: { id: 'ASC' } }),
+      policies: await dataSource.getRepository(Policy).find({ order: { externalId: 'ASC' } }),
+    };
+  }
+
+  /** 이번 테스트가 확보한 수집 전용 세션만 서버에서 종료하고 클라이언트 통지를 확인 */
+  async function disconnect(runner: QueryRunner): Promise<void> {
+    const connection: EventEmitter = await runner.connect();
+    const [{ pid }] = await runner.query('SELECT pg_backend_pid() AS pid');
+    await new Promise<void>((resolve, reject) => {
+      const onError = () => { cleanup(); resolve(); };
+      const cleanup = () => { clearTimeout(timer); connection.off('error', onError); };
+      const timer = setTimeout(() => { cleanup(); reject(new Error('DB 세션 종료 통지가 도착하지 않았습니다.')); }, 5000);
+      connection.once('error', onError);
+      void admin.query('SELECT pg_terminate_backend($1) AS terminated', [pid])
+        .then(([row]) => { if (row.terminated !== true) throw new Error('테스트 DB 세션을 종료하지 못했습니다.'); })
+        .catch((error: unknown) => { cleanup(); reject(error); });
+    });
   }
 
   beforeAll(async () => {
@@ -192,11 +217,135 @@ describe('수집 결과 파일과 실제 DB 자원 정리', () => {
     await writeFile(blocked, '폴더 대신 파일');
     const failedLog = new IngestionLogService(environment, blocked);
     const write = log.write.bind(log);
-    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => { throw new Error(environment.YOUTH_CENTER_API_KEY); });
-    jest.spyOn(log, 'write').mockImplementation((entry) => entry.event === event ? failedLog.write(entry) : write(entry));
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => { throw new Error(environment.YOUTH_CENTER_API_KEY); });
+    const attempted: IngestionLogEntry[] = [];
+    const writes = jest.spyOn(log, 'write').mockImplementation((entry) => {
+      attempted.push(structuredClone(entry));
+      return entry.event === event ? failedLog.write(entry) : write(entry);
+    });
+    const runner = dataSource.createQueryRunner();
+    jest.spyOn(dataSource, 'createQueryRunner').mockReturnValueOnce(runner);
+    const starts = jest.spyOn(runner, 'startTransaction');
+    const commits = jest.spyOn(runner, 'commitTransaction');
+    const release = jest.spyOn(runner, 'release');
+    const committed = ['WORK_FINISHED', 'RUN_FINISHED'].includes(event);
     await expect(service.importPolicies()).rejects.toBeInstanceOf(Error);
-    expect(await dataSource.getRepository(SourcePolicy).count()).toBe(['WORK_FINISHED', 'RUN_FINISHED'].includes(event) ? 3 : 0);
+    expect(attempted.at(-1)).toMatchObject({ event: 'RUN_FINISHED', saved: committed,
+      commitOutcome: committed ? 'COMMITTED' : 'NOT_COMMITTED',
+      counts: { NEW: committed ? 3 : 0, CHANGED: 0, UNCHANGED: 0 },
+      missingCount: 0, reviewCreatedCount: committed ? 3 : 0, reviewSupersededCount: 0, publicViewUpdatedCount: 0,
+    });
+    expect(starts).toHaveBeenCalledTimes(committed ? 1 : 0);
+    expect(commits).toHaveBeenCalledTimes(committed ? 1 : 0);
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(runner.isReleased).toBe(true);
+    const after = await state();
+    expect(after.sources).toHaveLength(committed ? 3 : 0);
+    expect(after.reviews).toHaveLength(committed ? 3 : 0);
+    expect(after.policies).toEqual([]);
     await expect(lock.runWithLock(async () => true)).resolves.toEqual({ status: 'COMPLETED', value: true });
+    writes.mockRestore();
+    warn.mockRestore();
+    await expect(service.importPolicies()).resolves.toMatchObject({ value: {
+      counts: { NEW: committed ? 0 : 3, UNCHANGED: committed ? 3 : 0 }, reviewCreatedCount: committed ? 0 : 3,
+    } });
+    if (committed) expect((await state()).reviews).toEqual(after.reviews);
+  });
+
+  it.each(['DURING_SAVE', 'BEFORE_COMMIT', 'AFTER_COMMIT'] as const)('%s 실제 연결 종료 후 확정 여부와 정리 결과를 구분하고 다음 수집을 실행한다', async (stage) => {
+    await seedMigratedPolicies(dataSource, [{ plcyNo: 'outside', plcyNm: '기존 정책' }]);
+    const before = await state();
+    const runner = dataSource.createQueryRunner();
+    jest.spyOn(dataSource, 'createQueryRunner').mockReturnValueOnce(runner);
+    const starts = jest.spyOn(runner, 'startTransaction');
+    if (stage === 'DURING_SAVE') {
+      const refresh = repository.refreshViewCounts.bind(repository);
+      jest.spyOn(repository, 'refreshViewCounts').mockImplementationOnce(async (manager, values) => {
+        await refresh(manager, values);
+        await disconnect(runner);
+        // 실제 연결을 잃은 저장 쿼리의 실패가 전체 저장 취소로 이어지는지 확인
+        return manager.query('SELECT 1');
+      });
+    }
+    const commit = runner.commitTransaction.bind(runner);
+    const commits = jest.spyOn(runner, 'commitTransaction').mockImplementationOnce(async () => {
+      // 모든 원본과 후보 저장이 끝난 시점에 실제 서버 세션 종료를 재현
+      expect(await runner.manager.getRepository(PolicyReview).count()).toBe(3);
+      if (stage === 'AFTER_COMMIT') await commit();
+      await disconnect(runner);
+      if (stage === 'BEFORE_COMMIT') await commit();
+    });
+    const release = jest.spyOn(runner, 'release');
+    await expect(service.importPolicies()).rejects.toBeInstanceOf(Error);
+    const committed = stage === 'AFTER_COMMIT';
+    const unknown = stage === 'BEFORE_COMMIT';
+    expect((await records()).at(-1)).toMatchObject({ status: 'FAILED', saved: unknown ? null : committed,
+      commitOutcome: unknown ? 'UNKNOWN' : committed ? 'COMMITTED' : 'NOT_COMMITTED',
+      counts: unknown ? null : { NEW: committed ? 3 : 0, CHANGED: 0, UNCHANGED: 0 },
+      missingCount: unknown ? null : committed ? 1 : 0, reviewCreatedCount: unknown ? null : committed ? 3 : 0,
+      reviewSupersededCount: unknown ? null : 0, publicViewUpdatedCount: unknown ? null : 0,
+    });
+    expect(starts).toHaveBeenCalledTimes(1);
+    expect(commits).toHaveBeenCalledTimes(stage === 'DURING_SAVE' ? 0 : 1);
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(runner.isReleased).toBe(true);
+    if (!committed) expect(await state()).toEqual(before);
+    const reviews = (await state()).reviews;
+    await expect(lock.runWithLock(async () => true)).resolves.toEqual({ status: 'COMPLETED', value: true });
+    await expect(service.importPolicies()).resolves.toMatchObject({ value: {
+      counts: { NEW: committed ? 0 : 3, UNCHANGED: committed ? 3 : 0, MISSING: 1 }, reviewCreatedCount: committed ? 0 : 3,
+    } });
+    if (committed) expect((await state()).reviews).toEqual(reviews);
+    expect((await state()).sources.find(({ externalId }) => externalId === 'outside')?.missingCount).toBe(committed ? 2 : 1);
+  });
+
+  it.each([false, true])('실제 COMMIT 확정 %s의 응답 유실과 로그 이중 실패가 겹쳐도 결과 불명을 보존하고 저장을 반복하지 않는다', async (committed) => {
+    const before = await state();
+    const runner = dataSource.createQueryRunner();
+    jest.spyOn(dataSource, 'createQueryRunner').mockReturnValueOnce(runner);
+    const starts = jest.spyOn(runner, 'startTransaction');
+    const commit = runner.commitTransaction.bind(runner);
+    const commits = jest.spyOn(runner, 'commitTransaction').mockImplementationOnce(async () => {
+      if (committed) await commit();
+      // 서버의 실제 반영 여부와 무관하게 호출자는 COMMIT 성공 응답을 받지 못한 상황
+      await disconnect(runner);
+      throw new Error('검증용 COMMIT 응답 유실');
+    });
+    const blocked = join(directory, 'blocked');
+    await writeFile(blocked, '폴더 대신 파일');
+    const failedLog = new IngestionLogService(environment, blocked);
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => { throw new Error('검증용 기본 로그 실패'); });
+    const write = log.write.bind(log);
+    let workLogFailed = false;
+    const writes = jest.spyOn(log, 'write').mockImplementation((entry) => {
+      if (entry.event === 'WORK_FINISHED' && !workLogFailed) {
+        workLogFailed = true;
+        return failedLog.write(entry);
+      }
+      return write(entry);
+    });
+    await expect(service.importPolicies()).rejects.toBeInstanceOf(AggregateError);
+    expect((await records()).at(-1)).toMatchObject({ status: 'FAILED', saved: null, commitOutcome: 'UNKNOWN', counts: null,
+      missingCount: null, reviewCreatedCount: null, reviewSupersededCount: null, publicViewUpdatedCount: null,
+      failures: expect.arrayContaining([
+        { stage: 'DATABASE', reason: 'COMMIT_OUTCOME_UNKNOWN' },
+        { stage: 'LOG', reason: 'FILE_AND_FALLBACK_FAILED' },
+        { stage: 'LOCK_RELEASE', reason: 'UNLOCK_FAILED' },
+      ]),
+    });
+    expect(starts).toHaveBeenCalledTimes(1);
+    expect(commits).toHaveBeenCalledTimes(1);
+    expect(runner.isReleased).toBe(true);
+    expect(workLogFailed).toBe(true);
+    if (!committed) expect(await state()).toEqual(before);
+    const reviews = (await state()).reviews;
+    await expect(lock.runWithLock(async () => true)).resolves.toEqual({ status: 'COMPLETED', value: true });
+    writes.mockRestore();
+    warn.mockRestore();
+    await expect(service.importPolicies()).resolves.toMatchObject({ value: {
+      counts: { NEW: committed ? 0 : 3, UNCHANGED: committed ? 3 : 0 }, reviewCreatedCount: committed ? 0 : 3,
+    } });
+    if (committed) expect((await state()).reviews).toEqual(reviews);
   });
 
   it('저장 뒤 잠금 해제가 실패하면 저장 완료와 정리 실패를 구분해서 기록한다', async () => {
