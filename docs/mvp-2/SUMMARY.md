@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-01 · 상태: Step 1~15 완료 · Step 16~41 미착수
+수정일: 2026-11-02 · 상태: Step 1~16 완료 · Step 17~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -581,3 +581,28 @@ Step 15 핵심 읽는 순서: `admin-credentials.ts`의 parseAdminCredentials() 
 사용자 요청으로 Step 15 코드를 읽기 쉽게 정리했다. 설정 검사, 로그인 확인, 초기 해시 생성을 `admin-credentials.ts` 한 파일로 모으고 `admin-password.ts`는 제거했다. 한 줄 길이 검사와 한 번만 사용하는 해시 해석 및 비밀번호 비교 함수를 호출 위치에 합쳤다. 해시 생성과 로그인에서 함께 쓰는 비동기 scrypt 계산만 `deriveKey()`로 유지한다. 초기 준비 CLI는 별도 실행 도구이므로 기존 파일을 유지한다. 테스트도 내부 보조 함수 대신 설정 검사와 실제 인증 결과를 확인하도록 수정했다. 인증 규칙, API 및 DB 계약 변경은 없다.
 
 리팩터링 검증: `npm run build --workspace apps/api`, `npm run typecheck --workspace apps/api`, `git diff --check` 통과. 관리자 자격, 해시 준비, 공통 환경 설정 및 관리자 입력 검증의 4개 스위트 313개 테스트 모두 통과했다. 최초 CLI 테스트는 샌드박스의 자식 프로세스 생성 제한(`spawnSync EPERM`)으로 실패해 실행 가능한 환경에서 같은 테스트를 다시 수행했다. 이번 내부 정리는 DB 접근과 웹 화면 변경이 없어 전체 DB 회귀와 브라우저 검증을 반복하지 않았다.
+
+## 21. Step 16 관리자 인증 쿠키 (2026-11-02)
+
+사용자 요청에 따라 Step 15의 검수와 코드 정리를 커밋 `109bb3a`(`feat: 관리자 자격 검증과 비밀번호 해시 준비 구현`)에 포함한 뒤 Step 16을 진행했다. AGENT_RULES → PLAN Step 16 → SPEC 7.1~7.2 및 T2-36~37 → Step 15 완료 기록 → 자격 검증과 공통 환경 설정 및 API 계약을 대조했다. 충돌은 없다.
+
+- `modules/admin/admin-cookie.ts` 한 파일에 설정 확인과 쿠키 발급, 검증, 삭제를 모았다. `parseAdminCookieSettings()`는 표준 base64로 저장된 32바이트 이상 서명 키와 웹 출처를 확인한다. 웹 출처 기본은 `http://localhost:3000`이고 HTTPS에는 Secure, localhost 및 127.0.0.1의 HTTP에는 Secure 미적용으로 결정한다. 오류에는 비밀값과 출처 원문을 포함하지 않는다. 필수 설정의 HTTP 기동 연결은 Step 17에서 진행한다.
+- `AdminCookieService.issue()`는 관리자 식별자와 발급 및 만료 Unix 초만 payload에 넣고, 인코딩한 payload 전체에 HMAC-SHA256 서명을 붙인다. `youth_admin_auth`의 Set-Cookie 문자열과 공용 `AdminIdentity`를 반환한다. 쿠키는 HttpOnly, SameSite=Strict, Path=/api/v1/admin, Max-Age=28800을 사용하며 출처에 따라 Secure를 적용한다.
+- `verify()`는 최대 2048자와 두 조각의 base64url 형식을 확인하고, 고정 길이 서명을 timingSafeEqual로 비교한 후 payload를 해석한다. UTF-8과 JSON, 정확한 세 필드 및 관리자 식별자, 정수 시간과 정확한 8시간 간격, `iat <= 현재 시각 < exp`를 확인한다. 형식 오류와 변조 및 만료는 Step 15와 같은 401 `ADMIN_UNAUTHORIZED` 및 안전한 메시지로 처리한다. 조회로 만료가 연장되지 않는다.
+- `clear()`는 발급과 같은 이름 및 Path와 보안 속성으로 Max-Age=0인 삭제 쿠키를 반환한다. HTTP 로그인 및 Guard 연결, 실제 브라우저 쿠키 처리는 Step 17~19 범위다.
+- 신규 `admin-cookie.spec.ts`에서 설정 누락 및 오류, 출처와 NODE_ENV 조합, 독립 HMAC 서명 대조, 필드 및 관리자 오류, 서명 변조와 키 교체, 비표준 base64url 및 잘못된 UTF-8/JSON, 2048자 경계, 발급 직전과 발급 초 및 만료 직전과 만료 초, 발급과 삭제 속성 일치를 검증했다.
+
+### 검증
+
+```sh
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+npm run typecheck --workspace apps/api
+npm test --workspace apps/api -- --runTestsByPath test/admin-cookie.spec.ts test/admin-credentials.spec.ts test/prepare-admin-password.spec.ts test/environment.spec.ts test/admin-validation.spec.ts
+git diff --check
+```
+
+- 전체 shared/API/web 타입 검사와 shared/API 빌드 통과. 최종 관련 **5개 스위트 383개 테스트 모두 통과**, 실패와 건너뜀은 0건이다. 신규 쿠키 테스트 70개와 기존 자격, 실제 해시 준비 CLI, 환경 및 관리자 입력 검증을 포함한다. 실제 CLI 자식 프로세스 실행이 가능한 환경에서 최종 대상 테스트를 수행했다.
+- DB 접근과 공개 API 및 웹 화면 변경이 없어 전체 DB 회귀와 브라우저 E2E, 컨테이너 재빌드를 반복하지 않았다. DB 데이터와 스키마, 의존성, `.env` 및 Compose, AppModule과 공통 환경 검증은 변경하지 않았다. 실제 관리자 비밀값을 만들거나 기록하지 않았다. SPEC 의미 변경 없이 PLAN과 SUMMARY를 완료 상태로 갱신했다.
+
+Step 16 핵심 읽는 순서: `admin-cookie.ts`의 parseAdminCookieSettings() → issue() → verify() → clear() → `admin-cookie.spec.ts`. 미해결 실패는 없다. 다음 작업은 Step 17이며 이번 요청 범위에서 중단한다.
