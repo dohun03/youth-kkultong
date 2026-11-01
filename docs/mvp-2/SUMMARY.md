@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-01 · 상태: Step 1~14 완료 · Step 15~41 미착수
+수정일: 2026-11-01 · 상태: Step 1~15 완료 · Step 16~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -530,3 +530,54 @@ git diff --check
 - DB는 healthy이며 웹과 API의 기존 중지 상태를 유지했다. 테스트 HTTP 서버와 CLI만 별도로 실행하고 정리했다. API 계약, 운영 DB 스키마, Migration, 의존성, 환경변수, 웹 화면 변경은 없다. 브라우저 E2E와 컨테이너 재빌드, 실제 온통청년 수집은 수행하지 않았다. PLAN Step 14 완료와 SUMMARY를 갱신했으며 SPEC 의미 변경은 없다.
 
 Step 14 핵심 읽는 순서: `fixtures/ingestion-cli.preload.cjs`의 진행 제어 → `ingestion-cli-process.integration.spec.ts`의 startCli()와 state()/expectCollected() → 잠금 경쟁과 강제 종료 복구 → 검색 및 상세 조회 시나리오. 미해결 실패는 없다. 사용자 요청 범위인 Step 14에서 중단하며 다음 작업은 Step 15다.
+
+## 20. Step 15 관리자 자격 설정과 비밀번호 검증 (2026-11-01)
+
+AGENT_RULES → PLAN Step 15 → SPEC 7.1~7.2와 T2-36·40 → Step 14 완료 기록 → 공통 환경 설정, HTTP 및 수집 CLI 진입점, shared 로그인 검증과 관련 테스트를 확인했다. 문서와 실제 코드의 충돌은 없다.
+
+- `modules/admin/admin-credentials.ts`에 공백 없는 1~64자 관리자 식별자와 비밀번호 해시의 명시적 설정 검증을 추가했다. 오류에는 설정 항목명과 안전한 설명만 포함한다. 공통 환경 설정과 AppModule은 유지하므로 수집·Migration·시드 CLI에 관리자 자격이 요구되지 않는다. HTTP 시작점에서 필수 설정을 연결하는 작업은 Step 17 범위다.
+- `admin-credentials.ts`의 해시 생성과 로그인 확인은 Node 내장 비동기 scrypt(N=16384, r=8, p=1, 무작위 salt 16바이트, key 64바이트)를 사용한다. 저장 형식의 비용과 전체 길이, 표준 base64 및 디코딩 길이를 검사한다. 비밀번호는 1~256자이며 공백을 보존한다. 계산 키를 고정 길이 timingSafeEqual로 비교한 뒤 임시 키 버퍼를 지운다.
+- `AdminCredentialsService.authenticate()`는 계정 불일치에도 비밀번호 계산을 수행한다. 잘못된 계정과 비밀번호는 동일한 401 `ADMIN_UNAUTHORIZED` 및 `관리자 인증이 필요합니다.` 예외를 반환한다. 성공 시 관리자 식별자만 반환한다. 쿠키, Guard, HTTP 오류 필터 연결과 로그인 API는 Step 16~18에서 진행한다.
+- `prepare-admin-password.ts`는 표준 입력만으로 비밀번호를 받아 새 파일에 해시를 저장한다. 화면에 비밀번호나 해시를 출력하지 않고, 파일은 소유자만 읽고 쓸 수 있는 권한 600으로 생성한다. 기존 파일과 심볼릭 링크를 덮어쓰지 않는다. 입력 바이트 수와 UTF-8 형식을 검사하고 입력 버퍼를 정리한다. CLI 오류는 원문이나 경로가 없는 고정 문구로 출력한다.
+- `admin-credentials.spec.ts`는 설정 누락과 형식 오류, 비용 변경 및 비표준 base64, 독립적으로 만든 scrypt 벡터, 계정 불일치 시 실제 scrypt와 64바이트 비교 실행, 동일 인증 오류, 한글 및 공백과 길이 경계, 무작위 salt 및 내부 계산 오류를 확인한다. `prepare-admin-password.spec.ts`는 파일 권한과 덮어쓰기 방지, 입력 실패 및 UTF-8 경계와 실제 CLI의 표준 출력 및 오류 출력 비노출을 확인한다.
+
+### 비밀번호 해시 준비 방법
+
+프로젝트 루트의 Bash에서 다음 명령으로 준비한다. 비밀번호는 숨김 프롬프트에 직접 입력하며 명령행 인자나 환경변수로 전달하지 않는다. `printf`는 줄바꿈을 추가하지 않아 비밀번호의 앞뒤 공백이 그대로 유지된다.
+
+```bash
+npm run build --workspace apps/api
+(
+  set +x
+  IFS= read -r -s -p '관리자 비밀번호: ' admin_password
+  printf '\n' >&2
+  printf '%s' "$admin_password" | node apps/api/dist/prepare-admin-password.js /tmp/youth-admin-password.hash
+  unset admin_password
+)
+```
+
+성공 시 출력 없이 `/tmp/youth-admin-password.hash`에 해시 한 줄이 저장된다. 기존 파일이 있으면 다른 새 경로를 사용한다. 파일은 로컬 편집기로 열어 `ADMIN_PASSWORD_HASH` 설정을 준비하며 로그나 Git에 복사하지 않는다. `.env`에 넣을 때는 `$`를 포함한 해시 전체를 작은따옴표로 감싼다. 설정이 끝나면 임시 파일을 삭제한다. `.env.example` 및 Compose 전달과 HTTP 기동 검증은 계획대로 Step 17에서 연결한다. 이번 검증에서는 테스트 전용 비밀번호만 사용했고 실제 관리자 자격과 로컬 `.env`는 변경하지 않았다.
+
+### 검증
+
+```sh
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+npm test --workspace apps/api -- --runTestsByPath test/admin-credentials.spec.ts test/prepare-admin-password.spec.ts test/environment.spec.ts test/admin-validation.spec.ts
+node /tmp/mvp2-step15-verify.cjs before
+node /tmp/mvp2-step15-verify.cjs full
+node /tmp/mvp2-step15-verify.cjs after
+git diff --check
+```
+
+- 전체 타입 검사와 shared/API 빌드, diff 검사 통과. 초기 대상 4개 스위트 311개 테스트가 통과했고, 실제 CLI 비노출 두 경우를 추가한 최종 전체 API/DB 회귀는 **62개 스위트 1,869개 테스트 모두 통과**했다. 실패와 건너뜀은 0건이며 이전 1,817개에서 이번 자격 및 해시 준비 검증 52개를 추가했다. 기존 독립 수집 CLI 및 Migration·시드 관련 테스트도 전체 회귀에 포함했다.
+- 검증 실행기는 비밀값을 출력하지 않고 로컬 DB URL을 구성한다. 전체 결과와 가린 출력은 `/tmp/mvp2-step15-full-results.json`, `/tmp/mvp2-step15-full-output.log`에 보관했다. 공개 정책 3,390건, 원본 3,390건, 검수 0건, 지역 537개, Migration 3개와 각 테이블 전체 행 체크섬이 검증 전후 동일하며 잔여 테스트 스키마는 0개다. 전후 기록은 `/tmp/mvp2-step15-{before,after}.json`에 있다.
+- 공개 API 계약, 운영 DB 스키마와 Migration, 의존성, 공통 환경 설정, Compose와 웹 화면 변경은 없다. DB는 healthy이며 기존 웹과 API의 중지 상태는 유지했다. 브라우저 E2E와 컨테이너 재빌드, 실제 온통청년 수집은 수행하지 않았다. SPEC 의미 변경 없이 PLAN Step 15와 SUMMARY를 갱신했다.
+
+Step 15 핵심 읽는 순서: `admin-credentials.ts`의 parseAdminCredentials() → authenticate() → createAdminPasswordHash()와 공통 deriveKey() → `prepare-admin-password.ts`의 안전한 파일 생성 → 두 신규 테스트 파일. 미해결 실패는 없다. 다음 작업은 Step 16이며 이번 요청 범위에서 중단한다.
+
+사용자 검수 후 위 세 실행 코드 파일의 주석을 입력 → 처리 → 결과 중심으로 정리했다. 입력 묶음(chunk), 누적 바이트 수(size), 전체 입력 바이트(bytes)와 문자열 변환 및 파일 저장 흐름을 명시했다. 동작 변경 없이 주석과 공백만 수정했으며 `git diff --check`를 통과했다. 테스트는 재실행하지 않았다.
+
+사용자 요청으로 Step 15 코드를 읽기 쉽게 정리했다. 설정 검사, 로그인 확인, 초기 해시 생성을 `admin-credentials.ts` 한 파일로 모으고 `admin-password.ts`는 제거했다. 한 줄 길이 검사와 한 번만 사용하는 해시 해석 및 비밀번호 비교 함수를 호출 위치에 합쳤다. 해시 생성과 로그인에서 함께 쓰는 비동기 scrypt 계산만 `deriveKey()`로 유지한다. 초기 준비 CLI는 별도 실행 도구이므로 기존 파일을 유지한다. 테스트도 내부 보조 함수 대신 설정 검사와 실제 인증 결과를 확인하도록 수정했다. 인증 규칙, API 및 DB 계약 변경은 없다.
+
+리팩터링 검증: `npm run build --workspace apps/api`, `npm run typecheck --workspace apps/api`, `git diff --check` 통과. 관리자 자격, 해시 준비, 공통 환경 설정 및 관리자 입력 검증의 4개 스위트 313개 테스트 모두 통과했다. 최초 CLI 테스트는 샌드박스의 자식 프로세스 생성 제한(`spawnSync EPERM`)으로 실패해 실행 가능한 환경에서 같은 테스트를 다시 수행했다. 이번 내부 정리는 DB 접근과 웹 화면 변경이 없어 전체 DB 회귀와 브라우저 검증을 반복하지 않았다.
