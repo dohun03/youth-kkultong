@@ -15,7 +15,7 @@ import { SourcePolicyRepository } from '../src/modules/policies/repositories/sou
 import { PolicyReviewRepository } from '../src/modules/policies/repositories/policy-review.repository';
 import { PolicyReviewsWriteService } from '../src/modules/policies/services/policy-reviews-write.service';
 import { PolicyCollectionWriteService } from '../src/modules/policies/services/policy-collection-write.service';
-import type { PolicyWriteInput } from '../src/modules/policies/services/policies-write.service';
+import type { PolicyWriteInput } from '../src/modules/policies/policy-write.types';
 
 const firstAt = new Date('2026-10-29T19:00:00.123Z');
 const nextAt = new Date('2026-10-30T03:00:00.456Z');

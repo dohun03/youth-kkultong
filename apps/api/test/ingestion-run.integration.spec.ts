@@ -1,3 +1,6 @@
+import { SourcePolicy } from '../src/modules/policies/entities/source-policy.entity';
+import { PolicyReview } from '../src/modules/policies/entities/policy-review.entity';
+import { CreatePolicyReviewTables1793199600000 } from '../src/database/migrations/1793199600000-create-policy-review-tables';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -13,7 +16,8 @@ import type { IngestionLogEntry } from '../src/modules/ingestion/services/ingest
 import { IngestionService } from '../src/modules/ingestion/services/ingestion.service';
 import { YouthCenterClient } from '../src/modules/ingestion/youth-center/youth-center.client';
 import { Policy } from '../src/modules/policies/entities/policy.entity';
-import { PoliciesWriteService } from '../src/modules/policies/services/policies-write.service';
+import { PolicyCollectionWriteService } from '../src/modules/policies/services/policy-collection-write.service';
+import { createCollectionWriter, clearPolicyTables, seedMigratedPolicies } from './helpers/policy-collection';
 import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 
 /** 2건씩 나눈 3개 정책의 정상 API 응답 생성 */
@@ -37,7 +41,7 @@ describe('수집 결과 파일과 실제 DB 자원 정리', () => {
   let lock: IngestionLockService;
   let log: IngestionLogService;
   let repository: PolicyRepository;
-  let writer: PoliciesWriteService;
+  let writer: PolicyCollectionWriteService;
   let service: IngestionService;
   let fetchMock: jest.SpiedFunction<typeof fetch>;
   let schemaCreated = false;
@@ -53,7 +57,7 @@ describe('수집 결과 파일과 실제 DB 자원 정리', () => {
     await admin.query(`CREATE SCHEMA "${schema}"`);
     schemaCreated = true;
     dataSource = createDataSource(environment).setOptions({
-      schema, entities: [Policy], migrations: [CreatePolicies1792162800000],
+      schema, entities: [Policy, SourcePolicy, PolicyReview], migrations: [CreatePolicies1792162800000, CreatePolicyReviewTables1793199600000],
       extra: { options: `-c timezone=${environment.TZ} -c search_path=${schema}` },
     });
     await dataSource.initialize();
@@ -61,12 +65,12 @@ describe('수집 결과 파일과 실제 DB 자원 정리', () => {
   });
 
   beforeEach(async () => {
-    await dataSource.getRepository(Policy).clear();
+    await clearPolicyTables(dataSource);
     directory = await mkdtemp(join(tmpdir(), 'ingestion-run-'));
     lock = new IngestionLockService(dataSource);
     log = new IngestionLogService(environment, directory);
     repository = new PolicyRepository();
-    writer = new PoliciesWriteService(repository, { ...environment, POLICY_IMPORT_BATCH_SIZE: 2 });
+    writer = createCollectionWriter({ ...environment, POLICY_IMPORT_BATCH_SIZE: 2 }, repository);
     service = new IngestionService(new YouthCenterClient(environment), lock, writer, log);
     fetchMock = jest.spyOn(globalThis, 'fetch').mockImplementation(async (input) => (
       Response.json(page(Number(new URL(String(input)).searchParams.get('pageNum'))))
@@ -92,8 +96,8 @@ describe('수집 결과 파일과 실제 DB 자원 정리', () => {
   });
 
   it('페이지·실행 ID·신규/동일 건수를 파일에 남기고 종료 후 잠금을 다시 획득한다', async () => {
-    await expect(service.importPolicies()).resolves.toEqual({ status: 'COMPLETED', value: { NEW: 3, CHANGED: 0, UNCHANGED: 0 } });
-    await expect(service.importPolicies()).resolves.toEqual({ status: 'COMPLETED', value: { NEW: 0, CHANGED: 0, UNCHANGED: 3 } });
+    await expect(service.importPolicies()).resolves.toMatchObject({ status: 'COMPLETED', value: { counts: { NEW: 3, CHANGED: 0, UNCHANGED: 0 } } });
+    await expect(service.importPolicies()).resolves.toMatchObject({ status: 'COMPLETED', value: { counts: { NEW: 0, CHANGED: 0, UNCHANGED: 3 } } });
     const all = await records();
     const results = all.filter((entry) => entry.event === 'RUN_FINISHED');
     expect(results).toHaveLength(2);
@@ -102,14 +106,15 @@ describe('수집 결과 파일과 실제 DB 자원 정리', () => {
     expect(results[1]).toMatchObject({ status: 'SUCCESS', saved: true, counts: { NEW: 0, CHANGED: 0, UNCHANGED: 3 } });
     expect(all.filter((entry) => entry.event === 'PAGE_ATTEMPT').map((entry) => entry.pageNum)).toEqual([1, 2, 1, 2]);
     expect(JSON.stringify(all)).not.toContain(environment.YOUTH_CENTER_API_KEY);
-    expect(await dataSource.getRepository(Policy).count()).toBe(3);
+    expect(await dataSource.getRepository(SourcePolicy).count()).toBe(3);
     await expect(lock.runWithLock(async () => true)).resolves.toEqual({ status: 'COMPLETED', value: true });
   });
 
   it.each(['API', 'TRANSFORMATION', 'HASH', 'DATABASE'] as const)('%s 실패 후 기존 DB·실패 로그·잠금 해제를 확인한다', async (stage) => {
     const table = dataSource.getRepository(Policy);
-    await table.save({ source: 'youthcenter', externalId: 'outside', title: '기존 정책', rawJson: {}, contentHash: 'a'.repeat(64) });
+    await seedMigratedPolicies(dataSource, [{ plcyNo: 'outside', plcyNm: '기존 정책' }]);
     const before = await table.find();
+    const sourceBefore = await dataSource.getRepository(SourcePolicy).find();
     if (stage === 'API') {
       fetchMock.mockImplementation(async (input) => {
         const number = Number(new URL(String(input)).searchParams.get('pageNum'));
@@ -123,16 +128,19 @@ describe('수집 결과 파일과 실제 DB 자원 정리', () => {
     } else if (stage === 'HASH') {
       jest.spyOn(service, 'collectPolicies').mockResolvedValueOnce([{ plcyNo: 'invalid', plcyNm: '검증', extra: undefined }]);
     } else {
-      const upsert = repository.upsertPolicies.bind(repository);
+      const sourceWriter = writer['sources'];
+    const upsert = sourceWriter.upsertCollectedPolicies.bind(sourceWriter);
       let batch = 0;
-      jest.spyOn(repository, 'upsertPolicies').mockImplementation(async (manager, policies) => {
+      jest.spyOn(sourceWriter, 'upsertCollectedPolicies').mockImplementation(async (manager, policies, collectedAt) => {
         batch += 1;
-        await upsert(manager, batch === 2 ? policies.map((policy) => ({ ...policy, category: 'x'.repeat(101) })) : policies);
+        await upsert(manager, policies.map((policy, index) => index === 2 ? { ...policy, viewCount: -1 } : policy), collectedAt);
       });
     }
     await expect(service.importPolicies()).rejects.toBeInstanceOf(Error);
     expect((await records()).at(-1)).toMatchObject({ event: 'RUN_FINISHED', status: 'FAILED', saved: false, failures: [expect.objectContaining({ stage })] });
     expect(await table.find()).toEqual(before);
+    expect(await dataSource.getRepository(SourcePolicy).find()).toEqual(sourceBefore);
+    expect(await dataSource.getRepository(PolicyReview).count()).toBe(0);
     await expect(lock.runWithLock(async () => true)).resolves.toEqual({ status: 'COMPLETED', value: true });
   });
 
@@ -143,16 +151,17 @@ describe('수집 결과 파일과 실제 DB 자원 정리', () => {
       return requests === 1 ? Response.json({}, { status: 503, headers: { 'Retry-After': '0' } })
         : Response.json(page(Number(new URL(String(input)).searchParams.get('pageNum'))));
     });
-    const upsert = repository.upsertPolicies.bind(repository);
+    const sourceWriter = writer['sources'];
+    const upsert = sourceWriter.upsertCollectedPolicies.bind(sourceWriter);
     let first = true;
-    jest.spyOn(repository, 'upsertPolicies').mockImplementation(async (manager, policies) => {
+    jest.spyOn(sourceWriter, 'upsertCollectedPolicies').mockImplementation(async (manager, policies, collectedAt) => {
       if (first) {
         first = false;
         await manager.sql`DO $$ BEGIN RAISE EXCEPTION '검증용 충돌' USING ERRCODE = '40P01'; END; $$`;
       }
-      await upsert(manager, policies);
+      await upsert(manager, policies, collectedAt);
     });
-    await expect(service.importPolicies()).resolves.toMatchObject({ value: { NEW: 3, CHANGED: 0, UNCHANGED: 0 } });
+    await expect(service.importPolicies()).resolves.toMatchObject({ value: { counts: { NEW: 3, CHANGED: 0, UNCHANGED: 0 } } });
     const all = await records();
     expect(all.filter((entry) => entry.event === 'PAGE_ATTEMPT').map((entry) => [entry.pageNum, entry.attempts])).toEqual([[1, 1], [1, 2], [2, 1]]);
     expect(all.find((entry) => entry.event === 'PAGE_ATTEMPT' && entry.attempts === 2)?.failures)
@@ -162,7 +171,7 @@ describe('수집 결과 파일과 실제 DB 자원 정리', () => {
       .toMatchObject([{ stage: 'DATABASE', code: '40P01' }]);
     expect(all.at(-1)).toMatchObject({ status: 'SUCCESS', saved: true, saveAttempts: 2, counts: { NEW: 3 } });
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(await dataSource.getRepository(Policy).count()).toBe(3);
+    expect(await dataSource.getRepository(SourcePolicy).count()).toBe(3);
   });
 
   it('파일 기록이 불가능해도 기본 로그에 결과를 남기고 잠금을 해제한다', async () => {
@@ -186,7 +195,7 @@ describe('수집 결과 파일과 실제 DB 자원 정리', () => {
     jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => { throw new Error(environment.YOUTH_CENTER_API_KEY); });
     jest.spyOn(log, 'write').mockImplementation((entry) => entry.event === event ? failedLog.write(entry) : write(entry));
     await expect(service.importPolicies()).rejects.toBeInstanceOf(Error);
-    expect(await dataSource.getRepository(Policy).count()).toBe(['WORK_FINISHED', 'RUN_FINISHED'].includes(event) ? 3 : 0);
+    expect(await dataSource.getRepository(SourcePolicy).count()).toBe(['WORK_FINISHED', 'RUN_FINISHED'].includes(event) ? 3 : 0);
     await expect(lock.runWithLock(async () => true)).resolves.toEqual({ status: 'COMPLETED', value: true });
   });
 
@@ -216,5 +225,27 @@ describe('수집 결과 파일과 실제 DB 자원 정리', () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect((await records()).at(-1)).toMatchObject({ status: 'ALREADY_RUNNING', saved: false, saveAttempts: 0 });
     expect(await dataSource.getRepository(Policy).count()).toBe(0);
+  });
+
+  it('COMMIT 응답이 유실되면 저장을 반복하지 않고 결과 불명으로 기록하며 다음 실행은 실제 상태로 비교한다', async () => {
+    const runner = dataSource.createQueryRunner();
+    const commit = runner.commitTransaction.bind(runner);
+    jest.spyOn(runner, 'commitTransaction').mockImplementationOnce(async () => {
+      await commit();
+      throw new Error('COMMIT 응답 유실');
+    });
+    jest.spyOn(dataSource, 'createQueryRunner').mockReturnValueOnce(runner);
+    await expect(service.importPolicies()).rejects.toMatchObject({ name: 'PolicyCollectionCommitError' });
+    expect((await records()).at(-1)).toMatchObject({ saved: null, counts: null, commitOutcome: 'UNKNOWN',
+      missingCount: null, reviewCreatedCount: null, reviewSupersededCount: null, publicViewUpdatedCount: null });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(runner.isReleased).toBe(true);
+    const pending = await dataSource.getRepository(PolicyReview).find({ order: { id: 'ASC' } });
+    expect(pending).toHaveLength(3);
+    expect(await dataSource.getRepository(Policy).count()).toBe(0);
+    await expect(service.importPolicies()).resolves.toMatchObject({ value: {
+      counts: { NEW: 0, CHANGED: 0, UNCHANGED: 3, MISSING: 0 }, reviewCreatedCount: 0,
+    } });
+    expect(await dataSource.getRepository(PolicyReview).find({ order: { id: 'ASC' } })).toEqual(pending);
   });
 });

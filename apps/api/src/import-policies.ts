@@ -23,8 +23,11 @@ export async function importPolicies(): Promise<number> {
       message = '정책 수집이 이미 실행 중이므로 추가 실행을 건너뜁니다.';
     } else {
       exitCode = 0;
-      const { NEW, CHANGED, UNCHANGED } = result.value;
-      message = `정책 수집 완료: 신규 ${NEW}건, 변경 ${CHANGED}건, 동일 ${UNCHANGED}건.`;
+      const { counts: { NEW, CHANGED, UNCHANGED, MISSING }, reviewCreatedCount,
+        reviewSupersededCount, publicViewUpdatedCount } = result.value;
+      message = `정책 수집 DB 반영 완료: 신규 ${NEW}건, 변경 ${CHANGED}건, 동일 ${UNCHANGED}건, 누락 ${MISSING}건. `
+        + `검수 후보 생성 ${reviewCreatedCount}건, 대체 ${reviewSupersededCount}건, 공개 조회수 갱신 ${publicViewUpdatedCount}건. `
+        + '본문은 관리자 승인 후 공개됩니다.';
     }
   } catch {
     // 예외 메시지·스택에는 인증키·접속 정보·SQL이 섞일 수 있어 그대로 출력하지 않는다.

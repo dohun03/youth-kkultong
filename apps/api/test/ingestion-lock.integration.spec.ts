@@ -6,7 +6,7 @@ import { IngestionLockService } from '../src/modules/ingestion/services/ingestio
 import { IngestionService } from '../src/modules/ingestion/services/ingestion.service';
 import { YouthCenterClient } from '../src/modules/ingestion/youth-center/youth-center.client';
 import { IngestionLogService } from '../src/modules/ingestion/services/ingestion-log.service';
-import { PoliciesWriteService } from '../src/modules/policies/services/policies-write.service';
+import { createCollectionWriter } from './helpers/policy-collection';
 import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 
 /** 작업 중간에서 잠금 보유 여부를 확인하기 위한 수동 완료 신호를 만든다. */
@@ -51,7 +51,7 @@ describe('수집 잠금의 실제 PostgreSQL 검증', () => {
     const environment = { ...loadEnvironment(), YOUTH_CENTER_API_KEY: 'lock-integration-placeholder', YOUTH_CENTER_REQUEST_DELAY_MS: 0 };
     const collector = new IngestionService(
       new YouthCenterClient(environment), firstService,
-      new PoliciesWriteService(new PolicyRepository(), environment), new IngestionLogService(environment),
+      createCollectionWriter(environment, new PolicyRepository()), new IngestionLogService(environment),
     );
     const fetchMock = jest.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json({
       resultCode: 200, resultMessage: '성공', result: {

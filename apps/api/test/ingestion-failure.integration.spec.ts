@@ -1,3 +1,6 @@
+import { SourcePolicy } from '../src/modules/policies/entities/source-policy.entity';
+import { PolicyReview } from '../src/modules/policies/entities/policy-review.entity';
+import { CreatePolicyReviewTables1793199600000 } from '../src/database/migrations/1793199600000-create-policy-review-tables';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -14,7 +17,8 @@ import { YouthCenterClient } from '../src/modules/ingestion/youth-center/youth-c
 import type { YouthCenterRawPolicy } from '../src/modules/ingestion/youth-center/youth-center-response.schema';
 import * as hashing from '../src/modules/ingestion/youth-center/youth-center-policy.hash';
 import { Policy } from '../src/modules/policies/entities/policy.entity';
-import { PoliciesWriteService } from '../src/modules/policies/services/policies-write.service';
+import { PolicyCollectionWriteService } from '../src/modules/policies/services/policy-collection-write.service';
+import { createCollectionWriter, clearPolicyTables, seedMigratedPolicies } from './helpers/policy-collection';
 import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 
 describe('수집 중간 실패와 전체 롤백의 실제 PostgreSQL 검증', () => {
@@ -29,11 +33,13 @@ describe('수집 중간 실패와 전체 롤백의 실제 PostgreSQL 검증', ()
   let repository: PolicyRepository;
   let service: IngestionService;
   let fetchMock: jest.SpiedFunction<typeof fetch>;
-  let save: jest.SpiedFunction<PoliciesWriteService['savePolicies']>;
+  let save: jest.SpiedFunction<PolicyCollectionWriteService['saveCollection']>;
 
   /** 조회용 연결에서 기존 행과 시각을 읽어 실패 전후를 비교한다. */
-  async function rows(): Promise<Policy[]> {
-    return dataSource.getRepository(Policy).find({ order: { externalId: 'ASC' } });
+  async function rows() {
+    return { policies: await dataSource.getRepository(Policy).find({ order: { externalId: 'ASC' } }),
+      sources: await dataSource.getRepository(SourcePolicy).find({ order: { externalId: 'ASC' } }),
+      reviews: await dataSource.getRepository(PolicyReview).find({ order: { id: 'ASC' } }) };
   }
 
   /** 요청한 페이지에 맞는 정상 HTTP 응답을 만든다. 외부 API는 호출하지 않는다. */
@@ -48,7 +54,7 @@ describe('수집 중간 실패와 전체 롤백의 실제 PostgreSQL 검증', ()
   }
 
   /** 실패 결과·미확정 건수·DB 보존·잠금 재획득을 함께 확인한다. */
-  async function expectPreserved(before: Policy[], stage: string): Promise<IngestionLogEntry> {
+  async function expectPreserved(before: Awaited<ReturnType<typeof rows>>, stage: string): Promise<IngestionLogEntry> {
     expect(await rows()).toEqual(before);
     const logs: IngestionLogEntry[] = (await readFile(join(directory, 'policies-import.jsonl'), 'utf8'))
       .trimEnd().split('\n').map((line) => JSON.parse(line));
@@ -65,7 +71,7 @@ describe('수집 중간 실패와 전체 롤백의 실제 PostgreSQL 검증', ()
     await admin.initialize();
     await admin.query(`CREATE SCHEMA "${schema}"`);
     schemaCreated = true;
-    dataSource = createDataSource(environment).setOptions({ schema, entities: [Policy], migrations: [CreatePolicies1792162800000],
+    dataSource = createDataSource(environment).setOptions({ schema, entities: [Policy, SourcePolicy, PolicyReview], migrations: [CreatePolicies1792162800000, CreatePolicyReviewTables1793199600000],
       extra: { options: `-c timezone=${environment.TZ} -c search_path=${schema}` } });
     await dataSource.initialize();
     await dataSource.runMigrations();
@@ -73,17 +79,17 @@ describe('수집 중간 실패와 전체 롤백의 실제 PostgreSQL 검증', ()
 
   beforeEach(async () => {
     const table = dataSource.getRepository(Policy);
-    await table.clear();
-    await table.save([
-      { source: 'youthcenter', externalId: 'policy-0', title: '이전 제목', rawJson: { old: true }, contentHash: 'a'.repeat(64) },
-      { source: 'youthcenter', externalId: 'outside', title: '수집 밖의 기존 정책', rawJson: {}, contentHash: 'b'.repeat(64) },
+    await clearPolicyTables(dataSource);
+    await seedMigratedPolicies(dataSource, [
+      { plcyNo: 'policy-0', plcyNm: '이전 제목' },
+      { plcyNo: 'outside', plcyNm: '수집 밖의 기존 정책' },
     ]);
     directory = await mkdtemp(join(tmpdir(), 'ingestion-failure-'));
     raw = Array.from({ length: 3 }, (_, index) => ({ plcyNo: `policy-${index}`, plcyNm: `변경 제목 ${index}`, inqCnt: '20' }));
     lock = new IngestionLockService(dataSource);
     repository = new PolicyRepository();
-    const writer = new PoliciesWriteService(repository, { ...environment, POLICY_IMPORT_BATCH_SIZE: 200 });
-    save = jest.spyOn(writer, 'savePolicies');
+    const writer = createCollectionWriter({ ...environment, POLICY_IMPORT_BATCH_SIZE: 200 }, repository);
+    save = jest.spyOn(writer, 'saveCollection');
     service = new IngestionService(new YouthCenterClient(environment), lock, writer, new IngestionLogService(environment, directory));
     fetchMock = jest.spyOn(globalThis, 'fetch').mockImplementation(async (input) => response(input));
   });
@@ -110,12 +116,12 @@ describe('수집 중간 실패와 전체 롤백의 실제 PostgreSQL 검증', ()
       }
       return response(input);
     });
-    await expect(service.importPolicies()).resolves.toEqual({ status: 'COMPLETED', value: { NEW: 2, CHANGED: 1, UNCHANGED: 0 } });
+    await expect(service.importPolicies()).resolves.toMatchObject({ status: 'COMPLETED', value: { counts: { NEW: 2, CHANGED: 1, UNCHANGED: 0, MISSING: 1 } } });
     expect(fetchMock.mock.calls.map(([input]) => Number(new URL(String(input)).searchParams.get('pageNum')))).toEqual([1, 2, 2]);
     expect(save).toHaveBeenCalledTimes(1);
     const logs = (await readFile(join(directory, 'policies-import.jsonl'), 'utf8')).trimEnd().split('\n').map((line) => JSON.parse(line));
     expect(logs.find((entry) => entry.pageNum === 2 && entry.attempts === 2)).toMatchObject({ failures: [{ stage: 'API', reason: 'TIMEOUT', pageNum: 2, attempts: 1 }] });
-    expect(await dataSource.getRepository(Policy).count()).toBe(4);
+    expect(await dataSource.getRepository(SourcePolicy).count()).toBe(4);
   });
 
   it.each(['e003', 429, 503] as const)('T-18a: 중간 페이지 %s 최종 실패는 저장하지 않고 원인·횟수를 남긴다', async (failure) => {
@@ -159,26 +165,35 @@ describe('수집 중간 실패와 전체 롤백의 실제 PostgreSQL 검증', ()
 
   it('T-27: 2,000번째 정책의 실제 CHECK 위반은 앞선 9개 묶음과 기존 정책 변경을 모두 롤백한다', async () => {
     const before = await rows();
-    raw = Array.from({ length: 2000 }, (_, index) => ({ plcyNo: `policy-${index}`, plcyNm: index === 1999 ? 'DB 제약 오류' : `새 제목 ${index}` }));
-    const upsert = repository.upsertPolicies.bind(repository);
+    raw = Array.from({ length: 2000 }, (_, index) => ({ plcyNo: index === 0 ? 'policy-0' : `policy-${String(index).padStart(4, '0')}`, plcyNm: index === 1999 ? 'DB 제약 오류' : `새 제목 ${index}` }));
+    const originalCreate = dataSource.createQueryRunner.bind(dataSource);
     const completedBatches: number[] = [];
-    const writes = jest.spyOn(repository, 'upsertPolicies').mockImplementation(async (manager, policies) => {
-      await upsert(manager, policies);
-      completedBatches.push(policies.length);
+    let writes = 0;
+    jest.spyOn(dataSource, 'createQueryRunner').mockImplementation((mode) => {
+      const runner = originalCreate(mode);
+      const query = runner.query.bind(runner);
+      jest.spyOn(runner, 'query').mockImplementation(async (sql: string, parameters?: Parameters<QueryRunner['query']>[1], structured = false) => {
+        const isSource = sql.includes('INSERT INTO') && sql.includes('source_policies');
+        if (isSource) writes += 1;
+        const result = structured ? await query(sql, parameters, true) : await query(sql, parameters);
+        if (isSource && Array.isArray(parameters)) completedBatches.push(JSON.parse(parameters[2]).length);
+        return result;
+      });
+      return runner;
     });
     // 정상 변환 가능한 자료가 DB에서만 실패하도록 테스트 테이블에만 제약을 추가한다.
-    await dataSource.query(`ALTER TABLE "${schema}".policies ADD CONSTRAINT step27_title_check CHECK (title <> 'DB 제약 오류')`);
+    await dataSource.query(`ALTER TABLE "${schema}".source_policies ADD CONSTRAINT step27_title_check CHECK (title <> 'DB 제약 오류')`);
     try {
       await expect(service.importPolicies()).rejects.toMatchObject({ driverError: { code: '23514' } });
       expect(completedBatches).toEqual(Array(9).fill(200));
-      expect(writes).toHaveBeenCalledTimes(10);
+      expect(writes).toBe(10);
       expect(fetchMock).toHaveBeenCalledTimes(1000);
       expect(save).toHaveBeenCalledTimes(1);
       const final = await expectPreserved(before, 'DATABASE');
       expect(final.saveAttempts).toBe(1);
       expect(final.failures).toEqual([{ stage: 'DATABASE', reason: 'QUERY_FAILED', code: '23514' }]);
     } finally {
-      await dataSource.query(`ALTER TABLE "${schema}".policies DROP CONSTRAINT step27_title_check`);
+      await dataSource.query(`ALTER TABLE "${schema}".source_policies DROP CONSTRAINT step27_title_check`);
     }
   });
 
@@ -186,17 +201,22 @@ describe('수집 중간 실패와 전체 롤백의 실제 PostgreSQL 검증', ()
     const before = await rows();
     const originalCreate = dataSource.createQueryRunner.bind(dataSource);
     const runners: QueryRunner[] = [];
+    let closed = false;
+    const create = originalCreate;
     jest.spyOn(dataSource, 'createQueryRunner').mockImplementation((mode) => {
-      const runner = originalCreate(mode);
+      const runner = create(mode);
       runners.push(runner);
+      const query = runner.query.bind(runner);
+      jest.spyOn(runner, 'query').mockImplementation(async (sql: string, parameters?: Parameters<QueryRunner['query']>[1], structured = false) => {
+        const result = structured ? await query(sql, parameters, true) : await query(sql, parameters);
+        if (!closed && sql.includes('INSERT INTO') && sql.includes('source_policies')) {
+          closed = true;
+          const connection: { end(): Promise<void> } = await runner.connect();
+          await connection.end();
+        }
+        return result;
+      });
       return runner;
-    });
-    const upsert = repository.upsertPolicies.bind(repository);
-    jest.spyOn(repository, 'upsertPolicies').mockImplementationOnce(async (manager, policies) => {
-      await upsert(manager, policies);
-      // 새로 만든 수집용 연결만 닫는다. 다른 DB 세션이나 실제 정책 연결은 건드리지 않는다.
-      const connection: { end(): Promise<void> } = await manager.queryRunner!.connect();
-      await connection.end();
     });
     await expect(service.importPolicies()).rejects.toBeInstanceOf(Error);
     expect(save).toHaveBeenCalledTimes(1);

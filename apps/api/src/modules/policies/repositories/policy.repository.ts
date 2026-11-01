@@ -2,7 +2,7 @@ import { parsePolicyCategories } from '@youth-kkultong/shared';
 import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { Policy } from '../entities/policy.entity';
-import type { PolicyRefreshInput, PolicyWriteInput } from '../services/policies-write.service';
+import type { PolicyWriteInput } from '../policy-write.types';
 
 /** 목록 카드·신청 상태·자격 판정·정렬에 필요한 값만 담는 서버 내부 자료형 */
 export type PolicyCandidate = Pick<Policy,
@@ -193,21 +193,6 @@ export class PolicyRepository {
 
     // SQL 생성·컬럼 이름 처리·매개변수 번호 지정은 TypeORM에 맡김
     await query.values(rows).orUpdate(updates, ['source', 'external_id']).updateEntity(false).execute();
-  }
-
-  /** 내용이 같은 정책들의 원본 JSON·조회수·마지막 반영일만 한 번에 갱신 */
-  async refreshPolicies(manager: EntityManager, policies: readonly PolicyRefreshInput[]): Promise<void> {
-    if (policies.length === 0) return;
-
-    // JSON 배열을 DB에서 행 목록으로 바꿔 서로 다른 원본·조회수를 한 번에 갱신
-    // 테이블명은 내부 정의에서 가져오고, 정책 값은 sql 태그가 자동으로 바인딩
-    await manager.sql`
-      UPDATE ${() => this.tableName(manager)} AS policy
-      SET raw_json = incoming."rawJson", view_count = incoming."viewCount", updated_at = CURRENT_TIMESTAMP
-      FROM jsonb_to_recordset(${JSON.stringify(policies)}::jsonb)
-        AS incoming(source text, "externalId" text, "rawJson" jsonb, "viewCount" integer)
-      WHERE policy.source = incoming.source AND policy.external_id = incoming."externalId"
-    `;
   }
 
   /** 조회수가 NULL 또는 PostgreSQL 정수 범위의 0 이상 값인지 확인 */

@@ -1,3 +1,7 @@
+import { clearPolicyTables, seedMigratedPolicies } from './helpers/policy-collection';
+import { SourcePolicy } from '../src/modules/policies/entities/source-policy.entity';
+import { PolicyReview } from '../src/modules/policies/entities/policy-review.entity';
+import { CreatePolicyReviewTables1793199600000 } from '../src/database/migrations/1793199600000-create-policy-review-tables';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -81,8 +85,8 @@ describe('독립 CLI 두 개의 잠금 경쟁과 프로세스 종료 복구', ()
     await admin.initialize();
     await admin.query(`CREATE SCHEMA "${schema}"`);
     schemaCreated = true;
-    dataSource = createDataSource(environment).setOptions({ schema, entities: [Policy],
-      migrations: [CreatePolicies1792162800000, CreateRegions1792162801000],
+    dataSource = createDataSource(environment).setOptions({ schema, entities: [Policy, SourcePolicy, PolicyReview],
+      migrations: [CreatePolicies1792162800000, CreateRegions1792162801000, CreatePolicyReviewTables1793199600000],
       extra: { options: `-c timezone=${environment.TZ} -c search_path=${schema}` } });
     await dataSource.initialize();
     await dataSource.runMigrations();
@@ -92,10 +96,10 @@ describe('독립 CLI 두 개의 잠금 경쟁과 프로세스 종료 복구', ()
     directory = await mkdtemp(join(tmpdir(), 'ingestion-cli-'));
     processes.length = 0;
     const table = dataSource.getRepository(Policy);
-    await table.clear();
-    await table.save([
-      { source: 'youthcenter', externalId: 'policy-0', title: '이전 제목', rawJson: { old: true }, contentHash: 'a'.repeat(64) },
-      { source: 'youthcenter', externalId: 'outside', title: '수집 밖의 기존 정책', rawJson: {}, contentHash: 'b'.repeat(64) },
+    await clearPolicyTables(dataSource);
+    await seedMigratedPolicies(dataSource, [
+      { plcyNo: 'policy-0', plcyNm: '이전 제목' },
+      { plcyNo: 'outside', plcyNm: '수집 밖의 기존 정책' },
     ]);
     jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
   });
@@ -130,7 +134,7 @@ describe('독립 CLI 두 개의 잠금 경쟁과 프로세스 종료 복구', ()
     const completed = await first.finished;
     expect(completed).toMatchObject({ code: 0, signal: null });
     expect((await records(first)).at(-1)).toMatchObject({ status: 'SUCCESS', saved: true, counts: { NEW: 1, CHANGED: 1, UNCHANGED: 0 } });
-    expect(await dataSource.getRepository(Policy).count()).toBe(3);
+    expect(await dataSource.getRepository(Policy).count()).toBe(2);
     await expectUnlocked();
   }, 30000);
 
@@ -148,12 +152,12 @@ describe('독립 CLI 두 개의 잠금 경쟁과 프로세스 종료 복구', ()
     const next = startCli('next'); processes.push(next);
     expect(await next.finished).toMatchObject({ code: 0, signal: null });
     expect((await records(next)).at(-1)).toMatchObject({ status: 'SUCCESS', saved: true, counts: { NEW: 1, CHANGED: 1, UNCHANGED: 0 } });
-    expect(await table.count()).toBe(3);
+    expect(await table.count()).toBe(2);
     await expectUnlocked();
   }, 30000);
 
   it.each(['API_PAUSE', 'SAVE_PAUSE'])(
-    'T-30: 독립 CLI의 %s 중에도 실제 검색 API가 기존 정책을 제공하고 완료 뒤 새 정책을 제공한다', async (mode) => {
+    'T-30: 독립 CLI의 %s 중에도 실제 검색 API가 기존 정책을 제공하고 완료 뒤에도 승인 전 본문을 유지한다', async (mode) => {
       // 읽기 API는 CLI와 다른 DB 연결을 사용하되 같은 임시 스키마의 자료를 읽는다.
       const apiDataSource = createDataSource(environment).setOptions({ schema,
         extra: { options: `-c timezone=${environment.TZ} -c search_path=${schema}` } });
@@ -174,7 +178,9 @@ describe('독립 CLI 두 개의 잠금 경쟁과 프로세스 종료 복구', ()
         expect(await run.finished).toMatchObject({ code: 0, signal: null });
         const after = await request(app.getHttpServer()).post('/api/v1/policies/search').send({}).expect(200);
         expect(after.body.items.map((item: { title: string }) => item.title).sort())
-          .toEqual(['CLI가 변경한 제목', 'CLI가 추가한 정책', '수집 밖의 기존 정책']);
+          .toEqual(['수집 밖의 기존 정책', '이전 제목']);
+        expect(await dataSource.getRepository(SourcePolicy).count()).toBe(3);
+        expect(await dataSource.getRepository(PolicyReview).countBy({ status: 'PENDING' })).toBe(2);
         expect((await records(run)).at(-1)).toMatchObject({ status: 'SUCCESS', saved: true });
       } finally {
         if (app) await app.close();

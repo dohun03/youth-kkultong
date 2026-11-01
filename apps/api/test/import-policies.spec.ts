@@ -12,7 +12,10 @@ describe('정책 수집 CLI 결과와 애플리케이션 정리', () => {
   let stderr: jest.SpiedFunction<typeof console.error>;
 
   beforeEach(() => {
-    collect.mockReset().mockResolvedValue({ status: 'COMPLETED', value: { NEW: 3, CHANGED: 2, UNCHANGED: 1 } });
+    collect.mockReset().mockResolvedValue({ status: 'COMPLETED', value: {
+      counts: { NEW: 3, CHANGED: 2, UNCHANGED: 1, MISSING: 4 },
+      reviewCreatedCount: 5, reviewSupersededCount: 2, publicViewUpdatedCount: 3,
+    } });
     close.mockReset().mockResolvedValue(undefined);
     get.mockReset().mockReturnValue({ importPolicies: collect });
     jest.spyOn(NestFactory, 'createApplicationContext').mockResolvedValue({ get, close } as unknown as INestApplicationContext);
@@ -33,7 +36,8 @@ describe('정책 수집 CLI 결과와 애플리케이션 정리', () => {
     expect(NestFactory.create).not.toHaveBeenCalled();
     expect(get).toHaveBeenCalledWith(IngestionService);
     expect(close).toHaveBeenCalledTimes(1);
-    expect(stdout).toHaveBeenCalledWith('정책 수집 완료: 신규 3건, 변경 2건, 동일 1건.');
+    expect(stdout).toHaveBeenCalledWith('정책 수집 DB 반영 완료: 신규 3건, 변경 2건, 동일 1건, 누락 4건. '
+      + '검수 후보 생성 5건, 대체 2건, 공개 조회수 갱신 3건. 본문은 관리자 승인 후 공개됩니다.');
     expect(stderr).not.toHaveBeenCalled();
   });
 

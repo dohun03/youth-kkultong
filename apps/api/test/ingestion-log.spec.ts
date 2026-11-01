@@ -12,6 +12,7 @@ describe('수집 전용 파일 로그', () => {
   const entry: IngestionLogEntry = {
     runId: 'run-1', event: 'RUN_FINISHED', stage: 'COMPLETE', status: 'SUCCESS',
     counts: { NEW: 1, CHANGED: 2, UNCHANGED: 3 }, pageNum: 2, attempts: 1, saveAttempts: 1, saved: true,
+    missingCount: 4, reviewCreatedCount: 3, reviewSupersededCount: 2, publicViewUpdatedCount: 1, commitOutcome: 'COMMITTED',
   };
   let directory: string;
 
@@ -41,6 +42,19 @@ describe('수집 전용 파일 로그', () => {
     await service.write(unsafe);
     const record = JSON.parse(await readFile(join(directory, 'policies-import.jsonl'), 'utf8'));
     for (const key of ['rawJson', 'query', 'message', 'cause']) expect(record).not.toHaveProperty(key);
+  });
+
+  it('확정 결과 불명의 NULL 건수와 저장 상태를 파일과 대체 로그에 보존한다', async () => {
+    const unknown: IngestionLogEntry = { ...entry, status: 'FAILED', saved: null, counts: null,
+      missingCount: null, reviewCreatedCount: null, reviewSupersededCount: null, publicViewUpdatedCount: null,
+      commitOutcome: 'UNKNOWN' };
+    await new IngestionLogService(environment, directory).write(unknown);
+    expect(JSON.parse(await readFile(join(directory, 'policies-import.jsonl'), 'utf8'))).toMatchObject(unknown);
+    const blocked = join(directory, 'blocked');
+    await writeFile(blocked, '폴더 대신 파일');
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+    await new IngestionLogService(environment, blocked).write(unknown);
+    expect(JSON.parse(String(warn.mock.calls[0][0]).slice('FILE_LOG_FAILED '.length))).toMatchObject(unknown);
   });
 
   it('정책 ID·필드에 섞인 인증키와 인코딩 전후 DB 비밀번호도 제거한다', async () => {

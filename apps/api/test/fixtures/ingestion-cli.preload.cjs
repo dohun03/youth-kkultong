@@ -51,11 +51,11 @@ globalThis.fetch = async () => {
 };
 
 if (process.env.INGESTION_TEST_MODE === 'SAVE_PAUSE') {
-  const { PolicyRepository } = require('../../src/modules/policies/repositories/policy.repository.ts');
-  const originalUpsert = PolicyRepository.prototype.upsertPolicies;
+  const { SourcePolicyRepository } = require('../../src/modules/policies/repositories/source-policy.repository.ts');
+  const originalUpsert = SourcePolicyRepository.prototype.upsertCollectedPolicies;
   let firstBatch = true;
-  PolicyRepository.prototype.upsertPolicies = async function (manager, policies) {
-    await originalUpsert.call(this, manager, policies);
+  SourcePolicyRepository.prototype.upsertCollectedPolicies = async function (manager, policies, collectedAt) {
+    await originalUpsert.call(this, manager, policies, collectedAt);
     if (firstBatch) {
       firstBatch = false;
       // 첫 묶음은 DB에 보냈지만 COMMIT 전인 상태에서만 부모에게 알린다.

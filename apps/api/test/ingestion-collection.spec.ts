@@ -2,7 +2,7 @@ import { parseEnvironment } from '../src/common/environment';
 import { DataSource } from 'typeorm';
 import { IngestionLockService } from '../src/modules/ingestion/services/ingestion-lock.service';
 import { IngestionLogService } from '../src/modules/ingestion/services/ingestion-log.service';
-import { PoliciesWriteService } from '../src/modules/policies/services/policies-write.service';
+import { createCollectionWriter } from './helpers/policy-collection';
 import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 import { IngestionService, validateYouthCenterCollection, YouthCenterCollectionValidationError } from '../src/modules/ingestion/services/ingestion.service';
 import { YouthCenterClient } from '../src/modules/ingestion/youth-center/youth-center.client';
@@ -39,7 +39,7 @@ describe('전체 정책 페이지 순차 수집', () => {
     });
     service = new IngestionService(
       new YouthCenterClient(environment), new IngestionLockService(new DataSource({ type: 'postgres' })),
-      new PoliciesWriteService(new PolicyRepository(), environment), new IngestionLogService(environment),
+      createCollectionWriter(environment, new PolicyRepository()), new IngestionLogService(environment),
     );
     requestedPages = [];
     fetchMock = jest.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {

@@ -1,3 +1,6 @@
+import { SourcePolicy } from '../src/modules/policies/entities/source-policy.entity';
+import { PolicyReview } from '../src/modules/policies/entities/policy-review.entity';
+import { CreatePolicyReviewTables1793199600000 } from '../src/database/migrations/1793199600000-create-policy-review-tables';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -13,8 +16,9 @@ import { IngestionService } from '../src/modules/ingestion/services/ingestion.se
 import { YouthCenterClient } from '../src/modules/ingestion/youth-center/youth-center.client';
 import type { YouthCenterRawPolicy } from '../src/modules/ingestion/youth-center/youth-center-response.schema';
 import { Policy } from '../src/modules/policies/entities/policy.entity';
-import { PoliciesWriteService } from '../src/modules/policies/services/policies-write.service';
-import type { PreparedPolicyBatches } from '../src/modules/policies/services/policies-write.service';
+import { createCollectionWriter, clearPolicyTables } from './helpers/policy-collection';
+import type { PolicyCollectionSaveResult } from '../src/modules/policies/services/policy-collection-write.service';
+import { transformYouthCenterPolicy } from '../src/modules/ingestion/youth-center/youth-center-policy.transform';
 import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 import sample from './fixtures/youth-center-policy.json';
 
@@ -50,8 +54,8 @@ describe('전체 수집·재수집 성공 경로의 실제 PostgreSQL 검증', (
   let fetchMock: jest.SpiedFunction<typeof fetch>;
 
   /** 결과를 DB에서 다시 읽어 원본 JSON·정규화 컬럼·UUID·해시를 비교한다. */
-  async function storedPolicies(): Promise<Policy[]> {
-    return dataSource.getRepository(Policy).find({ order: { source: 'ASC', externalId: 'ASC' } });
+  async function storedSources(): Promise<SourcePolicy[]> {
+    return dataSource.getRepository(SourcePolicy).find({ order: { source: 'ASC', externalId: 'ASC' } });
   }
 
   /** 모의 HTTP 응답만 교체하고 수집·검증·변환·저장·로그·잠금은 실제 서비스로 연결한다. */
@@ -59,25 +63,46 @@ describe('전체 수집·재수집 성공 경로의 실제 PostgreSQL 검증', (
     return new IngestionService(
       new YouthCenterClient({ ...environment, YOUTH_CENTER_PAGE_SIZE: pageSize }),
       new IngestionLockService(dataSource),
-      new PoliciesWriteService(new PolicyRepository(), environment),
+      createCollectionWriter(environment, new PolicyRepository()),
       new IngestionLogService(environment, directory),
     );
   }
 
   /** 실행 반환값과 최종 파일 로그의 확정 건수를 대조하고 중복 저장도 함께 검사한다. */
-  async function expectImport(counts: PreparedPolicyBatches['counts'], pages = [1, 2]): Promise<void> {
+  async function expectImport(counts: Pick<PolicyCollectionSaveResult['counts'], 'NEW' | 'CHANGED' | 'UNCHANGED'>, pages = [1, 2], missingCount = 0): Promise<void> {
     fetchMock.mockClear();
-    await expect(service.importPolicies()).resolves.toEqual({ status: 'COMPLETED', value: counts });
+    const result = await service.importPolicies();
+    expect(result).toMatchObject({ status: 'COMPLETED', value: { counts: { ...counts, MISSING: missingCount } } });
     expect(fetchMock.mock.calls.map(([input]) => Number(new URL(String(input)).searchParams.get('pageNum')))).toEqual(pages);
 
     const records: IngestionLogEntry[] = (await readFile(join(directory, 'policies-import.jsonl'), 'utf8'))
       .trimEnd().split('\n').map((line) => JSON.parse(line));
     expect(records.at(-1)).toMatchObject({ event: 'RUN_FINISHED', stage: 'COMPLETE', status: 'SUCCESS', saved: true, counts });
+    if (result.status === 'COMPLETED') {
+      expect(records.at(-1)).toMatchObject({ commitOutcome: 'COMMITTED', missingCount,
+        reviewCreatedCount: result.value.reviewCreatedCount, reviewSupersededCount: result.value.reviewSupersededCount,
+        publicViewUpdatedCount: result.value.publicViewUpdatedCount });
+    }
     // 개발 테이블 대신 이 테스트가 만든 스키마에서만 유일성을 확인한다.
     expect(await dataSource.query(`
-      SELECT source, external_id FROM "${schema}".policies
+      SELECT source, external_id FROM "${schema}".source_policies
       GROUP BY source, external_id HAVING count(*) > 1
     `)).toEqual([]);
+  }
+
+  /** 정규화된 공개 컬럼 검증을 위해 대기 스냅샷을 승인한 테스트 상태 준비 */
+  async function approvePending(): Promise<void> {
+    await dataSource.transaction(async (manager) => {
+      const pending = await manager.getRepository(PolicyReview).findBy({ status: 'PENDING' });
+      for (const review of pending) {
+        const raw = review.rawSnapshot as YouthCenterRawPolicy;
+        await new PolicyRepository().saveApprovedPolicy(manager, { ...transformYouthCenterPolicy(raw),
+          contentHash: review.contentHash }, review.basePolicyId);
+        await manager.getRepository(PolicyReview).update({ id: review.id }, {
+          status: 'APPROVED', reviewedBy: 'test-admin', closedAt: new Date(),
+        });
+      }
+    });
   }
 
   beforeAll(async () => {
@@ -87,7 +112,7 @@ describe('전체 수집·재수집 성공 경로의 실제 PostgreSQL 검증', (
     await admin.query(`CREATE SCHEMA "${schema}"`);
     schemaCreated = true;
     dataSource = createDataSource(environment).setOptions({
-      schema, entities: [Policy], migrations: [CreatePolicies1792162800000],
+      schema, entities: [Policy, SourcePolicy, PolicyReview], migrations: [CreatePolicies1792162800000, CreatePolicyReviewTables1793199600000],
       extra: { options: `-c timezone=${environment.TZ} -c search_path=${schema}` },
     });
     await dataSource.initialize();
@@ -95,7 +120,7 @@ describe('전체 수집·재수집 성공 경로의 실제 PostgreSQL 검증', (
   });
 
   beforeEach(async () => {
-    await dataSource.getRepository(Policy).clear();
+    await clearPolicyTables(dataSource);
     directory = await mkdtemp(join(tmpdir(), 'ingestion-success-'));
     policies = initialPolicies();
     service = createService();
@@ -133,7 +158,13 @@ describe('전체 수집·재수집 성공 경로의 실제 PostgreSQL 검증', (
 
   it('첫 수집은 두 페이지의 3건을 신규 저장하고 정규화 값과 추가 필드 원본을 보관한다', async () => {
     await expectImport({ NEW: 3, CHANGED: 0, UNCHANGED: 0 });
-    const rows = await storedPolicies();
+    expect(await dataSource.getRepository(Policy).count()).toBe(0);
+    expect(await dataSource.getRepository(PolicyReview).countBy({ status: 'PENDING' })).toBe(3);
+    for (const source of await storedSources()) expect(source).toMatchObject({
+      firstCollectedAt: expect.any(Date), lastCollectedAt: expect.any(Date), missingCount: 0,
+    });
+    await approvePending();
+    const rows = await dataSource.getRepository(Policy).find();
     expect(rows).toHaveLength(3);
     for (const raw of policies) {
       expect(rows.find((row) => row.externalId === raw.plcyNo)).toMatchObject({
@@ -166,47 +197,51 @@ describe('전체 수집·재수집 성공 경로의 실제 PostgreSQL 검증', (
 
   it('T-21: 같은 자료를 세 번 더 수집해도 정책·UUID·최초 저장일·해시는 유지된다', async () => {
     await expectImport({ NEW: 3, CHANGED: 0, UNCHANGED: 0 });
-    const before = await storedPolicies();
+    const before = await storedSources();
     for (let attempt = 0; attempt < 3; attempt += 1) {
       await expectImport({ NEW: 0, CHANGED: 0, UNCHANGED: 3 });
-      expect(await storedPolicies()).toEqual(before.map((row) => ({ ...row, updatedAt: expect.any(Date) })));
+      expect(await storedSources()).toEqual(before.map((row) => ({ ...row, updatedAt: expect.any(Date), lastCollectedAt: expect.any(Date), lastCollectionResult: 'UNCHANGED' })));
     }
   });
 
   it('내용이 바뀐 정책만 CHANGED로 갱신하고 재수집하면 다시 UNCHANGED로 분류한다', async () => {
     await expectImport({ NEW: 3, CHANGED: 0, UNCHANGED: 0 });
-    const before = await storedPolicies();
+    const before = await storedSources();
     const original = before.find((row) => row.externalId === sample.plcyNo)!;
     policies[0] = { ...policies[0], plcyNm: '변경된 정책 제목', plcySprtCn: '새 지원 내용\n줄바꿈 유지' };
     await expectImport({ NEW: 0, CHANGED: 1, UNCHANGED: 2 });
-    const after = await storedPolicies();
+    const after = await storedSources();
     expect(after).toHaveLength(3);
     expect(after.find((row) => row.externalId === sample.plcyNo)).toMatchObject({
       id: original.id, createdAt: original.createdAt, title: '변경된 정책 제목',
-      benefitText: '새 지원 내용\n줄바꿈 유지', viewCount: original.viewCount, rawJson: policies[0],
+      viewCount: original.viewCount, rawJson: policies[0],
     });
     expect(after.find((row) => row.externalId === sample.plcyNo)!.contentHash).not.toBe(original.contentHash);
     for (const unchanged of before.filter((row) => row.externalId !== sample.plcyNo)) {
-      expect(after.find((row) => row.id === unchanged.id)).toEqual({ ...unchanged, updatedAt: expect.any(Date) });
+      expect(after.find((row) => row.id === unchanged.id)).toEqual({ ...unchanged, updatedAt: expect.any(Date), lastCollectedAt: expect.any(Date), lastCollectionResult: 'UNCHANGED' });
     }
     await expectImport({ NEW: 0, CHANGED: 0, UNCHANGED: 3 });
   });
 
   it('T-20: 조회수만 증가하면 UNCHANGED이며 해시·정규화 내용은 유지하고 원본·조회수만 갱신한다', async () => {
     await expectImport({ NEW: 3, CHANGED: 0, UNCHANGED: 0 });
-    const original = (await storedPolicies()).find((row) => row.externalId === sample.plcyNo)!;
+    await approvePending();
+    const publicBefore = await dataSource.getRepository(Policy).findOneByOrFail({ externalId: sample.plcyNo });
+    const original = (await storedSources()).find((row) => row.externalId === sample.plcyNo)!;
     policies[0] = { ...policies[0], inqCnt: '99' };
     await expectImport({ NEW: 0, CHANGED: 0, UNCHANGED: 3 });
-    const after = await storedPolicies();
+    const after = await storedSources();
     expect(after).toHaveLength(3);
     expect(after.find((row) => row.externalId === sample.plcyNo)).toEqual({
-      ...original, viewCount: 99, rawJson: policies[0], updatedAt: expect.any(Date),
+      ...original, viewCount: 99, rawJson: policies[0], updatedAt: expect.any(Date), lastCollectedAt: expect.any(Date), lastCollectionResult: 'UNCHANGED',
     });
+    expect(await dataSource.getRepository(Policy).findOneByOrFail({ id: publicBefore.id }))
+      .toEqual({ ...publicBefore, viewCount: 99, updatedAt: expect.any(Date) });
   });
 
   it('한 수집에 신규·내용 변경·조회수 변경·동일 정책이 섞여도 건수와 최신 원본이 일치한다', async () => {
     await expectImport({ NEW: 3, CHANGED: 0, UNCHANGED: 0 });
-    const before = await storedPolicies();
+    const before = await storedSources();
     policies = [
       { ...policies[0], plcyNm: '변경 제목' },
       { ...policies[1], inqCnt: '45' },
@@ -214,7 +249,7 @@ describe('전체 수집·재수집 성공 경로의 실제 PostgreSQL 검증', (
       { plcyNo: 'new-policy', plcyNm: '추가 정책', inqCnt: '1' },
     ];
     await expectImport({ NEW: 1, CHANGED: 1, UNCHANGED: 2 });
-    const after = await storedPolicies();
+    const after = await storedSources();
     expect(after).toHaveLength(4);
     for (const raw of policies) expect(after.find((row) => row.externalId === raw.plcyNo)!.rawJson).toEqual(raw);
     for (const original of before) {
@@ -234,11 +269,12 @@ describe('전체 수집·재수집 성공 경로의 실제 PostgreSQL 검증', (
     const otherBefore = await repository.findOneByOrFail({ id: other.id });
     await expectImport({ NEW: 0, CHANGED: 0, UNCHANGED: 3 });
     expect(await repository.findOneByOrFail({ id: other.id })).toEqual(otherBefore);
-    const before = await storedPolicies();
+    const before = await storedSources();
     policies = [];
-    await expectImport({ NEW: 0, CHANGED: 0, UNCHANGED: 0 }, [1]);
-    expect(await storedPolicies()).toEqual(before);
-    expect(before).toHaveLength(4);
+    await expectImport({ NEW: 0, CHANGED: 0, UNCHANGED: 0 }, [1], 3);
+    expect(await storedSources()).toEqual(before.map((row) => ({ ...row, missingCount: 1, lastCollectionResult: 'MISSING', updatedAt: expect.any(Date) })));
+    expect(before).toHaveLength(3);
+    expect(await repository.findOneByOrFail({ id: other.id })).toEqual(otherBefore);
   });
 
   it('201건을 5페이지로 수집해 200건 저장 경계를 넘긴 뒤 재수집·조회수 갱신에도 중복이 없다', async () => {
@@ -248,16 +284,16 @@ describe('전체 수집·재수집 성공 경로의 실제 PostgreSQL 검증', (
     }));
     service = createService(50);
     await expectImport({ NEW: 201, CHANGED: 0, UNCHANGED: 0 }, [1, 2, 3, 4, 5]);
-    const before = await storedPolicies();
+    const before = await storedSources();
     expect(before).toHaveLength(201);
     await expectImport({ NEW: 0, CHANGED: 0, UNCHANGED: 201 }, [1, 2, 3, 4, 5]);
     policies = policies.map((raw) => ({ ...raw, inqCnt: '100' }));
     await expectImport({ NEW: 0, CHANGED: 0, UNCHANGED: 201 }, [1, 2, 3, 4, 5]);
-    const after = await storedPolicies();
+    const after = await storedSources();
     expect(after).toHaveLength(201);
     for (const original of before) {
       expect(after.find((row) => row.externalId === original.externalId)).toEqual({
-        ...original, viewCount: 100, rawJson: { ...original.rawJson, inqCnt: '100' }, updatedAt: expect.any(Date),
+        ...original, viewCount: 100, rawJson: { ...original.rawJson, inqCnt: '100' }, updatedAt: expect.any(Date), lastCollectedAt: expect.any(Date), lastCollectionResult: 'UNCHANGED',
       });
     }
   });

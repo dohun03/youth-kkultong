@@ -1,6 +1,5 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { DatabaseModule } from '../../database/database.module';
-import { PoliciesWriteService } from './services/policies-write.service';
 import { PolicyRepository } from './repositories/policy.repository';
 import { MetaModule } from '../meta/meta.module';
 import { PoliciesController } from './controllers/policies.controller';
@@ -18,11 +17,11 @@ import { PolicyCollectionWriteService } from './services/policy-collection-write
   controllers: [PoliciesController],
   providers: [
     PolicyRepository, SourcePolicyRepository, PolicyReviewRepository,
-    PoliciesWriteService, PolicyReviewsWriteService, PolicyCollectionWriteService, PoliciesSearchService, PoliciesDetailService,
+    PolicyReviewsWriteService, PolicyCollectionWriteService, PoliciesSearchService, PoliciesDetailService,
   ],
   exports: [
     PolicyRepository, SourcePolicyRepository, PolicyReviewRepository,
-    PoliciesWriteService, PolicyReviewsWriteService, PolicyCollectionWriteService,
+    PolicyReviewsWriteService, PolicyCollectionWriteService,
   ],
 })
 export class PoliciesModule {}

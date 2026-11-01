@@ -7,7 +7,7 @@ import { createYouthCenterPolicyContentHash } from '../src/modules/ingestion/you
 import { transformYouthCenterPolicy } from '../src/modules/ingestion/youth-center/youth-center-policy.transform';
 import { Policy } from '../src/modules/policies/entities/policy.entity';
 import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
-import type { PolicyWriteInput } from '../src/modules/policies/services/policies-write.service';
+import type { PolicyWriteInput } from '../src/modules/policies/policy-write.types';
 
 /** 원본 변환과 내용 해시 계산을 마친 공개 저장 입력 생성 */
 function policy(externalId: string, title = '승인된 제목', views = '10', fields: Record<string, unknown> = {}): PolicyWriteInput {

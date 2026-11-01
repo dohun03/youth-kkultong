@@ -1,3 +1,8 @@
+import { clearPolicyTables, seedMigratedPolicies } from './helpers/policy-collection';
+import { SourcePolicy } from '../src/modules/policies/entities/source-policy.entity';
+import { Policy } from '../src/modules/policies/entities/policy.entity';
+import { PolicyReview } from '../src/modules/policies/entities/policy-review.entity';
+import { CreatePolicyReviewTables1793199600000 } from '../src/database/migrations/1793199600000-create-policy-review-tables';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -36,7 +41,7 @@ describe('독립 NestJS 수집 CLI와 실제 PostgreSQL 연결', () => {
     await admin.query(`CREATE SCHEMA "${schema}"`);
     schemaCreated = true;
     const migration = createDataSource(environment).setOptions({
-      schema, migrations: [CreatePolicies1792162800000],
+      schema, migrations: [CreatePolicies1792162800000, CreatePolicyReviewTables1793199600000],
       extra: { options: `-c timezone=${environment.TZ} -c search_path=${schema}` },
     });
     try {
@@ -63,7 +68,7 @@ describe('독립 NestJS 수집 CLI와 실제 PostgreSQL 연결', () => {
         const query = runner.query.bind(runner);
         jest.spyOn(runner, 'query').mockImplementation((async (sql, parameters, structured) => {
           if (sql.includes('pg_try_advisory_lock')) events.push('LOCK');
-          if (sql.startsWith('INSERT INTO') && sql.includes('"policies"')) events.push('SAVE');
+          if (sql.includes('INSERT INTO') && sql.includes('source_policies')) events.push('SAVE');
           if (sql.includes('pg_advisory_unlock')) events.push('UNLOCK');
           return query(sql, parameters, structured);
         }) as QueryRunner['query']);
@@ -119,7 +124,7 @@ describe('독립 NestJS 수집 CLI와 실제 PostgreSQL 연결', () => {
       .toEqual(['LOCK', 'API', 'SAVE', 'WORK_FINISHED', 'UNLOCK', 'RUN_FINISHED', 'CLOSE', 'OUTPUT']);
     expect(events.lastIndexOf('RELEASE')).toBeLessThan(events.indexOf('RUN_FINISHED'));
     expect(await finalRecord()).toMatchObject({ status: 'SUCCESS', saved: true, counts: { NEW: 1, CHANGED: 0, UNCHANGED: 0 } });
-    expect(await admin.query(`SELECT count(*)::int AS count FROM "${schema}".policies`)).toEqual([{ count: 1 }]);
+    expect(await admin.query(`SELECT count(*)::int AS count FROM "${schema}".source_policies`)).toEqual([{ count: 1 }]);
   });
 
   it('API 최종 실패도 로그·연결 풀을 정리하고 다음 실행에서 잠금을 획득한다', async () => {
@@ -140,5 +145,31 @@ describe('독립 NestJS 수집 CLI와 실제 PostgreSQL 연결', () => {
       expect(await finalRecord()).toMatchObject({ status: 'ALREADY_RUNNING', saved: false });
       expect(stdout).toHaveBeenCalledWith(expect.stringContaining('이미 실행 중'));
     });
+  });
+
+  it.each(['0', '해석 불가'])('이관 동일 자료의 실제 CLI 재수집은 대기 없이 조회수 %s만 갱신한다', async (views) => {
+    const fixture = createDataSource(environment).setOptions({ schema,
+      extra: { options: `-c timezone=Asia/Seoul -c search_path=${schema}` } });
+    await fixture.initialize();
+    try {
+      await clearPolicyTables(fixture);
+      const raw = { plcyNo: 'migrated', plcyNm: '이관 정책', inqCnt: '10' };
+      await seedMigratedPolicies(fixture, [raw]);
+      const before = await fixture.getRepository(Policy).findOneByOrFail({ externalId: 'migrated' });
+      fetchMock.mockImplementation(async () => Response.json({ resultCode: 200, resultMessage: '성공', result: {
+        pagging: { totCount: 1, pageNum: 1, pageSize: 50 }, youthPolicyList: [{ ...raw, inqCnt: views }],
+      } }));
+      expect(await importPolicies()).toBe(0);
+      expect(await finalRecord()).toMatchObject({ saved: true, commitOutcome: 'COMMITTED',
+        counts: { NEW: 0, CHANGED: 0, UNCHANGED: 1 }, missingCount: 0,
+        reviewCreatedCount: 0, reviewSupersededCount: 0, publicViewUpdatedCount: 1 });
+      const viewCount = views === '0' ? 0 : null;
+      expect(await fixture.getRepository(Policy).findOneByOrFail({ id: before.id }))
+        .toEqual({ ...before, viewCount, updatedAt: expect.any(Date) });
+      expect(await fixture.getRepository(SourcePolicy).findOneByOrFail({ externalId: 'migrated' }))
+        .toMatchObject({ firstCollectedAt: expect.any(Date), lastCollectedAt: expect.any(Date), viewCount,
+          rawJson: { ...raw, inqCnt: views } });
+      expect(await fixture.getRepository(PolicyReview).count()).toBe(0);
+    } finally { await fixture.destroy(); }
   });
 });

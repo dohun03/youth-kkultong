@@ -3,7 +3,7 @@ import { appendFile, mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { ENVIRONMENT } from '../../../common/environment';
 import type { Environment } from '../../../common/environment';
-import type { PreparedPolicyBatches } from '../../policies/services/policies-write.service';
+import type { PolicyCollectionSaveResult } from '../../policies/services/policy-collection-write.service';
 
 /** 테스트에서 로그를 임시 폴더에 저장할 때 사용하는 설정 이름 */
 export const INGESTION_LOG_DIRECTORY = Symbol('INGESTION_LOG_DIRECTORY');
@@ -30,11 +30,16 @@ export interface IngestionLogEntry {
   event: 'RUN_STARTED' | 'PAGE_ATTEMPT' | 'SAVE_ATTEMPT' | 'WORK_FINISHED' | 'RUN_FINISHED';
   stage: IngestionStage;
   status: 'RUNNING' | 'SUCCESS' | 'FAILED' | 'ALREADY_RUNNING';
-  counts: PreparedPolicyBatches['counts'];
+  counts: Pick<PolicyCollectionSaveResult['counts'], 'NEW' | 'CHANGED' | 'UNCHANGED'> | null;
+  missingCount: number | null;
+  reviewCreatedCount: number | null;
+  reviewSupersededCount: number | null;
+  publicViewUpdatedCount: number | null;
+  commitOutcome: 'NOT_COMMITTED' | 'COMMITTED' | 'UNKNOWN';
   pageNum?: number;
   attempts?: number;
   saveAttempts: number;
-  saved: boolean;
+  saved: boolean | null;
   failures?: IngestionFailure[];
 }
 
@@ -62,7 +67,10 @@ export class IngestionLogService {
     const record = {
       timestamp: new Date().toISOString(), runId: entry.runId, event: entry.event,
       stage: entry.stage, status: entry.status,
-      counts: { NEW: entry.counts.NEW, CHANGED: entry.counts.CHANGED, UNCHANGED: entry.counts.UNCHANGED },
+      counts: entry.counts === null ? null : { NEW: entry.counts.NEW, CHANGED: entry.counts.CHANGED, UNCHANGED: entry.counts.UNCHANGED },
+      missingCount: entry.missingCount, reviewCreatedCount: entry.reviewCreatedCount,
+      reviewSupersededCount: entry.reviewSupersededCount, publicViewUpdatedCount: entry.publicViewUpdatedCount,
+      commitOutcome: entry.commitOutcome,
       pageNum: entry.pageNum, attempts: entry.attempts, saveAttempts: entry.saveAttempts, saved: entry.saved,
       failures: entry.failures?.map((failure) => ({
         stage: failure.stage, reason: failure.reason, pageNum: failure.pageNum, attempts: failure.attempts,

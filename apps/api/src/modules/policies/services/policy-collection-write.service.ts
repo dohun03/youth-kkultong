@@ -13,7 +13,7 @@ import { PolicyReviewRepository } from '../repositories/policy-review.repository
 import type { SupersededReviewInput } from '../repositories/policy-review.repository';
 import { PolicyReviewsWriteService } from './policy-reviews-write.service';
 import type { ReviewCandidateInput } from './policy-reviews-write.service';
-import type { PolicyWriteInput } from './policies-write.service';
+import type { PolicyWriteInput } from '../policy-write.types';
 
 /** 한 번의 정상 전체 수집에서 DB에 확정된 판정과 검수 및 공개 조회수 갱신 건수 */
 export interface PolicyCollectionSaveResult {
@@ -21,6 +21,14 @@ export interface PolicyCollectionSaveResult {
   reviewCreatedCount: number;
   reviewSupersededCount: number;
   publicViewUpdatedCount: number;
+}
+
+/** COMMIT 응답을 확인하지 못해 실제 DB 확정 여부를 알 수 없는 오류 */
+export class PolicyCollectionCommitError extends Error {
+  constructor(cause: unknown) {
+    super('수집 저장의 COMMIT 결과를 확인할 수 없습니다.', { cause });
+    this.name = 'PolicyCollectionCommitError';
+  }
 }
 
 /** 수집 원본과 누락 정보, 검수 후보, 공개 조회수를 한 트랜잭션으로 저장 */
@@ -150,7 +158,14 @@ export class PolicyCollectionWriteService {
       }
 
       // 커밋
-      await runner.commitTransaction();
+      try {
+        await runner.commitTransaction();
+      } catch (error) {
+        // DB가 취소를 확정한 충돌 외에는 확정 여부 불명으로 전달해 저장 재실행을 예방
+        const code = error instanceof QueryFailedError && 'code' in error.driverError ? error.driverError.code : undefined;
+        if (code === '40P01' || code === '40001') throw error;
+        throw new PolicyCollectionCommitError(error);
+      }
 
       // 실제 반영 건수를 반환
       return {

@@ -1,3 +1,7 @@
+import { SourcePolicy } from '../src/modules/policies/entities/source-policy.entity';
+import { PolicyReview } from '../src/modules/policies/entities/policy-review.entity';
+import { CreatePolicyReviewTables1793199600000 } from '../src/database/migrations/1793199600000-create-policy-review-tables';
+import { createCollectionWriter, clearPolicyTables, seedMigratedPolicies } from './helpers/policy-collection';
 import { randomUUID } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import type { DataSource, QueryRunner } from 'typeorm';
@@ -11,8 +15,8 @@ import { YouthCenterClient } from '../src/modules/ingestion/youth-center/youth-c
 import { createYouthCenterPolicyContentHash } from '../src/modules/ingestion/youth-center/youth-center-policy.hash';
 import { transformYouthCenterPolicy } from '../src/modules/ingestion/youth-center/youth-center-policy.transform';
 import { Policy } from '../src/modules/policies/entities/policy.entity';
-import { PoliciesWriteService } from '../src/modules/policies/services/policies-write.service';
-import type { PolicyWriteInput } from '../src/modules/policies/services/policies-write.service';
+import { PolicyCollectionWriteService } from '../src/modules/policies/services/policy-collection-write.service';
+import type { PolicyWriteInput } from '../src/modules/policies/policy-write.types';
 import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 
 /** 원본 변환과 해시 계산을 마친 테스트 정책 생성 */
@@ -27,7 +31,7 @@ describe('DB 충돌 재시도의 실제 PostgreSQL 검증', () => {
   let dataSource: DataSource;
   let runner: QueryRunner;
   let repository: PolicyRepository;
-  let service: PoliciesWriteService;
+  let service: PolicyCollectionWriteService;
   let schemaCreated = false;
 
   beforeAll(async () => {
@@ -37,7 +41,7 @@ describe('DB 충돌 재시도의 실제 PostgreSQL 검증', () => {
     await admin.query(`CREATE SCHEMA "${schema}"`);
     schemaCreated = true;
     dataSource = createDataSource(environment).setOptions({
-      schema, entities: [Policy], migrations: [CreatePolicies1792162800000],
+      schema, entities: [Policy, SourcePolicy, PolicyReview], migrations: [CreatePolicies1792162800000, CreatePolicyReviewTables1793199600000],
       extra: { options: `-c timezone=${environment.TZ} -c search_path=${schema}` },
     });
     await dataSource.initialize();
@@ -45,11 +49,11 @@ describe('DB 충돌 재시도의 실제 PostgreSQL 검증', () => {
   });
 
   beforeEach(async () => {
-    await dataSource.getRepository(Policy).clear();
+    await clearPolicyTables(dataSource);
     runner = dataSource.createQueryRunner();
     await runner.connect();
     repository = new PolicyRepository();
-    service = new PoliciesWriteService(repository, { ...loadEnvironment(), POLICY_IMPORT_BATCH_SIZE: 200 });
+    service = createCollectionWriter({ ...loadEnvironment(), POLICY_IMPORT_BATCH_SIZE: 200 }, repository);
   });
 
   afterEach(async () => {
@@ -73,159 +77,129 @@ describe('DB 충돌 재시도의 실제 PostgreSQL 검증', () => {
     }
   });
 
-  it('실제 40001 충돌 후 재분류해 저장하고 API는 한 번만 호출하며 잠금·연결을 유지한다', async () => {
-    await service.savePolicies(runner, [candidate('same')]);
+  it('실제 40001 충돌 후 공개 기준을 다시 읽고 API는 한 번만 호출한다', async () => {
+    await seedMigratedPolicies(dataSource, [{ plcyNo: 'same', plcyNm: '검증 정책', inqCnt: '10' }]);
     const environment = { ...loadEnvironment(), YOUTH_CENTER_API_KEY: 'retry-test', YOUTH_CENTER_REQUEST_DELAY_MS: 0 };
-    const rawPolicies = [candidate('new').rawJson, candidate('same', '검증 정책', '20').rawJson];
-    const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({
-      resultCode: 200, resultMessage: '성공', result: {
-        pagging: { totCount: 2, pageNum: 1, pageSize: environment.YOUTH_CENTER_PAGE_SIZE }, youthPolicyList: rawPolicies,
-      },
-    }));
+    const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ resultCode: 200, resultMessage: '성공', result: {
+      pagging: { totCount: 2, pageNum: 1, pageSize: environment.YOUTH_CENTER_PAGE_SIZE },
+      youthPolicyList: [candidate('new').rawJson, candidate('same', '검증 정책', '20').rawJson],
+    } }));
     jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
-    const collector = new IngestionService(
-      new YouthCenterClient(environment), new IngestionLockService(dataSource), service, new IngestionLogService(environment),
-    );
     const lock = new IngestionLockService(dataSource);
-    const find = repository.findContentHashes.bind(repository);
-    const refresh = repository.refreshPolicies.bind(repository);
+    const collector = new IngestionService(new YouthCenterClient(environment), lock, service, new IngestionLogService(environment));
+    const refresh = repository.refreshViewCounts.bind(repository);
+    const read = repository.findPublicSnapshots.bind(repository);
     const pids: number[] = [];
-    let conflict: unknown;
-
-    jest.spyOn(repository, 'findContentHashes').mockImplementation(async (manager, keys) => {
+    jest.spyOn(repository, 'findPublicSnapshots').mockImplementation(async (manager, keys) => {
       pids.push((await manager.sql`SELECT pg_backend_pid() AS pid`)[0].pid);
-      await expect(lock.runWithLock(async () => '중복 실행')).resolves.toEqual({ status: 'ALREADY_RUNNING' });
-      return find(manager, keys);
+      await expect(lock.runWithLock(async () => true)).resolves.toEqual({ status: 'ALREADY_RUNNING' });
+      return read(manager, keys);
     });
-    jest.spyOn(repository, 'refreshPolicies').mockImplementationOnce(async (manager, policies) => {
-      // 첫 조회 뒤 다른 세션이 행을 바꿔 REPEATABLE READ의 실제 직렬화 충돌 발생
-      await dataSource.getRepository(Policy).update({ externalId: 'same' }, { title: '경쟁 세션의 제목', contentHash: 'b'.repeat(64) });
-      try {
-        await refresh(manager, policies);
-      } catch (error) {
-        conflict = error;
-        throw error;
-      }
+    let conflict: unknown;
+    jest.spyOn(repository, 'refreshViewCounts').mockImplementationOnce(async (manager, values) => {
+      // 테스트에서만 원본 잠금을 거치지 않는 공개 기준 변경을 재현
+      await repository.upsertPolicies(dataSource.manager, [candidate('same', '경쟁 공개 C')]);
+      try { return await refresh(manager, values); }
+      catch (error) { conflict = error; throw error; }
     });
-
     await expect(lock.runWithLock(async (lockedRunner) => {
       const start = lockedRunner.startTransaction.bind(lockedRunner);
-      // 테스트에서만 격리 수준을 높여 두 세션의 충돌을 재현
+      // 테스트에서만 격리 수준을 높여 공개 행의 동시 갱신으로 실제 직렬화 충돌을 재현
       const starts = jest.spyOn(lockedRunner, 'startTransaction').mockImplementation(() => start('REPEATABLE READ'));
-      const rollbacks = jest.spyOn(lockedRunner, 'rollbackTransaction');
       const raw = await collector.collectPolicies();
-      const policies = raw.map((policy) => ({ ...transformYouthCenterPolicy(policy), contentHash: createYouthCenterPolicyContentHash(policy) }));
-      const counts = await service.savePolicies(lockedRunner, policies);
+      const values = raw.map((value) => ({ ...transformYouthCenterPolicy(value), contentHash: createYouthCenterPolicyContentHash(value) }));
+      const result = await service.saveCollection(lockedRunner, 'youthcenter', values, new Date());
       expect(starts).toHaveBeenCalledTimes(2);
-      expect(rollbacks).toHaveBeenCalledTimes(1);
-      expect(lockedRunner.isTransactionActive).toBe(false);
-      return counts;
-    })).resolves.toEqual({ status: 'COMPLETED', value: { NEW: 1, CHANGED: 1, UNCHANGED: 0 } });
+      return result;
+    })).resolves.toMatchObject({ value: { counts: { NEW: 1, CHANGED: 0, UNCHANGED: 1 }, reviewCreatedCount: 2 } });
     expect(conflict).toMatchObject({ driverError: { code: '40001' } });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(pids).toHaveLength(2);
-    expect(pids[1]).toBe(pids[0]);
-    expect(await dataSource.getRepository(Policy).count()).toBe(2);
-    expect(await dataSource.getRepository(Policy).findOneByOrFail({ externalId: 'same' }))
-      .toMatchObject({ title: '검증 정책', viewCount: 20, contentHash: candidate('same').contentHash });
-    await expect(lock.runWithLock(async () => true)).resolves.toEqual({ status: 'COMPLETED', value: true });
+    expect(pids[0]).toBe(pids[1]);
+    const published = await dataSource.getRepository(Policy).findOneByOrFail({ externalId: 'same' });
+    expect(published).toMatchObject({ title: '경쟁 공개 C', viewCount: 20 });
+    expect(await dataSource.getRepository(PolicyReview).countBy({ baseContentHash: published.contentHash })).toBe(1);
   });
 
-  it('서로 반대 순서로 행을 잠근 실제 40P01 교착 상태에서도 전체 저장만 재시도한다', async () => {
-    await service.savePolicies(runner, [candidate('a'), candidate('b')]);
-    service = new PoliciesWriteService(repository, { ...loadEnvironment(), POLICY_IMPORT_BATCH_SIZE: 1 });
+  it('반대 순서 원본 잠금의 실제 40P01 교착 후 전체 저장을 재시도한다', async () => {
+    await service.saveCollection(runner, 'youthcenter', [candidate('a'), candidate('b')], new Date());
     const competitor = dataSource.createQueryRunner();
-    let competitorWork: Promise<void> | undefined;
+    let work: Promise<void> | undefined;
     let competitorError: unknown;
     let conflict: unknown;
-    const upsert = repository.upsertPolicies.bind(repository);
+    const sourceWriter = service['sources'];
+    const find = sourceWriter.findBySourceForUpdate.bind(sourceWriter);
     const start = runner.startTransaction.bind(runner);
-    const starts = jest.spyOn(runner, 'startTransaction').mockImplementation(async () => {
-      await start();
-      await runner.manager.sql`SET LOCAL deadlock_timeout = '50ms'`;
+    const starts = jest.spyOn(runner, 'startTransaction').mockImplementation(async (level) => {
+      await start(level);
+      await runner.query("SET LOCAL deadlock_timeout = '50ms'");
     });
-    let writes = 0;
+    let reads = 0;
     try {
       await competitor.connect();
       await competitor.startTransaction();
-      await competitor.manager.sql`SET LOCAL deadlock_timeout = '5s'`;
-      // 경쟁 세션은 B를 먼저 잠그고 저장 처리는 A→B 순서로 진행
-      await competitor.manager.getRepository(Policy).update({ externalId: 'b' }, { title: '경쟁 세션의 B' });
-      jest.spyOn(repository, 'upsertPolicies').mockImplementation(async (manager, policies) => {
-        writes += 1;
-        try {
-          await upsert(manager, policies);
-        } catch (error) {
-          conflict = error;
-          throw error;
-        }
-        if (writes === 1) {
-          // 경쟁 세션도 A를 기다리게 해 A↔B 잠금 대기 고리 생성
-          competitorWork = competitor.manager.getRepository(Policy).update({ externalId: 'a' }, { title: '경쟁 세션의 A' })
+      await competitor.query("SET LOCAL deadlock_timeout = '5s'");
+      await competitor.manager.getRepository(SourcePolicy).update({ externalId: 'b' }, { title: '경쟁 B' });
+      jest.spyOn(sourceWriter, 'findBySourceForUpdate').mockImplementation(async (manager, source) => {
+        reads += 1;
+        if (reads === 1) {
+          await manager.getRepository(SourcePolicy).createQueryBuilder('original').where({ externalId: 'a' })
+            .setLock('pessimistic_write').getMany();
+          work = competitor.manager.getRepository(SourcePolicy).update({ externalId: 'a' }, { title: '경쟁 A' })
             .then(() => competitor.commitTransaction()).catch((error) => { competitorError = error; });
         }
+        try { return await find(manager, source); }
+        catch (error) { conflict = error; throw error; }
       });
-      const incoming = [candidate('a', '최종 A'), candidate('b', '최종 B')];
-      await expect(service.savePolicies(runner, incoming)).resolves.toEqual({ NEW: 0, CHANGED: 2, UNCHANGED: 0 });
-      await competitorWork;
+      expect(await service.saveCollection(runner, 'youthcenter', [candidate('a', '최종 A'), candidate('b', '최종 B')], new Date()))
+        .toMatchObject({ counts: { CHANGED: 2 }, reviewCreatedCount: 2, reviewSupersededCount: 2 });
+      await work;
       expect(competitorError).toBeUndefined();
       expect(conflict).toMatchObject({ driverError: { code: '40P01' } });
       expect(starts).toHaveBeenCalledTimes(2);
-      expect(writes).toBe(4);
-      expect((await dataSource.getRepository(Policy).find({ order: { externalId: 'ASC' } })).map((policy) => policy.title))
+      expect(reads).toBe(3);
+      expect((await dataSource.getRepository(SourcePolicy).find({ order: { externalId: 'ASC' } })).map(({ title }) => title))
         .toEqual(['최종 A', '최종 B']);
+      expect(await dataSource.getRepository(Policy).count()).toBe(0);
     } finally {
-      // 실패한 테스트도 다른 세션의 잠금과 연결을 남기지 않도록 정리
       if (runner.isTransactionActive) await runner.rollbackTransaction();
-      await competitorWork;
-      try {
-        if (competitor.isTransactionActive) await competitor.rollbackTransaction();
-      } finally {
-        if (!competitor.isReleased) await competitor.release();
-      }
+      await work;
+      try { if (competitor.isTransactionActive) await competitor.rollbackTransaction(); }
+      finally { if (!competitor.isReleased) await competitor.release(); }
     }
   });
 
-  it('두 번째 시도도 DB 충돌이면 두 번 모두 롤백하고 기존 데이터를 유지한다', async () => {
-    await service.savePolicies(runner, [candidate('outside')]);
-    const table = dataSource.getRepository(Policy);
-    const before = await table.find();
-    const upsert = repository.upsertPolicies.bind(repository);
-    let writes = 0;
-    jest.spyOn(repository, 'upsertPolicies').mockImplementation(async (manager, policies) => {
-      writes += 1;
-      if (writes % 2 === 0) {
-        // 실제 DB가 두 시도 모두 충돌 오류를 반환하도록 재현
-        await manager.sql`DO $$ BEGIN RAISE EXCEPTION '검증용 충돌' USING ERRCODE = '40P01'; END; $$`;
-      }
-      await upsert(manager, policies);
+  it('두 시도 모두 충돌하면 원본과 후보, 공개 조회수 변경을 취소한다', async () => {
+    await seedMigratedPolicies(dataSource, [{ plcyNo: 'outside', plcyNm: '기존 정책' }]);
+    const before = await dataSource.getRepository(SourcePolicy).find();
+    jest.spyOn(repository, 'refreshViewCounts').mockImplementation(async (manager) => {
+      await manager.sql`DO $$ BEGIN RAISE EXCEPTION '검증 충돌' USING ERRCODE = '40P01'; END; $$`;
+      return 0;
     });
     const starts = jest.spyOn(runner, 'startTransaction');
     const rollbacks = jest.spyOn(runner, 'rollbackTransaction');
-    const incoming = Array.from({ length: 201 }, (_, index) => candidate(`policy-${index}`));
-    await expect(service.savePolicies(runner, incoming)).rejects.toMatchObject({ driverError: { code: '40P01' } });
+    await expect(service.saveCollection(runner, 'youthcenter', [candidate('new')], new Date()))
+      .rejects.toMatchObject({ driverError: { code: '40P01' } });
     expect(starts).toHaveBeenCalledTimes(2);
     expect(rollbacks).toHaveBeenCalledTimes(2);
-    expect(writes).toBe(4);
-    expect(await table.find()).toEqual(before);
+    expect(await dataSource.getRepository(SourcePolicy).find()).toEqual(before);
+    expect(await dataSource.getRepository(PolicyReview).count()).toBe(0);
   });
 
-  it('충돌 롤백 뒤 실제 연결이 닫히면 새 연결이나 두 번째 트랜잭션을 만들지 않는다', async () => {
+  it('충돌 취소 뒤 연결이 끊기면 새 연결로 재시도하지 않는다', async () => {
     const connection: { end(): Promise<void> } = await runner.connect();
     const rollback = runner.rollbackTransaction.bind(runner);
-    jest.spyOn(runner, 'rollbackTransaction').mockImplementationOnce(async () => {
-      await rollback();
-      await connection.end();
-    });
-    jest.spyOn(repository, 'upsertPolicies').mockImplementationOnce(async (manager) => {
-      await manager.sql`DO $$ BEGIN RAISE EXCEPTION '검증용 충돌' USING ERRCODE = '40P01'; END; $$`;
+    jest.spyOn(runner, 'rollbackTransaction').mockImplementationOnce(async () => { await rollback(); await connection.end(); });
+    const write = jest.spyOn(repository, 'refreshViewCounts').mockImplementation(async (manager) => {
+      await manager.sql`DO $$ BEGIN RAISE EXCEPTION '검증 충돌' USING ERRCODE = '40P01'; END; $$`;
+      return 0;
     });
     const starts = jest.spyOn(runner, 'startTransaction');
-    const createRunner = jest.spyOn(dataSource, 'createQueryRunner');
-    await expect(service.savePolicies(runner, [candidate('policy')])).rejects.toBeInstanceOf(AggregateError);
+    const create = jest.spyOn(dataSource, 'createQueryRunner');
+    await expect(service.saveCollection(runner, 'youthcenter', [candidate('new')], new Date())).rejects.toBeInstanceOf(AggregateError);
     expect(starts).toHaveBeenCalledTimes(1);
-    expect(createRunner).not.toHaveBeenCalled();
-    expect(repository.upsertPolicies).toHaveBeenCalledTimes(1);
-    expect(await dataSource.getRepository(Policy).count()).toBe(0);
+    expect(create).not.toHaveBeenCalled();
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(await dataSource.getRepository(SourcePolicy).count()).toBe(0);
   });
 });

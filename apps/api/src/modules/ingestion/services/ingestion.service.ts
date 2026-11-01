@@ -1,8 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { QueryFailedError } from 'typeorm';
-import { PoliciesWriteService } from '../../policies/services/policies-write.service';
-import type { PolicyWriteInput, PreparedPolicyBatches } from '../../policies/services/policies-write.service';
+import { PolicyCollectionCommitError, PolicyCollectionWriteService } from '../../policies/services/policy-collection-write.service';
+import type { PolicyCollectionSaveResult } from '../../policies/services/policy-collection-write.service';
+import type { PolicyWriteInput } from '../../policies/policy-write.types';
 import { IngestionLockError, IngestionLockService } from './ingestion-lock.service';
 import type { IngestionLockResult } from './ingestion-lock.service';
 import { IngestionLogError, IngestionLogService } from './ingestion-log.service';
@@ -21,8 +22,7 @@ export class YouthCenterCollectionValidationError extends Error {
   readonly stage = 'COLLECTION_VALIDATION';
 
   constructor(
-    readonly reason: 'TOTAL_COUNT_CHANGED' | 'TOTAL_COUNT_MISMATCH' | 'PAGE_MISSING'
-      | 'PAGE_COUNT_MISMATCH' | 'DUPLICATE_POLICY_ID',
+    readonly reason: 'TOTAL_COUNT_CHANGED' | 'TOTAL_COUNT_MISMATCH' | 'PAGE_MISSING' | 'PAGE_COUNT_MISMATCH' | 'DUPLICATE_POLICY_ID',
     readonly details: { expected?: number; actual?: number; policyId?: string },
     readonly pageNum?: number,
     readonly attempts?: number,
@@ -74,25 +74,32 @@ export class IngestionService {
   constructor(
     @Inject(YouthCenterClient) private readonly youthCenterClient: YouthCenterClient,
     @Inject(IngestionLockService) private readonly lockService: IngestionLockService,
-    @Inject(PoliciesWriteService) private readonly writeService: PoliciesWriteService,
+    @Inject(PolicyCollectionWriteService) private readonly writeService: PolicyCollectionWriteService,
     @Inject(IngestionLogService) private readonly logService: IngestionLogService,
   ) {}
 
   /** 잠금 획득부터 수집 결과 기록까지 실행. CLI에서 이 메서드를 호출 */
-  async importPolicies(): Promise<IngestionLockResult<PreparedPolicyBatches['counts']>> {
+  async importPolicies(): Promise<IngestionLockResult<PolicyCollectionSaveResult>> {
     // 상태, 에러, 결과를 담을 변수 선언
     const state: IngestionLogEntry = {
-      runId: randomUUID(), event: 'RUN_STARTED', stage: 'LOCK', status: 'RUNNING',
-      counts: { NEW: 0, CHANGED: 0, UNCHANGED: 0 }, saveAttempts: 0, saved: false,
+      runId: randomUUID(),
+      event: 'RUN_STARTED',
+      stage: 'LOCK',
+      status: 'RUNNING',
+      counts: { NEW: 0, CHANGED: 0, UNCHANGED: 0 },
+      saveAttempts: 0,
+      saved: false,
+      missingCount: 0, reviewCreatedCount: 0, reviewSupersededCount: 0, publicViewUpdatedCount: 0,
+      commitOutcome: 'NOT_COMMITTED',
     };
     const errors: unknown[] = [];
-    let result: IngestionLockResult<PreparedPolicyBatches['counts']> = { status: 'ALREADY_RUNNING' };
+    let result: IngestionLockResult<PolicyCollectionSaveResult> = { status: 'ALREADY_RUNNING' };
 
     // 작업 시작
     try {
       // 첫 로그 기록
       await this.logService.write(state);
-      // 락 획득 후 작업 실행
+      // 수집 락 획득 후 작업 실행
       result = await this.lockService.runWithLock(async (runner) => {
         try {
           // 정책 API 수집
@@ -114,19 +121,38 @@ export class IngestionService {
             state.stage = 'HASH';
             policies.push({ ...transformed, contentHash: createYouthCenterPolicyContentHash(policy) });
           }
-          // 정책 저장
+          // 전체 검증과 변환이 끝난 한 시각을 모든 원본의 실제 수집 시각으로 사용
+          const collectedAt = new Date();
           state.stage = 'DATABASE';
-          state.counts = await this.writeService.savePolicies(runner, policies, async (attempts, previousError) => {
+          const saved = await this.writeService.saveCollection(runner, 'youthcenter', policies, collectedAt, async (attempts, previousError) => {
             state.saveAttempts = attempts;
             await this.logService.write({
               ...state, event: 'SAVE_ATTEMPT', failures: previousError ? this.describeFailure(previousError, 'DATABASE') : [],
             });
           });
+          // DB가 확정한 건수만 기록하고 수집 반영과 공개 승인을 구분
+          const { NEW, CHANGED, UNCHANGED, MISSING } = saved.counts;
+          state.counts = { NEW, CHANGED, UNCHANGED };
+          state.missingCount = MISSING;
+          state.reviewCreatedCount = saved.reviewCreatedCount;
+          state.reviewSupersededCount = saved.reviewSupersededCount;
+          state.publicViewUpdatedCount = saved.publicViewUpdatedCount;
           state.saved = true;
+          state.commitOutcome = 'COMMITTED';
           // 저장 결과를 기록
           await this.logService.write({ ...state, event: 'WORK_FINISHED', status: 'SUCCESS' });
-          return state.counts;
+          return saved;
         } catch (error) {
+          // COMMIT 응답 유실은 실제 반영 건수를 알 수 없으므로 저장 상태와 건수를 NULL로 기록
+          if (this.hasUnknownCommit(error)) {
+            state.saved = null;
+            state.commitOutcome = 'UNKNOWN';
+            state.counts = null;
+            state.missingCount = null;
+            state.reviewCreatedCount = null;
+            state.reviewSupersededCount = null;
+            state.publicViewUpdatedCount = null;
+          }
           try {
             await this.logService.write({ ...state, event: 'WORK_FINISHED', status: 'FAILED', failures: this.describeFailure(error, state.stage) });
           } catch (logError) {
@@ -156,11 +182,18 @@ export class IngestionService {
     return result;
   }
 
+  /** 취소 오류와 함께 전달된 COMMIT 결과 불명도 찾아 기록 상태를 구분 */
+  private hasUnknownCommit(error: unknown): boolean {
+    return error instanceof PolicyCollectionCommitError
+      || (error instanceof AggregateError && error.errors.some((item: unknown) => this.hasUnknownCommit(item)));
+  }
+
   /** 오류 메시지·SQL·원본 대신 정해진 실패 코드와 위치만 추출 */
   private describeFailure(error: unknown, stage: IngestionStage): IngestionFailure[] {
     if (error instanceof AggregateError) return error.errors.flatMap((item: unknown) => this.describeFailure(item, stage));
     if (error instanceof IngestionLogError) return [{ stage: 'LOG', reason: 'FILE_AND_FALLBACK_FAILED' }];
     if (error instanceof IngestionLockError) return [{ stage: error.stage, reason: error.reason }];
+    if (error instanceof PolicyCollectionCommitError) return [{ stage: 'DATABASE', reason: 'COMMIT_OUTCOME_UNKNOWN' }];
     if (error instanceof YouthCenterPageError) return [{
       stage: 'API', reason: `${error.reason}_${error.failure}`, pageNum: error.pageNum, attempts: error.attempts, httpStatus: error.httpStatus,
     }];
@@ -186,7 +219,7 @@ export class IngestionService {
     return [{ stage, reason: 'UNEXPECTED_ERROR' }];
   }
 
-  /** 수집 작업마다 새 ID 집합을 사용하며 중간 실패 시 부분 결과를 반환하지 않는다. */
+  /** 온통청년 수집 작업 */
   async collectPolicies(onAttempt?: YouthCenterAttemptObserver): Promise<YouthCenterRawPolicy[]> {
     // 첫 페이지에서 실제 총 건수와 페이지 크기 확보
     const seenIds = new Set<string>();

@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-10-30 · 상태: Step 1~10 완료 · Step 11~41 미착수
+수정일: 2026-10-30 · 상태: Step 1~11 완료 · Step 12~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -17,6 +17,8 @@
 이번 Step은 대조·검증·결과 기록이다. 애플리케이션 소스·공개 API·DB·의존성·환경변수는 변경하지 않았고 실제 수집·이관도 실행하지 않았다. `SPEC_SUMMARY.md`는 두 MVP 모두 존재하지 않아 생성하지 않았다.
 
 ## 2. 기존 구현에서 재사용할 위치
+
+이 절과 3절은 Step 1 착수 당시의 MVP1 구현 대조 기록이다. Step 11에서 이전 즉시 공개 저장 서비스를 제거했으며 최신 수집 흐름과 파일 위치는 16절을 따른다.
 
 아래 소스 경로는 별도 표기가 없으면 `apps/api/src/` 기준이다.
 
@@ -95,10 +97,10 @@ API 실행기는 `.env`를 메모리에서 읽어 로컬 DATABASE_URL을 구성�
 ## 6. 남은 문제와 다음 작업
 
 - 로컬 DB는 Step 4 이관을 완료했다. 공개 정책 3,390건·원본 3,390건·검수 0건·지역 537개·Migration 3개다. Step 7 검증을 위해 기존 DB만 시작해 healthy 상태이며, 착수 시 중지되어 있던 웹과 API는 그대로 유지했다.
-- 최신 이관 전 DB·로그 백업은 `backups/mvp2-step4-20261028225754/`에 보관했다. 새 수집 저장 흐름으로 전환하는 Step 11 전까지 기존 수동 수집 CLI 실행은 중단한다. 이후 실제 쓰기·운영 전환 전에는 해당 시점 백업을 다시 만든다.
+- 최신 이관 전 DB·로그 백업은 `backups/mvp2-step4-20261028225754/`에 보관했다. Step 11에서 로컬 CLI의 새 수집 흐름 연결과 격리 검증을 완료했다. 실제 수집과 운영 전환은 최신 코드 및 이미지와 해당 시점 백업을 확인한 뒤 진행하며 기존 이미지의 CLI 실행 중단은 유지한다.
 - 외부 API 정확한 호출 한도·e003 원인·삭제/비공개 규약·지역과 실제 거주 자격 대응·0~0 연령 의미는 MVP1에서 이어지는 미확인 사항이다. 기존 보수적 판정과 실패 시 데이터 유지 규칙을 따른다.
 - 프록시를 통한 접속 주소별 호출 제한 공유, 수동 백업의 보관 기한·외부 복제 등 기존 운영 한계는 유지된다. MVP2 한도 분리는 SPEC 7.2대로 구현하되 실제 사용자별 제한을 해결한 것으로 보고하지 않는다.
-- 다음 요청 대상은 **Step 11: 기존 CLI를 새 수집 흐름으로 전환**이다. Step 10까지 완료했고 Step 11 이후 구현은 진행하지 않았다.
+- 다음 요청 대상은 **Step 12: 수집 저장 실패와 재시도 검증**이다. Step 11까지 완료했고 Step 12 이후 구현은 진행하지 않았다.
 
 Step 1 핵심 읽는 순서: MVP2 SPEC 2·5·6장 → `ingestion.service.ts` → `policies-write.service.ts`·`policy.repository.ts` → 잠금·로그 서비스 → 기존 수집/저장/CLI 통합 테스트. 관리자 계약 기준은 SPEC 3·4·7장이다.
 
@@ -401,4 +403,39 @@ git diff --check
 - 공개 정책 3,390건, 원본 3,390건, 검수 0건, 지역 537개, Migration 3개와 각 테이블 전체 행 체크섬이 검증 전후 동일하다. 공개 정책 체크섬은 `46a965ded0407e47a7af9816cd3e7b6e`이며 잔여 임시 검증 스키마는 0개다. 전후 자료는 `/tmp/mvp2-step10-before.json`, `/tmp/mvp2-step10-after.json`에 있다.
 - DB는 healthy이며 기존 웹과 API의 중지 상태를 유지했다. API 계약과 DB 스키마, Migration, 의존성, 환경변수, 웹 화면 변경은 없다. 브라우저 E2E와 컨테이너 재빌드는 수행하지 않았다. PLAN Step 10만 완료 표시했고 SPEC 변경은 없다.
 
-Step 10 핵심 읽는 순서: `policy-collection-write.service.ts`의 `saveCollection()`과 `saveTransaction()` → `policy.repository.ts`의 `findPublicSnapshots()` → `policy-collection-write.integration.spec.ts`. 미해결 실패는 없다. 다음은 Step 11 CLI 전환과 수집 결과 로그 및 기존 통합 테스트 기대값 갱신이며, 실제 온통청년 수집은 이번에 실행하지 않았다. Step 10 변경사항은 검토를 위해 미커밋 상태로 둔다.
+Step 10 핵심 읽는 순서: `policy-collection-write.service.ts`의 `saveCollection()`과 `saveTransaction()` → `policy.repository.ts`의 `findPublicSnapshots()` → `policy-collection-write.integration.spec.ts`. 미해결 실패는 없다. 실제 온통청년 수집은 이번에 실행하지 않았다.
+
+2026-10-30 사용자 요청으로 Step 10 코드와 문서를 확인한 뒤 `c694f3b` (`feat: 수집 원본과 검수 및 공개 조회수의 일괄 저장 연결`)로 커밋했다.
+
+## 16. Step 11 기존 CLI를 새 수집 흐름으로 전환 (2026-10-30)
+
+AGENT_RULES → PLAN Step 11 → SPEC 5.1~5.5 → Step 10 결과 → CLI와 수집 및 로그 서비스, 기존 수집과 저장 및 독립 CLI 테스트를 대조했다. 기존 수집 명령과 잠금, 외부 API의 페이지 호출 및 재시도, 종료 코드 0/1/2를 유지하고 저장 경로를 전환했다.
+
+- `import-policies.ts` → `IngestionService.importPolicies()` → `runWithLock()` → `collectPolicies()` → 기존 변환과 해시 계산 → `PolicyCollectionWriteService.saveCollection()` → 결과 로그 → 잠금과 연결 정리 순서다. 모든 검증과 변환이 끝난 시각 한 값을 실제 수집 시각으로 전달한다. 신규와 변경 내용은 원본과 대기에 저장하고 공개 정책은 최신 조회수만 갱신한다.
+- 성공 반환값에는 네 판정과 검수 후보 생성 및 대체, 공개 조회수 반영 건수를 담는다. CLI는 “정책 수집 DB 반영 완료”와 이 건수들을 출력하고 본문은 관리자 승인 후 공개됨을 알린다. 로그의 기존 counts 세 항목은 유지하고 missingCount, reviewCreatedCount, reviewSupersededCount, publicViewUpdatedCount를 추가했다.
+- `saved=true`와 commitOutcome=COMMITTED는 수집 DB 확정을 뜻한다. 확정 전 실패와 중복 종료는 건수 0 및 saved=false를 유지한다. COMMIT 성공 뒤 로그나 잠금 정리가 실패해도 확정 상태와 건수를 보존하며 종료 코드는 1일 수 있다.
+- COMMIT 단계에서 확정된 교착 및 직렬화 충돌 외의 응답 오류는 `PolicyCollectionCommitError`로 전달한다. 이 오류와 취소 오류가 함께 있어도 saved=null, 확정 건수 전부 null, commitOutcome=UNKNOWN으로 기록하고 저장을 재시도하지 않는다. 확정 응답 유실 뒤 실제 DB에는 저장된 상태와 다음 실행의 UNCHANGED 및 대기 보존을 실제 DB에서 확인했다. 추가 연결 장애와 로그 고장 조합은 Step 13에서 이어서 검증한다.
+- 이전 즉시 공개 경로의 `PoliciesWriteService`와 `refreshPolicies()`를 제거했다. 서버 저장 입력 타입은 `policy-write.types.ts`로 옮기고 모듈 등록과 참조를 갱신했다. 공개본 bulk upsert는 테스트 초기 상태 준비에만 사용하며 실행 중인 수집 경로에서는 호출하지 않는다.
+- 기존 수집 성공과 실패, 파일 로그, 잠금, 저장 준비와 묶음 저장 및 DB 재시도, 독립 CLI 테스트를 새 기대값으로 갱신했다. 원본과 검수 테이블을 포함한 임시 스키마를 사용하고 잘못된 기존 공개 샘플 해시는 실제 원문 해시로 교체했다. 실패 전후에는 원본과 후보, 공개 행 전체를 비교한다. 테스트 helper는 임시 스키마를 확인하고 외부 API는 fixture로 대체한다.
+- 이전 저장 서비스 단위 테스트 48개는 중복 분류와 이전 저장 준비 검증을 전용 `policy-collection.spec.ts` 34개와 검수 판단 테스트로 통합하고 새 저장 서비스 경계 테스트 28개로 갱신했다. 기존 실제 직렬화 충돌과 교착, 연결 종료, 2,000번째 원본 CHECK 실패 및 앞 묶음 취소 시나리오는 새 저장 경로로 옮겨 유지했다. 새 CLI의 이관 동일 자료와 NULL 및 0 조회수, 정상 0건 누락, 신규 및 변경 후보와 공개 분리, COMMIT 결과 불명 및 재실행, 비밀값 비노출도 검증했다.
+- 독립 CLI 두 개의 종료 코드 2, COMMIT 전 강제 종료 후 재실행, 실제 검색 API가 수집 중과 확정 후에도 승인 전 본문을 유지하는 것을 확인했다. T2-03~05·13~14·18과 T2-44의 이번 연결 및 결과 기록 기준을 검증했으며 정기 스케줄과 관리자 승인은 각 후속 Step 범위다.
+
+### 검증
+
+```sh
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm run build --workspace apps/api
+node /tmp/mvp2-step11-verify.cjs before
+node /tmp/mvp2-step11-verify.cjs focused
+node /tmp/mvp2-step11-verify.cjs full
+node /tmp/mvp2-step11-verify.cjs after
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml ps -a
+git diff --check
+```
+
+- 전체 타입 검사와 shared/API 빌드, diff 검사를 통과했다. 수집과 저장 및 CLI 중심 **13개 스위트 144개 테스트**, 전체 API/DB **60개 스위트 1,801개 테스트**가 통과했으며 실패와 건너뜀은 0건이다. 이전 전체 1,816개에서 이전 서비스 단위 테스트 20개를 통합하고 새 시나리오 5개를 추가한 결과다. 분류와 검수 판단의 기존 전용 테스트도 모두 통과했다.
+- 검증 실행기는 `.env`의 비밀값을 출력하지 않고 로컬 DB URL을 구성한다. 결과와 가린 출력은 `/tmp/mvp2-step11-{focused,full}-results.json`, `/tmp/mvp2-step11-{focused,full}-output.log`에 보관했다.
+- 공개 정책 3,390건, 원본 3,390건, 검수 0건, 지역 537개, Migration 3개와 각 테이블 전체 행 체크섬이 검증 전후 동일하다. 공개 정책 체크섬은 `46a965ded0407e47a7af9816cd3e7b6e`이며 잔여 테스트 임시 스키마는 0개다. 전후 자료는 `/tmp/mvp2-step11-before.json`, `/tmp/mvp2-step11-after.json`에 있다.
+- 공개 API 계약, DB 스키마, 의존성, 환경변수와 웹 화면은 변경하지 않았다. PLAN과 SUMMARY를 현재 상태로 갱신했으며 SPEC 의미 변경은 없다. 웹 화면 변경이 없어 브라우저 전체 E2E와 컨테이너 재빌드는 반복하지 않았다. 기존 DB는 healthy이며 착수 시 중지되어 있던 웹과 API는 그대로 유지했다. 외부 API는 격리 테스트 자료로 대체했으며 실제 온통청년 수집은 실행하지 않았다.
+
+Step 11 핵심 읽는 순서: `import-policies.ts` → `ingestion.service.ts`의 `importPolicies()` → `policy-collection-write.service.ts`의 `saveCollection()` → `ingestion-log.service.ts` → CLI와 수집 통합 테스트. 미해결 실패는 없다. 2026-11-01 사용자 요청으로 Step 11 코드와 테스트, 문서를 커밋에 포함했다. 다음 작업은 Step 12다.
