@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-02 · 상태: Step 1~19, 29 완료 · Step 20~28, 30~41 미착수
+수정일: 2026-11-02 · 상태: Step 1~20, 29 완료 · Step 21~28, 30~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -729,3 +729,26 @@ git diff --check
 - API 계약, DB 스키마 및 Migration, 패키지 의존성 변경은 없다. `.env`는 사용자 요청에 따라 로컬 관리자 설정만 추가했으며 기존 DB 및 수집 설정은 보존했다. `.env`와 로그인 정보 파일은 Git 제외를 확인했다. 화면 변경 규칙에 따라 web 컨테이너를 새 빌드로 재생성했고, 기존 중지된 API도 인증 구현이 반영된 현재 이미지로 시작했다. 실제 온통청년 수집은 실행하지 않았다. PLAN에는 선행 실행과 비연속 완료 상태를 기록했으며 SPEC 의미 변경은 없다.
 
 핵심 읽는 순서: `app/admin/layout.tsx` → `admin-session.tsx`의 인증 확인과 login()/logout() → `login/page.tsx` → 세 보호 경로의 기본 화면 → `test/admin-auth.browser.mjs`. 미해결 실패는 없다. 실제 검수 데이터 조회와 처리는 Step 20~28 및 Step 30 이후 범위다. 이번 요청 범위인 Step 29에서 중단하며 다음 미완료 순서는 Step 20이다.
+
+## 26. Step 20 검수 변경 내용 비교 (2026-11-02)
+
+AGENT_RULES → PLAN Step 20 → SPEC 3장과 4.2 및 T2-35 → Step 19와 선행 Step 29 완료 기록 → 공용 타입과 검수 엔티티 및 기존 내용 해시 코드를 대조했다. 요청 범위와 명세 사이의 불일치는 없다.
+
+- `policies/policy-field-diff.ts`의 순수 함수 `calculatePolicyFieldDiff(base, target)`에서 보관된 기준 원문과 변경 원문을 비교해 기존 공용 타입 `PolicyFieldDiff[]`를 반환한다. 기준본이 NULL인 신규 후보는 조회수를 제외한 모든 필드를 추가로 표시한다.
+- 최상위 키의 합집합을 문자열 오름차순으로 정렬하고 최상위 `inqCnt`만 제외한다. 없는 쪽 값은 NULL로 반환하며 `beforeExists`와 `afterExists`를 함께 기록해 명시적 NULL의 추가 및 삭제도 구분한다. 중첩 객체의 키는 모든 깊이에서 정렬해 직렬화하고 배열 순서와 개수 및 중복, 자료형, 공백과 줄바꿈, 긴 원문과 미확인 필드를 보존한다. 입력 스냅샷은 변경하지 않는다.
+- 입력은 검수 엔티티의 JSON 원문 타입을 사용한다. JSON 값의 직렬화는 Policies 안의 짧은 내부 함수로 두어 Ingestion 모듈에 의존하지 않는다. 기존 해시와 같은 판정인지는 두 함수의 결과를 조합별로 대조하는 테스트로 확인했다.
+- `policy-field-diff.spec.ts`에서 필드 추가와 삭제 및 NULL, 신규와 빈 원문, 숫자 형태와 한글 키 정렬, 중첩 객체와 배열, 최상위 조회수 변경과 추가 및 삭제, 중첩 조회수 변경, 프로토타입 이름과 같은 특수 키, 긴 원문 및 JSON 응답 보존, 동결된 입력 보존을 검증한다. 16가지 원문 조합의 모든 256쌍에서 차이 유무와 기존 내용 해시의 동일 판정이 일치한다.
+
+### 검증
+
+```sh
+npm run test --workspace apps/api -- --runTestsByPath test/policy-field-diff.spec.ts test/youth-center-policy-hash.spec.ts test/policy-review-decision.spec.ts test/policy-collection.spec.ts
+npm run typecheck
+npm run build --workspace apps/api
+git diff --check
+```
+
+- 변경 비교와 기존 내용 해시 및 후보 판정과 수집 판정의 **4개 스위트 140개 테스트 모두 통과**. 실패와 건너뜀은 0건이다. shared/API/web 전체 타입 검사와 shared/API 빌드도 통과했다. 초기 타입 검사에서 테스트의 동결 배열이 공용 JSON의 변경 가능한 배열 타입과 맞지 않아 배열을 먼저 선언한 뒤 동결하도록 정정했고, 최종 타입 검사와 관련 테스트를 다시 통과했다.
+- API 계약, DB 스키마와 Migration, 패키지 의존성 및 웹 화면 변경은 없다. 순수 비교 함수만 추가한 Step이므로 DB 통합 테스트와 전체 API 회귀 및 브라우저 E2E는 실행하지 않았다. 기존 컨테이너와 운영 데이터는 변경하지 않았다. SPEC 의미 변경 없이 PLAN과 SUMMARY의 완료 상태만 갱신했다.
+
+핵심 읽는 순서: `policy-field-diff.ts`의 `calculatePolicyFieldDiff()` → `serializeFieldValue()` → `policy-field-diff.spec.ts`. 미해결 실패는 없다. 상세 API의 스냅샷 조회와 비교 함수 연결은 Step 22에서 수행한다. 다음 미완료 순서는 Step 21이며 이번 요청 범위인 Step 20에서 중단한다.
