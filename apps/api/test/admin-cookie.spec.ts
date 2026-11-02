@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { UnauthorizedException } from '@nestjs/common';
-import { AdminCookieService, parseAdminCookieSettings } from '../src/modules/admin/admin-cookie';
+import { AdminCookieService, parseAdminCookieSettings } from '../src/modules/admin/services/admin-cookie.service';
 import { parseEnvironment } from '../src/common/environment';
 
 const secret = Buffer.alloc(32, 17);

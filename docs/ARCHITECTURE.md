@@ -156,7 +156,7 @@ MVP1의 `policies`·`regions`를 유지하고 `source_policies`·`policy_reviews
 | `apps/web/app/admin/` | 관리자 인증·검수·이력·누락 화면. 관련 컴포넌트는 기존 정책 화면처럼 같은 폴더에 배치 |
 | `apps/api/src/modules/policies/` | 공개·원본·검수 엔티티와 Repository, 조회·저장·검수 서비스 |
 | `apps/api/src/modules/ingestion/` | 공통 수집 서비스·스케줄러·수동 실행·API 호출·검증·변환·잠금·로그 |
-| `apps/api/src/modules/admin/` | 인증·권한 검사·관리자 컨트롤러 |
+| `apps/api/src/modules/admin/` | 관리자 모듈. `controllers/`는 HTTP 처리, `services/`는 자격 및 쿠키 처리, `guards/`는 권한과 출처 검사 |
 | `apps/api/src/modules/matching/`, `meta/` | 기존 매칭·메타 정보 |
 | `apps/api/src/database/`, `common/` | 연결·Migration·시드, 설정·오류·로깅 |
 | `packages/shared/` | API 계약·Zod 스키마·공용 함수 |

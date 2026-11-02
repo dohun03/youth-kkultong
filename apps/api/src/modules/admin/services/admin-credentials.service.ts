@@ -47,8 +47,8 @@ export class AdminCredentialsService {
   async authenticate(username: string, password: string): Promise<string> {
     let passwordMatches = false;
 
+    // 계정이 틀리던 말던 항상 비밀번호 계산을 먼저 수행 (보안)
     if (typeof password === 'string' && password.length >= 1 && password.length <= 256) {
-      // 계정이 틀리던 말던 항상 비밀번호 계산을 먼저 수행 (보안)
       const key = await deriveKey(password, this.credentials.passwordHash.salt);
       try {
         // 계산한 키와 저장된 키를 같은 길이로 비교

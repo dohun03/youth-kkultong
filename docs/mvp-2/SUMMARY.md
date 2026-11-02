@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-02 · 상태: Step 1~17 완료 · Step 18~41 미착수
+수정일: 2026-11-02 · 상태: Step 1~18 완료 · Step 19~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -535,8 +535,8 @@ Step 14 핵심 읽는 순서: `fixtures/ingestion-cli.preload.cjs`의 진행 제
 
 AGENT_RULES → PLAN Step 15 → SPEC 7.1~7.2와 T2-36·40 → Step 14 완료 기록 → 공통 환경 설정, HTTP 및 수집 CLI 진입점, shared 로그인 검증과 관련 테스트를 확인했다. 문서와 실제 코드의 충돌은 없다.
 
-- `modules/admin/admin-credentials.ts`에 공백 없는 1~64자 관리자 식별자와 비밀번호 해시의 명시적 설정 검증을 추가했다. 오류에는 설정 항목명과 안전한 설명만 포함한다. 공통 환경 설정과 AppModule은 유지하므로 수집·Migration·시드 CLI에 관리자 자격이 요구되지 않는다. HTTP 시작점에서 필수 설정을 연결하는 작업은 Step 17 범위다.
-- `admin-credentials.ts`의 해시 생성과 로그인 확인은 Node 내장 비동기 scrypt(N=16384, r=8, p=1, 무작위 salt 16바이트, key 64바이트)를 사용한다. 저장 형식의 비용과 전체 길이, 표준 base64 및 디코딩 길이를 검사한다. 비밀번호는 1~256자이며 공백을 보존한다. 계산 키를 고정 길이 timingSafeEqual로 비교한 뒤 임시 키 버퍼를 지운다.
+- `modules/admin/services/admin-credentials.service.ts`에 공백 없는 1~64자 관리자 식별자와 비밀번호 해시의 명시적 설정 검증을 추가했다. 오류에는 설정 항목명과 안전한 설명만 포함한다. 공통 환경 설정과 AppModule은 유지하므로 수집·Migration·시드 CLI에 관리자 자격이 요구되지 않는다. HTTP 시작점에서 필수 설정을 연결하는 작업은 Step 17 범위다.
+- `admin-credentials.service.ts`의 해시 생성과 로그인 확인은 Node 내장 비동기 scrypt(N=16384, r=8, p=1, 무작위 salt 16바이트, key 64바이트)를 사용한다. 저장 형식의 비용과 전체 길이, 표준 base64 및 디코딩 길이를 검사한다. 비밀번호는 1~256자이며 공백을 보존한다. 계산 키를 고정 길이 timingSafeEqual로 비교한 뒤 임시 키 버퍼를 지운다.
 - `AdminCredentialsService.authenticate()`는 계정 불일치에도 비밀번호 계산을 수행한다. 잘못된 계정과 비밀번호는 동일한 401 `ADMIN_UNAUTHORIZED` 및 `관리자 인증이 필요합니다.` 예외를 반환한다. 성공 시 관리자 식별자만 반환한다. 쿠키, Guard, HTTP 오류 필터 연결과 로그인 API는 Step 16~18에서 진행한다.
 - `prepare-admin-password.ts`는 표준 입력만으로 비밀번호를 받아 새 파일에 해시를 저장한다. 화면에 비밀번호나 해시를 출력하지 않고, 파일은 소유자만 읽고 쓸 수 있는 권한 600으로 생성한다. 기존 파일과 심볼릭 링크를 덮어쓰지 않는다. 입력 바이트 수와 UTF-8 형식을 검사하고 입력 버퍼를 정리한다. CLI 오류는 원문이나 경로가 없는 고정 문구로 출력한다.
 - `admin-credentials.spec.ts`는 설정 누락과 형식 오류, 비용 변경 및 비표준 base64, 독립적으로 만든 scrypt 벡터, 계정 불일치 시 실제 scrypt와 64바이트 비교 실행, 동일 인증 오류, 한글 및 공백과 길이 경계, 무작위 salt 및 내부 계산 오류를 확인한다. `prepare-admin-password.spec.ts`는 파일 권한과 덮어쓰기 방지, 입력 실패 및 UTF-8 경계와 실제 CLI의 표준 출력 및 오류 출력 비노출을 확인한다.
@@ -574,11 +574,11 @@ git diff --check
 - 검증 실행기는 비밀값을 출력하지 않고 로컬 DB URL을 구성한다. 전체 결과와 가린 출력은 `/tmp/mvp2-step15-full-results.json`, `/tmp/mvp2-step15-full-output.log`에 보관했다. 공개 정책 3,390건, 원본 3,390건, 검수 0건, 지역 537개, Migration 3개와 각 테이블 전체 행 체크섬이 검증 전후 동일하며 잔여 테스트 스키마는 0개다. 전후 기록은 `/tmp/mvp2-step15-{before,after}.json`에 있다.
 - 공개 API 계약, 운영 DB 스키마와 Migration, 의존성, 공통 환경 설정, Compose와 웹 화면 변경은 없다. DB는 healthy이며 기존 웹과 API의 중지 상태는 유지했다. 브라우저 E2E와 컨테이너 재빌드, 실제 온통청년 수집은 수행하지 않았다. SPEC 의미 변경 없이 PLAN Step 15와 SUMMARY를 갱신했다.
 
-Step 15 핵심 읽는 순서: `admin-credentials.ts`의 parseAdminCredentials() → authenticate() → createAdminPasswordHash()와 공통 deriveKey() → `prepare-admin-password.ts`의 안전한 파일 생성 → 두 신규 테스트 파일. 미해결 실패는 없다. 다음 작업은 Step 16이며 이번 요청 범위에서 중단한다.
+Step 15 핵심 읽는 순서: `admin-credentials.service.ts`의 parseAdminCredentials() → authenticate() → createAdminPasswordHash()와 공통 deriveKey() → `prepare-admin-password.ts`의 안전한 파일 생성 → 두 신규 테스트 파일. 미해결 실패는 없다. 다음 작업은 Step 16이며 이번 요청 범위에서 중단한다.
 
 사용자 검수 후 위 세 실행 코드 파일의 주석을 입력 → 처리 → 결과 중심으로 정리했다. 입력 묶음(chunk), 누적 바이트 수(size), 전체 입력 바이트(bytes)와 문자열 변환 및 파일 저장 흐름을 명시했다. 동작 변경 없이 주석과 공백만 수정했으며 `git diff --check`를 통과했다. 테스트는 재실행하지 않았다.
 
-사용자 요청으로 Step 15 코드를 읽기 쉽게 정리했다. 설정 검사, 로그인 확인, 초기 해시 생성을 `admin-credentials.ts` 한 파일로 모으고 `admin-password.ts`는 제거했다. 한 줄 길이 검사와 한 번만 사용하는 해시 해석 및 비밀번호 비교 함수를 호출 위치에 합쳤다. 해시 생성과 로그인에서 함께 쓰는 비동기 scrypt 계산만 `deriveKey()`로 유지한다. 초기 준비 CLI는 별도 실행 도구이므로 기존 파일을 유지한다. 테스트도 내부 보조 함수 대신 설정 검사와 실제 인증 결과를 확인하도록 수정했다. 인증 규칙, API 및 DB 계약 변경은 없다.
+사용자 요청으로 Step 15 코드를 읽기 쉽게 정리했다. 설정 검사, 로그인 확인, 초기 해시 생성을 `admin-credentials.service.ts` 한 파일로 모으고 `admin-password.ts`는 제거했다. 한 줄 길이 검사와 한 번만 사용하는 해시 해석 및 비밀번호 비교 함수를 호출 위치에 합쳤다. 해시 생성과 로그인에서 함께 쓰는 비동기 scrypt 계산만 `deriveKey()`로 유지한다. 초기 준비 CLI는 별도 실행 도구이므로 기존 파일을 유지한다. 테스트도 내부 보조 함수 대신 설정 검사와 실제 인증 결과를 확인하도록 수정했다. 인증 규칙, API 및 DB 계약 변경은 없다.
 
 리팩터링 검증: `npm run build --workspace apps/api`, `npm run typecheck --workspace apps/api`, `git diff --check` 통과. 관리자 자격, 해시 준비, 공통 환경 설정 및 관리자 입력 검증의 4개 스위트 313개 테스트 모두 통과했다. 최초 CLI 테스트는 샌드박스의 자식 프로세스 생성 제한(`spawnSync EPERM`)으로 실패해 실행 가능한 환경에서 같은 테스트를 다시 수행했다. 이번 내부 정리는 DB 접근과 웹 화면 변경이 없어 전체 DB 회귀와 브라우저 검증을 반복하지 않았다.
 
@@ -586,7 +586,7 @@ Step 15 핵심 읽는 순서: `admin-credentials.ts`의 parseAdminCredentials() 
 
 사용자 요청에 따라 Step 15의 검수와 코드 정리를 커밋 `109bb3a`(`feat: 관리자 자격 검증과 비밀번호 해시 준비 구현`)에 포함한 뒤 Step 16을 진행했다. AGENT_RULES → PLAN Step 16 → SPEC 7.1~7.2 및 T2-36~37 → Step 15 완료 기록 → 자격 검증과 공통 환경 설정 및 API 계약을 대조했다. 충돌은 없다.
 
-- `modules/admin/admin-cookie.ts` 한 파일에 설정 확인과 쿠키 발급, 검증, 삭제를 모았다. `parseAdminCookieSettings()`는 표준 base64로 저장된 32바이트 이상 서명 키와 웹 출처를 확인한다. 웹 출처 기본은 `http://localhost:3000`이고 HTTPS에는 Secure, localhost 및 127.0.0.1의 HTTP에는 Secure 미적용으로 결정한다. 오류에는 비밀값과 출처 원문을 포함하지 않는다. 필수 설정의 HTTP 기동 연결은 Step 17에서 진행한다.
+- `modules/admin/services/admin-cookie.service.ts` 한 파일에 설정 확인과 쿠키 발급, 검증, 삭제를 모았다. `parseAdminCookieSettings()`는 표준 base64로 저장된 32바이트 이상 서명 키와 웹 출처를 확인한다. 웹 출처 기본은 `http://localhost:3000`이고 HTTPS에는 Secure, localhost 및 127.0.0.1의 HTTP에는 Secure 미적용으로 결정한다. 오류에는 비밀값과 출처 원문을 포함하지 않는다. 필수 설정의 HTTP 기동 연결은 Step 17에서 진행한다.
 - `AdminCookieService.issue()`는 관리자 식별자와 발급 및 만료 Unix 초만 payload에 넣고, 인코딩한 payload 전체에 HMAC-SHA256 서명을 붙인다. `youth_admin_auth`의 Set-Cookie 문자열과 공용 `AdminIdentity`를 반환한다. 쿠키는 HttpOnly, SameSite=Strict, Path=/api/v1/admin, Max-Age=28800을 사용하며 출처에 따라 Secure를 적용한다.
 - `verify()`는 최대 2048자와 두 조각의 base64url 형식을 확인하고, 고정 길이 서명을 timingSafeEqual로 비교한 후 payload를 해석한다. UTF-8과 JSON, 정확한 세 필드 및 관리자 식별자, 정수 시간과 정확한 8시간 간격, `iat <= 현재 시각 < exp`를 확인한다. 형식 오류와 변조 및 만료는 Step 15와 같은 401 `ADMIN_UNAUTHORIZED` 및 안전한 메시지로 처리한다. 조회로 만료가 연장되지 않는다.
 - `clear()`는 발급과 같은 이름 및 Path와 보안 속성으로 Max-Age=0인 삭제 쿠키를 반환한다. HTTP 로그인 및 Guard 연결, 실제 브라우저 쿠키 처리는 Step 17~19 범위다.
@@ -605,7 +605,7 @@ git diff --check
 - 전체 shared/API/web 타입 검사와 shared/API 빌드 통과. 최종 관련 **5개 스위트 383개 테스트 모두 통과**, 실패와 건너뜀은 0건이다. 신규 쿠키 테스트 70개와 기존 자격, 실제 해시 준비 CLI, 환경 및 관리자 입력 검증을 포함한다. 실제 CLI 자식 프로세스 실행이 가능한 환경에서 최종 대상 테스트를 수행했다.
 - DB 접근과 공개 API 및 웹 화면 변경이 없어 전체 DB 회귀와 브라우저 E2E, 컨테이너 재빌드를 반복하지 않았다. DB 데이터와 스키마, 의존성, `.env` 및 Compose, AppModule과 공통 환경 검증은 변경하지 않았다. 실제 관리자 비밀값을 만들거나 기록하지 않았다. SPEC 의미 변경 없이 PLAN과 SUMMARY를 완료 상태로 갱신했다.
 
-Step 16 핵심 읽는 순서: `admin-cookie.ts`의 parseAdminCookieSettings() → issue() → verify() → clear() → `admin-cookie.spec.ts`. 미해결 실패는 없다. 다음 작업은 Step 17이며 이번 요청 범위에서 중단한다.
+Step 16 핵심 읽는 순서: `admin-cookie.service.ts`의 parseAdminCookieSettings() → issue() → verify() → clear() → `admin-cookie.spec.ts`. 미해결 실패는 없다. 다음 작업은 Step 17이며 이번 요청 범위에서 중단한다.
 
 ## 22. Step 17 관리자 서버 권한과 요청 출처 검사 (2026-11-02)
 
@@ -637,3 +637,40 @@ git diff --check
 - 공개 API 계약, 운영 DB 스키마 및 Migration, 의존성과 웹 화면 변경은 없다. 기존 DB는 healthy이고 웹과 API의 중지 상태는 유지했다. 웹 변경이 없어 브라우저 E2E 및 컨테이너 재빌드는 수행하지 않았고 실제 온통청년 수집은 실행하지 않았다. SPEC 의미 변경 없이 PLAN과 SUMMARY를 완료 상태로 갱신했다.
 
 Step 17 핵심 읽는 순서: `main.ts`의 createApplication() → `admin.module.ts`의 forHttp() → `admin.guard.ts` → `api-exception.filter.ts` → `admin-access.spec.ts`와 `admin-cli.integration.spec.ts`. 미해결 실패는 없다. 다음 작업은 Step 18이며 이번 요청 범위에서 중단한다.
+
+## 23. Step 18 로그인·인증 확인·로그아웃 API (2026-11-02)
+
+사용자 요청으로 Step 17을 `3736ec5`(`feat: 관리자 권한 검사와 요청 출처 보호 연결`)에 커밋하고 Step 18을 진행했다. AGENT_RULES → PLAN Step 18 → SPEC 4장 및 4.5, 7.1~7.2, T2-36~37·39 → 이전 완료 기록 → 관리자 모듈과 Guard, 자격 및 쿠키 서비스, 공용 입력 검증과 요청 보호를 대조했다. 현재 Step 범위에서 로그인과 me 및 로그아웃을 실제 API에 연결했다.
+
+- `admin-auth.controller.ts`의 로그인은 공용 Zod 입력 검사 → 계정과 비밀번호 확인 → 서명 쿠키 발급 → `AdminIdentity` 응답 순서로 처리한다. 성공은 200이며 잘못된 자격은 동일한 401이고 실패 시 쿠키를 발급하지 않는다. me GET은 Guard에서 확인한 식별자와 기존 만료 시각만 반환하며 쿠키를 재발급하거나 만료를 연장하지 않는다.
+- 로그아웃은 정확한 Origin과 빈 JSON 객체를 확인하고 204 및 동일 속성의 삭제 쿠키를 반환한다. SPEC 4장의 계약대로 Guard의 쿠키 검사 예외를 로그인 및 로그아웃 POST로 지정했다. 쿠키가 없거나 변조 및 만료되어도 출처와 본문이 맞으면 로그아웃할 수 있다. 삭제는 해당 브라우저 쿠키에만 적용하며 서버에 개별 폐기 상태를 저장하지 않는다.
+- 실제 HTTP 검증에서 JSON 파서가 빈 입력을 `{}`로 변환하는 것을 확인했다. `main.ts`의 파서 verify 콜백은 본문 바이트가 존재했는지만 `hasJsonBody`에 기록하고, 로그아웃에서 실제 본문 누락을 400으로 거부한다. 추가 원문 복사나 저장은 없다. 기존 본문 한도, 압축 거부, 공개 입력 검증과 보안 헤더는 유지한다.
+- `request-protection.ts`는 공개 일반 120회와 관리자 일반 120회를 별도 Map으로 집계한다. 로그인 POST는 관리자 일반 한도와 별도 로그인 5회 한도를 모두 적용한다. 각 한도는 실제 접속 주소별 60초 고정 구간이며 영역별 최대 10,000개 주소 및 만료 정리와 Retry-After를 유지한다. 전달 IP 헤더는 신뢰하지 않는다. 라우트의 대소문자와 끝 슬래시 차이로 로그인 한도가 우회되지 않도록 경로를 정규화한다. health 및 CORS 사전 요청의 기존 제외 동작을 유지한다.
+- `admin-auth.spec.ts`는 실제 모듈과 Guard 및 컨트롤러로 브라우저 에이전트의 로그인 → me → 로그아웃 → 무인증 복귀, HTTPS Secure 속성, 동일 자격 오류와 입력 검증, 무쿠키 및 잘못된 쿠키의 로그아웃, 8시간 경계, no-store와 로그 비노출을 검증한다. 공개 120회 소진 후 인증된 me 및 로그인 허용, 관리자 한도 소진 시 공개 허용, 로그인 성공과 실패를 합친 5회 및 60초 경계, 관리자 일반 한도에 로그인 포함과 사전 요청 제외도 확인한다.
+- 기존 Guard HTTP 테스트의 가짜 로그인 POST를 제거해 실제 로그인 컨트롤러를 사용하도록 바꿨다. 기존 요청 보호 테스트에 관리자 주소 10,000개 상한, 공개 주소 영역 분리 및 만료 후 해제를 추가했다. 모듈 경계와 DB 스키마 및 의존성 변경은 없다. 웹 프록시를 통한 Set-Cookie와 Origin 전달 검증은 Step 19 범위다.
+
+### 검증 환경과 명령
+
+```sh
+npm run build --workspace apps/api
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm test --workspace apps/api -- --runTestsByPath test/admin-auth.spec.ts test/admin-access.spec.ts test/request-protection.spec.ts test/request-validation.spec.ts
+node /tmp/mvp2-step18-verify.cjs before
+node /tmp/mvp2-step18-verify.cjs full
+node /tmp/mvp2-step18-verify.cjs after
+git diff --check
+```
+
+- 초기에는 Docker Desktop이 중지되어 기존 DB 연결이 거부됐다. 설치된 PostgreSQL 18로 별도 임시 DB를 만들어 먼저 전체 회귀를 수행했으며 2,005개 중 2,004개가 통과했다. 기존 FK 삭제 제한 테스트 한 건은 PostgreSQL 17의 오류 코드 `23503` 대신 18의 `23001`이 반환되어 실패했다. 기존 테스트 기준은 수정하지 않고 Docker Desktop과 기존 PostgreSQL 17 DB를 시작해 최종 검증을 다시 수행했다. PostgreSQL 18 결과는 `/tmp/mvp2-step18-pg18-{results.json,output.log}`에 보관했고 해당 임시 서버와 데이터 디렉터리는 정리했다. 실제 `.env`와 기존 DB 스키마는 변경하지 않았다.
+
+- shared/API 빌드, 전체 shared/API/web 타입 검사 및 diff 검사 통과. 본문 누락 보완 후 대상 **4개 스위트 105개 테스트**가 통과했고, 마지막 로그인 일반 한도 포함 및 관리자 주소 상한 두 검증을 추가한 최종 PostgreSQL 17 전체 회귀는 **66개 스위트 2,005개 테스트 모두 통과**했다. 실패와 건너뜀은 0건이다. 이전 1,975개에서 실제 인증 HTTP 29개와 관리자 주소 상한 1개를 추가했다.
+- 최종 결과와 비밀값을 가린 출력은 `/tmp/mvp2-step18-full-results.json`, `/tmp/mvp2-step18-full-output.log`에 있다. 기존 공개 정책 3,390건, 원본 3,390건, 검수 0건, 지역 537개, Migration 3개와 모든 테이블 전체 행 체크섬이 검증 전후 동일하다. 공개 정책 체크섬은 `46a965ded0407e47a7af9816cd3e7b6e`이며 잔여 테스트 스키마는 0개다. 전후 기록은 `/tmp/mvp2-step18-{before,after}.json`에 보관했다.
+- 공개 API 계약과 운영 DB 스키마 및 Migration, 의존성, 실제 관리자 자격과 웹 화면 변경은 없다. 기존 볼륨을 유지한 DB만 시작했고 웹 화면 변경이 없어 브라우저 E2E와 컨테이너 재빌드를 수행하지 않았다. 실제 온통청년 수집도 실행하지 않았다. SPEC 의미 변경 없이 PLAN Step 18과 SUMMARY를 갱신했다.
+
+Step 18 핵심 읽는 순서: `admin-auth.controller.ts`의 login() → `admin.guard.ts`와 me() → logout() → `request-protection.ts`의 영역별 한도 → `admin-auth.spec.ts`. 미해결 실패는 없다. 다음 작업은 Step 19이며 이번 요청 범위에서 중단한다.
+
+### Step 18 검수 후 관리자 폴더 정리
+
+사용자 요청에 따라 관리자 모듈 내부를 기존 Policies 및 Meta와 같은 역할별 폴더로 정리했다. 모듈 등록 파일은 루트에 두고 HTTP 처리는 `controllers/admin-auth.controller.ts`, 자격 및 쿠키 처리는 `services/admin-credentials.service.ts`와 `services/admin-cookie.service.ts`, 권한 검사는 `guards/admin.guard.ts`로 이동했다. 서비스 파일명도 기존 `.service.ts` 관례로 맞췄다. 설정 검사와 관련 계산은 기존처럼 각 서비스 파일에서 함께 관리한다.
+
+소스와 테스트 및 해시 준비 CLI의 import를 수정하고 ARCHITECTURE의 폴더 설명과 SUMMARY의 읽기 경로를 갱신했다. 동작과 API 및 DB 계약 변경은 없다. `npm run build --workspace apps/api`, `npm run typecheck --workspace apps/api`, `git diff --check` 통과. 실제 인증 HTTP 및 해시 준비 CLI와 수집 CLI 진입점 단위 검증을 포함한 **6개 스위트 194개 테스트 모두 통과**했다. 파일 배치 및 import 변경으로 전체 DB 회귀와 웹 컨테이너 재빌드는 반복하지 않았다.

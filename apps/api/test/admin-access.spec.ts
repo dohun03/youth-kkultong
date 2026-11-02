@@ -5,8 +5,8 @@ import { NestFactory } from '@nestjs/core';
 import request from 'supertest';
 import { z } from 'zod';
 import { AdminModule } from '../src/modules/admin/admin.module';
-import { AdminCookieService } from '../src/modules/admin/admin-cookie';
-import type { AdminRequest } from '../src/modules/admin/admin.guard';
+import { AdminCookieService } from '../src/modules/admin/services/admin-cookie.service';
+import type { AdminRequest } from '../src/modules/admin/guards/admin.guard';
 import { ZodValidationPipe } from '../src/common/zod-validation.pipe';
 import { configureApplication, createApplication } from '../src/main';
 import { testAdminValues } from './helpers/admin';
@@ -36,10 +36,6 @@ class ProtectedController {
   /** 출처 확인 후 상태 변경 처리 실행 */
   @Post('data')
   write() { access(); return { ok: true }; }
-
-  /** 로그인은 인증 쿠키 없이 출처만 검사 */
-  @Post('auth/login')
-  login() { access(); return { ok: true }; }
 
   /** 로그인과 같은 URL이라도 GET은 인증을 요구 */
   @Get('auth/login')
@@ -132,9 +128,10 @@ describe('관리자 서버 권한 및 Origin HTTP 검사', () => {
 
   it('로그인 POST는 쿠키 없이 정확한 Origin으로만 접근한다', async () => {
     await request(app.getHttpServer()).post('/api/v1/admin/auth/login').send({}).expect(403);
-    await request(app.getHttpServer()).post('/api/v1/admin/auth/login').set('Origin', testAdminValues.ADMIN_WEB_ORIGIN).send({}).expect(201);
+    await request(app.getHttpServer()).post('/api/v1/admin/auth/login').set('Origin', testAdminValues.ADMIN_WEB_ORIGIN)
+      .send({ username: testAdminValues.ADMIN_USERNAME, password: 'test-only-password' }).expect(200);
     await request(app.getHttpServer()).get('/api/v1/admin/auth/login').expect(401);
-    expect(access).toHaveBeenCalledTimes(1);
+    expect(access).not.toHaveBeenCalled();
   });
 
   it('전달 헤더로 Origin 누락을 보충할 수 없다', async () => {

@@ -108,6 +108,25 @@ describe('공개 API 요청 보호', () => {
 });
 
 describe('호출 제한 시간과 주소 상한', () => {
+  it('관리자 주소 10,000개가 차도 공개 영역은 별도로 허용하고 만료 후 새 관리자를 받는다', () => {
+    let time = 0;
+    const protect = createRequestProtection(() => time);
+    const next = jest.fn();
+    const response = { setHeader: jest.fn(), writeHead: jest.fn(), end: jest.fn() };
+    const run = (address: string, path = '/api/v1/admin/auth/me') => protect({ method: 'GET', url: path,
+      socket: { remoteAddress: address } } as IncomingMessage, response as unknown as ServerResponse, next);
+    for (let index = 0; index < 10_000; index++) run(`admin-${index}`);
+    expect(next).toHaveBeenCalledTimes(10_000);
+    run('overflow');
+    expect(next).toHaveBeenCalledTimes(10_000);
+    expect(response.writeHead).toHaveBeenLastCalledWith(429, expect.anything());
+    run('overflow', '/api/v1/meta/categories');
+    expect(next).toHaveBeenCalledTimes(10_001);
+    time = 60_000;
+    run('overflow');
+    expect(next).toHaveBeenCalledTimes(10_002);
+  });
+
   it('접속별로 세고 1분 뒤 정리하며 주소 상한에서도 기존 제한을 유지한다', () => {
     let time = 0;
     const protect = createRequestProtection(() => time);

@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 import type { DynamicModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { AdminCredentialsService, parseAdminCredentials } from './admin-credentials';
-import { ADMIN_COOKIE_SETTINGS, AdminCookieService, parseAdminCookieSettings } from './admin-cookie';
-import { AdminGuard } from './admin.guard';
+import { AdminCredentialsService, parseAdminCredentials } from './services/admin-credentials.service';
+import { ADMIN_COOKIE_SETTINGS, AdminCookieService, parseAdminCookieSettings } from './services/admin-cookie.service';
+import { AdminGuard } from './guards/admin.guard';
+import { AdminAuthController } from './controllers/admin-auth.controller';
 
 /** HTTP 전용 관리자 설정 검사 -> 인증 서비스와 전역 권한 검사 등록 */
-@Module({})
+@Module({ controllers: [AdminAuthController] })
 export class AdminModule {
   /** HTTP 앱 생성 시에만 관리자 필수 설정을 확인하고 인증 기능 등록 */
   static forHttp(values: Record<string, unknown>): DynamicModule {

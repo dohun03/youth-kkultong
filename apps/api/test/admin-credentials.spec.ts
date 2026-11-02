@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { scryptSync } from 'node:crypto';
 import { UnauthorizedException } from '@nestjs/common';
-import { AdminCredentialsService, parseAdminCredentials, createAdminPasswordHash } from '../src/modules/admin/admin-credentials';
+import { AdminCredentialsService, parseAdminCredentials, createAdminPasswordHash } from '../src/modules/admin/services/admin-credentials.service';
 import { parseEnvironment } from '../src/common/environment';
 
 const password = '  관리자 비밀번호 🔑  ';

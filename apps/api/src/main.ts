@@ -8,6 +8,7 @@ import { ENVIRONMENT, loadEnvironmentValues } from './common/environment';
 import type { Environment } from './common/environment';
 import { createRequestProtection } from './common/request-protection';
 import { AdminModule } from './modules/admin/admin.module';
+import type { AdminRequest } from './modules/admin/guards/admin.guard';
 
 /** API 경로 접두사·공통 오류 필터·종료 신호 처리를 설정한다. */
 export function configureApplication(app: INestApplication, origins: string[] = ['http://localhost:3000', 'http://127.0.0.1:3000']): void {
@@ -18,7 +19,11 @@ export function configureApplication(app: INestApplication, origins: string[] = 
   // 현재 Express 어댑터의 본문 파서를 사용하며, 다른 어댑터로 바뀌면 기동 단계에서 알린다.
   const adapter = app.getHttpAdapter();
   if (!adapter.useBodyParser) throw new Error('JSON 본문 파서를 제공하는 HTTP 어댑터가 필요합니다.');
-  adapter.useBodyParser('json', false, { limit: '16kb', inflate: false });
+  adapter.useBodyParser('json', false, {
+    limit: '16kb', inflate: false,
+    // 빈 입력도 {}로 바꾸는 JSON 파서에 대비해 실제 본문이 있었는지만 기록
+    verify: (request: AdminRequest, _response: unknown, bytes: Buffer) => { request.hasJsonBody = bytes.length > 0; },
+  });
   app.setGlobalPrefix('api/v1');
   app.useGlobalFilters(new ApiExceptionFilter());
   app.enableShutdownHooks();

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { Readable } from 'node:stream';
 import { prepareAdminPassword } from '../src/prepare-admin-password';
-import { AdminCredentialsService, parseAdminCredentials } from '../src/modules/admin/admin-credentials';
+import { AdminCredentialsService, parseAdminCredentials } from '../src/modules/admin/services/admin-credentials.service';
 
 describe('비밀값을 출력하지 않는 관리자 해시 준비', () => {
   let directory: string;
