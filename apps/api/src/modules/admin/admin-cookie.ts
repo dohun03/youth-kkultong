@@ -5,6 +5,7 @@ import type { AdminIdentity } from '@youth-kkultong/shared';
 
 const COOKIE_NAME = 'youth_admin_auth';
 const LIFETIME_SECONDS = 28800;
+export const ADMIN_COOKIE_SETTINGS = Symbol('ADMIN_COOKIE_SETTINGS');
 
 /** 쿠키 서명에 사용할 키, 관리자 웹 출처, Secure 속성 */
 export interface AdminCookieSettings { secret: Buffer; origin: string; secure: boolean }

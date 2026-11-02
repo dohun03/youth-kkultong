@@ -1,3 +1,4 @@
+import { testAdminValues } from './helpers/admin';
 import { randomUUID } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
@@ -33,7 +34,7 @@ describe('정책 상세 API 통합', () => {
       migrations: [CreatePolicies1792162800000, CreateRegions1792162801000],
       extra: { options: `-c timezone=${environment.TZ} -c search_path=${schema}` } });
     const factory = jest.spyOn(database, 'createDataSource').mockReturnValue(dataSource);
-    try { app = await createApplication(); } finally { factory.mockRestore(); }
+    try { app = await createApplication(testAdminValues); } finally { factory.mockRestore(); }
     await dataSource.runMigrations();
     await seedRegions(dataSource, snapshot.regions);
     await app.listen(0, '127.0.0.1');

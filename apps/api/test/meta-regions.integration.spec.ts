@@ -1,3 +1,4 @@
+import { testAdminValues } from './helpers/admin';
 import { randomUUID } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
@@ -34,7 +35,7 @@ describe('지역 메타 API의 실제 PostgreSQL·HTTP 검증', () => {
     // 실제 AppModule·MetaModule을 사용하되 DB 연결 대상만 임시 스키마로 교체
     const factory = jest.spyOn(database, 'createDataSource').mockReturnValue(dataSource);
     try {
-      app = await createApplication();
+      app = await createApplication(testAdminValues);
     } finally {
       factory.mockRestore();
     }

@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-02 · 상태: Step 1~16 완료 · Step 17~41 미착수
+수정일: 2026-11-02 · 상태: Step 1~17 완료 · Step 18~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -606,3 +606,34 @@ git diff --check
 - DB 접근과 공개 API 및 웹 화면 변경이 없어 전체 DB 회귀와 브라우저 E2E, 컨테이너 재빌드를 반복하지 않았다. DB 데이터와 스키마, 의존성, `.env` 및 Compose, AppModule과 공통 환경 검증은 변경하지 않았다. 실제 관리자 비밀값을 만들거나 기록하지 않았다. SPEC 의미 변경 없이 PLAN과 SUMMARY를 완료 상태로 갱신했다.
 
 Step 16 핵심 읽는 순서: `admin-cookie.ts`의 parseAdminCookieSettings() → issue() → verify() → clear() → `admin-cookie.spec.ts`. 미해결 실패는 없다. 다음 작업은 Step 17이며 이번 요청 범위에서 중단한다.
+
+## 22. Step 17 관리자 서버 권한과 요청 출처 검사 (2026-11-02)
+
+사용자 검수 후 Step 16을 `04133b8`(`feat: 관리자 인증 쿠키 발급과 검증 구현`)로 커밋하고 Step 17을 진행했다. AGENT_RULES → PLAN Step 17 → SPEC 4.5, 7.1~7.2, T2-36·38·40 → 이전 완료 기록 → HTTP 및 CLI 진입점, 공통 환경 설정과 오류 필터, 기존 요청 보호 및 인증 코드를 대조했다. 계획과 실제 코드의 충돌은 없다.
+
+- `AdminModule.forHttp()`는 자격 및 쿠키 설정을 검사하고 두 인증 서비스와 전역 `AdminGuard`를 등록한다. `main.ts`의 `createApplication()`에서 기존 AppModule에 HTTP 전용 모듈만 추가하므로 설정 오류는 DB 초기화 및 listen 전에 실패한다. HTTP 공통 설정 중 실패하면 앱을 닫는다. 기존 수집 CLI는 AppModule을 그대로 사용하고 Migration 및 시드는 공통 DB 설정만 사용한다. 공통 환경 검증과 모듈 생성자에 관리자 필수값을 강제하지 않는다.
+- `common/environment.ts`의 `.env` 및 실행 환경 읽기를 `loadEnvironmentValues()`로 분리해 HTTP 전용 설정도 같은 우선순위로 읽는다. 기존 `loadEnvironment()`의 검증 및 시간대 설정은 유지한다. 기존 HTTP 통합 테스트에는 테스트 전용 합성 자격을 명시적으로 전달하며 실제 로컬 `.env`를 수정하지 않는다.
+- `AdminGuard`는 매칭된 관리자 라우트에서 인증 쿠키를 검사하고 `request.admin`에 관리자 식별자와 만료 시각을 전달한다. 로그인 POST만 쿠키 검사를 생략하며 GET을 포함한 다른 관리자 경로에는 인증이 필요하다. 중복된 인증 쿠키는 거부한다. 상태 변경은 Origin이 설정과 정확히 일치해야 하며 Referer 및 전달 헤더로 보충하지 않는다. 인증은 검증 파이프와 컨트롤러의 데이터 접근 전에 실행된다. 현재 관리자 경로가 아닌 공개 API에는 기존 동작을 유지한다.
+- 공통 오류 필터는 명세의 관리자 전용 코드와 해당 HTTP 상태가 일치할 때만 코드 및 고정된 안전한 한국어 문구를 제공한다. 임의 예외 메시지는 응답으로 복사하지 않으며 기존 400·500·503을 보존한다. 기존 본문 16KB, 압축 거부, no-store와 보안 헤더 및 공개 CORS 설정을 유지하고 관리자 POST에도 JSON 전용 검사를 적용했다. 호출 제한 영역 분리 및 로그인 추가 한도는 Step 18 범위다.
+- `.env.example`과 Compose api 환경에 네 관리자 설정을 추가했다. 자격 세 항목은 Compose에서 빈 값도 전달하도록 하고 HTTP 기동에서만 필수 검사한다. ADMIN_WEB_ORIGIN 기본은 `http://localhost:3000`이다. 실제 관리자 계정과 비밀값을 생성하거나 `.env`에 저장하지 않았다. 이후 HTTP API 실행 전에는 관리자 자격 및 서명 키 설정이 필요하다. 해시 준비 방법은 20절을 따른다.
+- `admin-access.spec.ts`의 테스트 전용 컨트롤러로 실제 HTTP Guard 등록, 인증 선검사, 정상 쿠키와 대소문자 및 끝 슬래시, 중복 쿠키, Origin 누락과 불일치, 로그인 예외 범위, JSON 및 크기 제한, 관리자 업무 오류 및 안전한 메시지와 기존 공개 보호를 확인했다. 실제 로그인·me·로그아웃 API는 Step 18에서 구현한다.
+- `admin-cli.integration.spec.ts`는 관리자 네 설정을 빈 값으로 전달한 독립 프로세스에서 실제 Migration CLI를 실행해 격리 스키마에 Migration 3개를 적용하고, 실제 시드 CLI를 두 번 실행해 지역 537개 및 중복 없는 상태를 확인한다. 검증 로더는 테스트 이름의 격리 스키마만 허용한다. 기존 독립 수집 CLI 테스트도 네 관리자 값을 명시적으로 비워 정상 및 경쟁·실패·재실행을 검증했다. 모든 CLI는 기존 스케줄러 없는 경로를 유지한다.
+
+### 검증
+
+```sh
+npm run build --workspace apps/api
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+npm test --workspace apps/api -- --runTestsByPath test/admin-access.spec.ts test/admin-cookie.spec.ts test/admin-credentials.spec.ts test/prepare-admin-password.spec.ts test/load-environment.spec.ts test/environment.spec.ts test/request-validation.spec.ts test/request-protection.spec.ts test/import-policies.spec.ts
+ADMIN_USERNAME= ADMIN_PASSWORD_HASH= ADMIN_AUTH_SECRET= ADMIN_WEB_ORIGIN= docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml config --quiet
+node /tmp/mvp2-step17-verify.cjs before
+node /tmp/mvp2-step17-verify.cjs full
+node /tmp/mvp2-step17-verify.cjs after
+git diff --check
+```
+
+- shared/API 빌드 및 전체 shared/API/web 타입 검사, diff 검사 통과. 대상 **9개 스위트 240개 테스트**, 전체 API/DB **65개 스위트 1,975개 테스트 모두 통과**했다. 실패와 건너뜀은 0건이다. 이전 전체 검증 1,869개에 Step 16 쿠키 70개와 이번 HTTP 권한 및 설정 검사 35개, 실제 Migration 및 시드 CLI 1개를 추가했다. 전체 회귀에는 실제 HTTP와 PostgreSQL, 독립 수집 프로세스 및 CLI 복구를 포함한다.
+- Compose 설정 검증은 네 관리자 설정을 비운 상태에서도 통과했다. 검증 결과와 비밀값을 가린 출력은 `/tmp/mvp2-step17-full-results.json`, `/tmp/mvp2-step17-full-output.log`에 있다. 공개 정책 3,390건, 원본 3,390건, 검수 0건, 지역 537개, Migration 3개와 각 테이블 전체 행 체크섬이 검증 전후 동일하다. 공개 정책 체크섬은 `46a965ded0407e47a7af9816cd3e7b6e`이며 잔여 테스트 스키마는 0개다. 전후 기록은 `/tmp/mvp2-step17-{before,after}.json`에 보관했다.
+- 공개 API 계약, 운영 DB 스키마 및 Migration, 의존성과 웹 화면 변경은 없다. 기존 DB는 healthy이고 웹과 API의 중지 상태는 유지했다. 웹 변경이 없어 브라우저 E2E 및 컨테이너 재빌드는 수행하지 않았고 실제 온통청년 수집은 실행하지 않았다. SPEC 의미 변경 없이 PLAN과 SUMMARY를 완료 상태로 갱신했다.
+
+Step 17 핵심 읽는 순서: `main.ts`의 createApplication() → `admin.module.ts`의 forHttp() → `admin.guard.ts` → `api-exception.filter.ts` → `admin-access.spec.ts`와 `admin-cli.integration.spec.ts`. 미해결 실패는 없다. 다음 작업은 Step 18이며 이번 요청 범위에서 중단한다.

@@ -1,3 +1,4 @@
+import { testAdminValues } from './helpers/admin';
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -40,7 +41,7 @@ describe('정책 검색 API 통합', () => {
     // 모듈·컨트롤러·서비스는 실제 등록 상태를 사용하고 DB만 임시 스키마로 바꾼다.
     const factory = jest.spyOn(database, 'createDataSource').mockReturnValue(dataSource);
     try {
-      app = await createApplication();
+      app = await createApplication(testAdminValues);
     } finally {
       factory.mockRestore();
     }

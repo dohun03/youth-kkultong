@@ -38,8 +38,8 @@ export function createRequestProtection(now: () => number = Date.now) {
     }
     window.count += 1;
 
-    // 검색은 JSON만 받는다. 폼·텍스트 본문이 빈 검색 요청으로 처리되는 것을 막는다.
-    if (req.method === 'POST' && path === '/api/v1/policies/search'
+    // 검색과 관리자 상태 변경은 JSON 본문만 허용
+    if (req.method === 'POST' && (path === '/api/v1/policies/search' || /^\/api\/v1\/admin(?:\/|$)/i.test(path ?? ''))
       && !/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] ?? '')) {
       res.writeHead(415, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ code: 'UNSUPPORTED_MEDIA_TYPE', message: 'JSON 형식으로 요청해 주세요.' }));

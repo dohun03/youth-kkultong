@@ -36,6 +36,10 @@ services:
       YOUTH_CENTER_MAX_ATTEMPTS: ${YOUTH_CENTER_MAX_ATTEMPTS:-3}
       POLICY_IMPORT_BATCH_SIZE: ${POLICY_IMPORT_BATCH_SIZE:-200}
       API_CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
+      ADMIN_AUTH_SECRET: ${ADMIN_AUTH_SECRET:-}
+      ADMIN_WEB_ORIGIN: ${ADMIN_WEB_ORIGIN:-http://localhost:3000}
     volumes:
       - ingestion_logs:/app/logs
     depends_on:

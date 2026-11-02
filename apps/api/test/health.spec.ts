@@ -1,3 +1,4 @@
+import { testAdminValues } from './helpers/admin';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
@@ -9,7 +10,7 @@ describe('상태 확인 API', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    app = await createApplication();
+    app = await createApplication(testAdminValues);
     await app.listen(0, '127.0.0.1');
   });
 

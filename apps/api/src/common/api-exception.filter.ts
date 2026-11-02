@@ -17,6 +17,16 @@ const connectionErrorMessages = new Set([
   'Cannot use a pool after calling end on the pool', 'timeout exceeded when trying to connect',
 ]);
 
+// 관리자 업무 오류는 정해진 상태와 코드에 해당하는 고정 문구만 외부에 제공
+const adminErrors: Record<string, { status: number; message: string }> = {
+  ADMIN_UNAUTHORIZED: { status: 401, message: '관리자 인증이 필요합니다.' },
+  ADMIN_ORIGIN_FORBIDDEN: { status: 403, message: '허용되지 않은 관리자 요청 출처입니다.' },
+  REVIEW_NOT_FOUND: { status: 404, message: '검수 후보를 찾을 수 없습니다.' },
+  REVIEW_NOT_PENDING: { status: 409, message: '이미 처리된 검수 후보입니다.' },
+  REVIEW_CONTENT_CONFLICT: { status: 409, message: '검수 내용이 변경되었습니다. 다시 조회해 주세요.' },
+  REVIEW_BASE_CONFLICT: { status: 409, message: '공개 기준이 변경되었습니다. 다시 조회해 주세요.' },
+};
+
 /** DB 연결 오류인지 확인해 HTTP 503 처리 여부를 판정한다. */
 function isDatabaseUnavailable(error: unknown): boolean {
   const cause: unknown = error instanceof QueryFailedError ? error.driverError : error;
@@ -52,12 +62,20 @@ export class ApiExceptionFilter implements ExceptionFilter {
       500: '서버 내부 오류가 발생했습니다.',
       503: 'DB에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.',
     };
-    const code = (STATUS_CODES[status] ?? 'HTTP_ERROR').toUpperCase().replaceAll(/[^A-Z0-9]+/g, '_');
+    let code = (STATUS_CODES[status] ?? 'HTTP_ERROR').toUpperCase().replaceAll(/[^A-Z0-9]+/g, '_');
+    let message = messages[status] ?? '요청을 처리할 수 없습니다.';
+    // 임의의 예외 본문 대신 허용된 관리자 코드와 상태가 일치할 때만 전용 응답 사용
+    const body = error instanceof HttpException ? error.getResponse() : undefined;
+    if (typeof body === 'object' && body !== null && 'code' in body && typeof body.code === 'string'
+      && Object.hasOwn(adminErrors, body.code) && adminErrors[body.code].status === status) {
+      code = body.code;
+      message = adminErrors[code].message;
+    }
     // 접속 정보와 사용자 입력이 노출되지 않도록 오류 원문은 기록하지 않는다.
     if (status >= 500) this.logger.error(`요청 처리 실패: ${code} (${status})`);
     host.switchToHttp().getResponse().status(status).json({
       code,
-      message: messages[status] ?? '요청을 처리할 수 없습니다.',
+      message,
     });
   }
 }

@@ -1,3 +1,4 @@
+import { testAdminValues } from './helpers/admin';
 import { clearPolicyTables, seedMigratedPolicies } from './helpers/policy-collection';
 import { SourcePolicy } from '../src/modules/policies/entities/source-policy.entity';
 import { PolicyReview } from '../src/modules/policies/entities/policy-review.entity';
@@ -34,6 +35,7 @@ describe('독립 CLI 두 개의 잠금 경쟁과 프로세스 종료 복구', ()
     const child = spawn(process.execPath, ['--require', join(__dirname, 'fixtures/ingestion-cli.preload.cjs'), join(__dirname, '../src/import-policies.ts')], {
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
       env: { ...process.env, NODE_OPTIONS: '', DATABASE_URL: environment.DATABASE_URL,
+        ADMIN_USERNAME: '', ADMIN_PASSWORD_HASH: '', ADMIN_AUTH_SECRET: '', ADMIN_WEB_ORIGIN: '',
         YOUTH_CENTER_API_KEY: 'step27-process-key', YOUTH_CENTER_PAGE_SIZE: '2', YOUTH_CENTER_REQUEST_DELAY_MS: '0', POLICY_IMPORT_BATCH_SIZE: '1',
         INGESTION_TEST_SCHEMA: schema, INGESTION_TEST_LOG_DIRECTORY: join(directory, name), INGESTION_TEST_MODE: mode },
     });
@@ -234,7 +236,7 @@ describe('독립 CLI 두 개의 잠금 경쟁과 프로세스 종료 복구', ()
       const factory = jest.spyOn(database, 'createDataSource').mockReturnValue(apiDataSource);
       let app: Awaited<ReturnType<typeof createApplication>> | undefined;
       try {
-        try { app = await createApplication(); } finally { factory.mockRestore(); }
+        try { app = await createApplication(testAdminValues); } finally { factory.mockRestore(); }
         await app.listen(0, '127.0.0.1');
         const beforeState = await state();
         const before = await request(app.getHttpServer()).post('/api/v1/policies/search').send({}).expect(200);

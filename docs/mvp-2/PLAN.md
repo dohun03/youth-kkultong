@@ -2,7 +2,7 @@
 
 > 저장 위치: `docs/mvp-2/PLAN.md`  
 > 기준: PRD v0.12 · ARCHITECTURE v0.7 · MVP2 SPEC v0.5  
-> 수정일: 2026-11-02 · 상태: Step 1~16 완료 · Step 17~41 미착수
+> 수정일: 2026-11-02 · 상태: Step 1~17 완료 · Step 18~41 미착수
 
 기존 탐색을 유지하면서 원본·검수·공개 데이터를 분리하고 관리자 검수와 매일 자동 수집을 완성한다. 작업 규칙은 `AGENT_RULES.md`, 상세 동작과 테스트 기준은 `mvp-2/SPEC.md`를 따른다.
 
@@ -162,10 +162,10 @@
 
 ### Step 17. 관리자 서버 권한과 요청 출처 검사
 
-- [ ] 관리자 모듈과 Guard를 등록하고 보호 데이터 접근 전에 인증을 검사한다.
-- [ ] 상태 변경 Origin 검사와 HTTP 전용 설정 검증을 연결한다. 수집·Migration·시드 CLI는 관리자 자격 없이 실행되는지 확인한다.
-- [ ] `.env.example`과 `compose.yaml`의 api 서비스에 ADMIN_USERNAME·ADMIN_PASSWORD_HASH·ADMIN_AUTH_SECRET·ADMIN_WEB_ORIGIN 전달을 추가한다. 실제 비밀값은 문서·이미지에 넣지 않는다. Compose 보간 단계에서 자격 누락으로 CLI까지 막지 않도록 하고 필수 자격 검증은 HTTP 시작점에서 수행한다.
-- [ ] 공통 오류 필터가 관리자 업무 코드와 안전한 메시지를 보존하고 기존 400·500·503 코드를 유지하는지 확인한다.
+- [x] 관리자 모듈과 Guard를 등록하고 보호 데이터 접근 전에 인증을 검사한다.
+- [x] 상태 변경 Origin 검사와 HTTP 전용 설정 검증을 연결한다. 수집·Migration·시드 CLI는 관리자 자격 없이 실행되는지 확인한다.
+- [x] `.env.example`과 `compose.yaml`의 api 서비스에 ADMIN_USERNAME·ADMIN_PASSWORD_HASH·ADMIN_AUTH_SECRET·ADMIN_WEB_ORIGIN 전달을 추가한다. 실제 비밀값은 문서·이미지에 넣지 않는다. Compose 보간 단계에서 자격 누락으로 CLI까지 막지 않도록 하고 필수 자격 검증은 HTTP 시작점에서 수행한다.
+- [x] 공통 오류 필터가 관리자 업무 코드와 안전한 메시지를 보존하고 기존 400·500·503 코드를 유지하는지 확인한다.
 
 **완료·검수:** 무인증 데이터 요청은 401, 잘못된 출처는 403이며 공개 API 보호 설정은 유지된다.
 **SPEC 검증:** T2-36, T2-38, T2-40

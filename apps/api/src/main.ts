@@ -4,9 +4,10 @@ import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ApiExceptionFilter } from './common/api-exception.filter';
-import { ENVIRONMENT } from './common/environment';
+import { ENVIRONMENT, loadEnvironmentValues } from './common/environment';
 import type { Environment } from './common/environment';
 import { createRequestProtection } from './common/request-protection';
+import { AdminModule } from './modules/admin/admin.module';
 
 /** API 경로 접두사·공통 오류 필터·종료 신호 처리를 설정한다. */
 export function configureApplication(app: INestApplication, origins: string[] = ['http://localhost:3000', 'http://127.0.0.1:3000']): void {
@@ -23,11 +24,18 @@ export function configureApplication(app: INestApplication, origins: string[] = 
   app.enableShutdownHooks();
 }
 
-/** DB 연결을 포함한 NestJS 앱을 생성하고 API 공통 설정을 적용한다. */
-export async function createApplication(): Promise<INestApplication> {
-  const app = await NestFactory.create(AppModule, { abortOnError: false, bodyParser: false });
-  configureApplication(app, app.get<Environment>(ENVIRONMENT).API_CORS_ORIGINS);
-  return app;
+/** DB 연결을 포함한 NestJS 앱을 생성하고 API 공통 설정을 적용 */
+export async function createApplication(adminValues: Record<string, unknown> = loadEnvironmentValues()): Promise<INestApplication> {
+  // DB 연결 전에 HTTP 전용 자격을 확인하고 관리자 모듈을 추가
+  const httpModule = { module: AppModule, imports: [AdminModule.forHttp(adminValues)] };
+  const app = await NestFactory.create(httpModule, { abortOnError: false, bodyParser: false });
+  try {
+    configureApplication(app, app.get<Environment>(ENVIRONMENT).API_CORS_ORIGINS);
+    return app;
+  } catch (error) {
+    await app.close();
+    throw error;
+  }
 }
 
 /** API 서버를 4000번 포트로 시작하고, 시작 실패 시 앱 자원을 정리한다. */
