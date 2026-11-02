@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-02 · 상태: Step 1~18 완료 · Step 19~41 미착수
+수정일: 2026-11-02 · 상태: Step 1~19 완료 · Step 20~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -674,3 +674,31 @@ Step 18 핵심 읽는 순서: `admin-auth.controller.ts`의 login() → `admin.g
 사용자 요청에 따라 관리자 모듈 내부를 기존 Policies 및 Meta와 같은 역할별 폴더로 정리했다. 모듈 등록 파일은 루트에 두고 HTTP 처리는 `controllers/admin-auth.controller.ts`, 자격 및 쿠키 처리는 `services/admin-credentials.service.ts`와 `services/admin-cookie.service.ts`, 권한 검사는 `guards/admin.guard.ts`로 이동했다. 서비스 파일명도 기존 `.service.ts` 관례로 맞췄다. 설정 검사와 관련 계산은 기존처럼 각 서비스 파일에서 함께 관리한다.
 
 소스와 테스트 및 해시 준비 CLI의 import를 수정하고 ARCHITECTURE의 폴더 설명과 SUMMARY의 읽기 경로를 갱신했다. 동작과 API 및 DB 계약 변경은 없다. `npm run build --workspace apps/api`, `npm run typecheck --workspace apps/api`, `git diff --check` 통과. 실제 인증 HTTP 및 해시 준비 CLI와 수집 CLI 진입점 단위 검증을 포함한 **6개 스위트 194개 테스트 모두 통과**했다. 파일 배치 및 import 변경으로 전체 DB 회귀와 웹 컨테이너 재빌드는 반복하지 않았다.
+
+## 24. Step 19 웹 프록시를 통한 인증 검증 (2026-11-02)
+
+사용자 검수 후 Step 18의 인증 API와 호출 제한 및 관리자 폴더 정리를 `e3da319`(`feat: 관리자 인증 API와 호출 제한 연결 및 폴더 정리`)로 커밋하고 Step 19를 진행했다. AGENT_RULES → PLAN Step 19 → SPEC 4.5 및 7.1~7.2, T2-36~40 → Step 18 완료 기록 → 실제 Next.js rewrites와 인증 API 및 기존 공개 보호를 대조했다. 기존 프록시 구현이 명세를 충족해 제품 실행 코드는 유지하고 통합 검증을 추가했다.
+
+- `admin-proxy.integration.spec.ts`는 실제 HTTP 앱과 PostgreSQL에 연결하고, 실제 Next.js 프로덕션 서버를 별도 프로세스로 실행한다. API와 웹은 임시 포트를 사용하며 관리자 웹 출처에는 해당 웹 주소를 정확히 설정한다. 실제 관리자 자격은 만들거나 변경하지 않고 기존 테스트 전용 합성 자격을 사용한다.
+- `fixtures/admin-proxy.cjs`는 실제 웹 app과 src를 기존 `.next` 하위의 이번 테스트 전용 프로젝트에 복사하고 운영 `next.config.ts`를 그대로 가져와 프로덕션 빌드한다. 임시 프로젝트의 tsconfig 참조 위치와 node_modules 연결만 준비한다. 프록시나 응답을 가짜 구현으로 대체하지 않는다. API 주소만 웹에 전달하며 DB 접속 정보와 인증 비밀값은 웹 빌드 환경에서 제거한다. 성공과 실패 모두 이번 웹 프로세스 및 빌드 프로세스, 임시 프로젝트와 API 연결을 정리한다. 기존 웹 빌드는 덮어쓰지 않는다.
+- 웹 경유 로그인과 API의 원래 Set-Cookie 문자열이 같은지 확인하고 Supertest의 쿠키 저장소로 me 및 로그아웃을 연결한다. 쿠키의 Path에 따라 관리자 me에는 쿠키가 전달되고 공개 health에는 전달되지 않으며, 로그아웃 후에는 무인증 401로 돌아온다. API가 관찰한 Origin과 쿠키 존재 여부만 기록해 웹 출처의 원문 보존을 확인한다. Origin 누락과 다른 출처 및 내부 API 출처는 그대로 403이고 프록시가 값을 보충하거나 내부 주소로 바꿔 허용하지 않는다.
+- 잘못된 자격과 변조 및 만료 쿠키의 401, 무쿠키 로그아웃, 로그인 5회 제한과 429 및 Retry-After, no-store를 확인한다. JSON 전용과 구문 오류, 16KB 초과, 압축 및 누락된 로그아웃 본문 거부도 프록시를 통과해 유지된다.
+- 실제 공개 검색의 직접 응답과 프록시 응답 전체가 같고, 공개 검색의 입력 검증과 JSON 및 크기와 압축 제한, 보안 헤더와 CORS 인증정보 미허용이 유지되는지 확인한다. 공개 한도 120회를 소진해도 웹 경유 인증 me는 별도 관리자 한도로 200을 반환한다. 웹과 API 로그에는 테스트 비밀번호, 해시, 서명 키 및 발급한 쿠키 값이 나타나지 않는다.
+
+### 검증
+
+```sh
+npm run build --workspace apps/api
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+node /tmp/mvp2-step19-verify.cjs before
+node /tmp/mvp2-step19-verify.cjs focused
+node /tmp/mvp2-step19-verify.cjs full
+node /tmp/mvp2-step19-verify.cjs after
+git diff --check
+```
+
+- shared/API 빌드와 전체 shared/API/web 타입 검사 및 diff 검사 통과. 실제 프로덕션 프록시 대상 **1개 스위트 10개 테스트**, 마지막 정리 경로 및 공개 보호 검증을 포함한 PostgreSQL 17 전체 회귀 **67개 스위트 2,015개 테스트 모두 통과**했다. 실패와 건너뜀은 0건이다. 이전 2,005개에서 이번 실제 웹 프록시 시나리오 10개를 추가했다. 테스트 전용 초기 빌드에서 Turbopack이 절대 tsconfig extends 경로를 거부해 상대 경로로 수정했고 최종 프로덕션 빌드 및 모든 테스트를 통과했다. 제품 설정 변경은 없다.
+- 결과와 비밀값을 가린 출력은 `/tmp/mvp2-step19-{focused,full}-results.json`, `/tmp/mvp2-step19-{focused,full}-output.log`에 있다. 기존 공개 정책 3,390건, 원본 3,390건, 검수 0건, 지역 537개, Migration 3개와 각 테이블 전체 행 체크섬이 검증 전후 동일하다. 공개 정책 체크섬은 `46a965ded0407e47a7af9816cd3e7b6e`이며 잔여 테스트 스키마와 임시 웹 프로젝트는 0개다. 전후 기록은 `/tmp/mvp2-step19-{before,after}.json`에 보관했다.
+- 제품 소스와 API 계약, 운영 DB 스키마 및 Migration, 의존성, 실제 관리자 자격과 웹 화면 변경은 없다. DB는 healthy이며 기존 웹 및 API 컨테이너의 중지 상태는 유지했다. 화면 변경이 없어 기존 웹 컨테이너를 재생성하지 않았고 실제 Next 프로덕션 서버는 테스트 후 정리했다. 이번 검증은 Supertest 쿠키 저장소를 사용했으며 Chromium 기반 전체 화면 E2E와 실제 온통청년 수집은 실행하지 않았다. SPEC 의미 변경 없이 PLAN Step 19와 SUMMARY를 완료 상태로 갱신했다.
+
+Step 19 핵심 읽는 순서: `fixtures/admin-proxy.cjs`의 실제 웹 빌드 및 서버 시작 → `admin-proxy.integration.spec.ts`의 beforeAll()과 로그인부터 로그아웃까지의 검증 → Origin 및 입력 오류와 공개 보호 회귀 → afterAll()의 정리. 미해결 실패는 없다. 다음 작업은 Step 20이며 이번 요청 범위에서 중단한다.
