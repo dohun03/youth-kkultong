@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-02 · 상태: Step 1~20, 29 완료 · Step 21~28, 30~41 미착수
+수정일: 2026-11-02 · 상태: Step 1~21, 29 완료 · Step 22~28, 30~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -752,3 +752,26 @@ git diff --check
 - API 계약, DB 스키마와 Migration, 패키지 의존성 및 웹 화면 변경은 없다. 순수 비교 함수만 추가한 Step이므로 DB 통합 테스트와 전체 API 회귀 및 브라우저 E2E는 실행하지 않았다. 기존 컨테이너와 운영 데이터는 변경하지 않았다. SPEC 의미 변경 없이 PLAN과 SUMMARY의 완료 상태만 갱신했다.
 
 핵심 읽는 순서: `policy-field-diff.ts`의 `calculatePolicyFieldDiff()` → `serializeFieldValue()` → `policy-field-diff.spec.ts`. 미해결 실패는 없다. 상세 API의 스냅샷 조회와 비교 함수 연결은 Step 22에서 수행한다. 다음 미완료 순서는 Step 21이며 이번 요청 범위인 Step 20에서 중단한다.
+
+## 27. Step 21 승인 가능 여부와 충돌 판단 (2026-11-02)
+
+사용자 요청에 따라 Step 20을 `98d7da1`(`feat: 검수 스냅샷 필드 차이 계산 및 검증 추가`)로 커밋한 뒤 다음 Step을 수행했다. 사용자가 보완한 비교 함수의 주석은 보존하고 줄 끝 공백만 정리했다. AGENT_RULES → PLAN Step 21 → SPEC 4.2와 4.5 및 6.3, T2-26~27과 T2-32 → Step 20 완료 기록 → 공용 요청 타입과 검수 엔티티 및 기존 후보 판정 코드를 대조했다. 명세와 현재 Step 범위의 불일치는 없다.
+
+- `policies/policy-review-eligibility.ts`의 순수 함수 `getPolicyReviewConflict(context, request?)`에서 후보 상태, 변경본 해시와 최신 원본 해시, 공개 기준 UUID와 해시를 비교한다. 모두 일치하면 NULL, 충돌이면 SPEC의 `REVIEW_NOT_PENDING`, `REVIEW_CONTENT_CONFLICT`, `REVIEW_BASE_CONFLICT` 중 하나를 반환한다.
+- 상세 조회는 context만 전달해 결과가 NULL인지로 `canReview`를 계산할 수 있다. 승인 및 거절 처리는 화면의 두 해시를 담은 기존 `ReviewActionRequest`도 전달해 화면과 후보의 일치 여부를 추가 확인한다. 여러 조건이 동시에 어긋나면 종료 상태, 변경본 내용, 공개 기준 순서로 판정한다.
+- 신규는 후보의 기준 UUID와 해시가 모두 NULL이고 현재 공개본도 없어야 한다. 변경 후보는 현재 공개본이 존재하고 UUID 및 해시가 모두 일치해야 한다. 공개 해시가 같아도 UUID가 바뀌면 기준 충돌이다. 누락 횟수와 수집 시각 및 조회수는 검수 가능 여부의 조건으로 사용하지 않는다.
+- `policy-review-eligibility.spec.ts`에서 신규와 변경의 정상 판정, 모든 종료 상태, 화면과 후보 및 최신 원본의 해시 불일치, 화면 기준 NULL과 해시 불일치, 공개 UUID 및 해시 변경과 공개본 삭제, 신규 이후 공개본 생성, 기준 필수값, 누락 상태와 원본 변경, 충돌 판정 순서, 입력 및 요청 보존을 검증한다.
+
+### 검증
+
+```sh
+npm run test --workspace apps/api -- --runTestsByPath test/policy-review-eligibility.spec.ts test/policy-review-decision.spec.ts test/policy-field-diff.spec.ts
+npm run typecheck
+npm run build --workspace apps/api
+git diff --check
+```
+
+- 검수 가능 여부와 기존 후보 판정 및 필드 비교의 **3개 스위트 90개 테스트 모두 통과**. 실패와 건너뜀은 0건이다. shared/API/web 전체 타입 검사, shared/API 빌드 및 diff 검사도 통과했다.
+- API 계약, DB 스키마와 Migration, 패키지 의존성 및 웹 화면 변경은 없다. 순수 판정 함수 단계이므로 DB 통합 테스트와 HTTP의 실제 409 및 트랜잭션 무변경 검증은 이번에 실행하지 않았다. T2-26~27과 T2-32의 공통 판정 부분을 확인했으며, 상세 조회와 `canReview` 연결은 Step 22, 잠금 후 재검사와 저장 및 409 응답 검증은 Step 24~27에서 수행한다. 후보 미존재의 404도 조회 및 처리 서비스에서 확인할 범위다. 기존 컨테이너와 운영 데이터는 유지했다. SPEC 의미 변경 없이 PLAN과 SUMMARY를 완료 상태로 갱신했다.
+
+핵심 읽는 순서: `policy-review-eligibility.ts`의 `PolicyReviewEligibilityContext` → `getPolicyReviewConflict()` → `policy-review-eligibility.spec.ts`. 미해결 실패는 없다. 다음 미완료 순서는 Step 22이며 이번 요청 범위인 Step 21에서 중단한다.
