@@ -4,9 +4,8 @@ import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import request from 'supertest';
 import { configureApplication } from '../src/main';
-import { AdminModule } from '../src/modules/admin/admin.module';
 import { AdminCookieService } from '../src/modules/admin/services/admin-cookie.service';
-import { testAdminValues } from './helpers/admin';
+import { adminAuthTestModule, testAdminValues } from './helpers/admin';
 
 const origin = testAdminValues.ADMIN_WEB_ORIGIN;
 const validLogin = { username: testAdminValues.ADMIN_USERNAME, password: 'test-only-password' };
@@ -18,7 +17,7 @@ class AuthTestModule {}
 /** 출처 설정을 바꾸어 실제 인증 컨트롤러와 Guard 및 공통 보호를 시작 */
 async function createTestApp(webOrigin = origin): Promise<INestApplication> {
   const app = await NestFactory.create({ module: AuthTestModule,
-    imports: [AdminModule.forHttp({ ...testAdminValues, ADMIN_WEB_ORIGIN: webOrigin })] }, { logger: false, bodyParser: false });
+    imports: [adminAuthTestModule({ ...testAdminValues, ADMIN_WEB_ORIGIN: webOrigin })] }, { logger: false, bodyParser: false });
   configureApplication(app);
   await app.listen(0, '127.0.0.1');
   return app;

@@ -4,12 +4,11 @@ import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import request from 'supertest';
 import { z } from 'zod';
-import { AdminModule } from '../src/modules/admin/admin.module';
 import { AdminCookieService } from '../src/modules/admin/services/admin-cookie.service';
 import type { AdminRequest } from '../src/modules/admin/guards/admin.guard';
 import { ZodValidationPipe } from '../src/common/zod-validation.pipe';
 import { configureApplication, createApplication } from '../src/main';
-import { testAdminValues } from './helpers/admin';
+import { adminAuthTestModule, testAdminValues } from './helpers/admin';
 
 const access = jest.fn();
 const id = '550e8400-e29b-41d4-a716-446655440000';
@@ -59,7 +58,7 @@ class PublicController {
 }
 
 /** 운영과 같은 관리자 모듈을 사용하는 DB 없는 HTTP 테스트 앱 */
-@Module({ imports: [AdminModule.forHttp(testAdminValues)], controllers: [ProtectedController, PublicController] })
+@Module({ imports: [adminAuthTestModule()], controllers: [ProtectedController, PublicController] })
 class TestHttpModule {}
 
 describe('관리자 서버 권한 및 Origin HTTP 검사', () => {

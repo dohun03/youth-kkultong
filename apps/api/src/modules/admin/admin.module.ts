@@ -5,6 +5,8 @@ import { AdminCredentialsService, parseAdminCredentials } from './services/admin
 import { ADMIN_COOKIE_SETTINGS, AdminCookieService, parseAdminCookieSettings } from './services/admin-cookie.service';
 import { AdminGuard } from './guards/admin.guard';
 import { AdminAuthController } from './controllers/admin-auth.controller';
+import { AdminReviewsController } from './controllers/admin-reviews.controller';
+import { PoliciesModule } from '../policies/policies.module';
 
 /** HTTP 전용 관리자 설정 검사 -> 인증 서비스와 전역 권한 검사 등록 */
 @Module({ controllers: [AdminAuthController] })
@@ -15,6 +17,8 @@ export class AdminModule {
     const cookie = parseAdminCookieSettings(values);
     return {
       module: AdminModule,
+      imports: [PoliciesModule],
+      controllers: [AdminReviewsController],
       providers: [
         { provide: AdminCredentialsService, useValue: new AdminCredentialsService(credentials) },
         { provide: AdminCookieService, useValue: new AdminCookieService(credentials.username, cookie) },

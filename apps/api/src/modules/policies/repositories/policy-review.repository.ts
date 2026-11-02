@@ -3,8 +3,16 @@ import { In } from 'typeorm';
 import type { EntityManager } from 'typeorm';
 import { ENVIRONMENT } from '../../../common/environment';
 import type { Environment } from '../../../common/environment';
-import type { SupersededReason } from '@youth-kkultong/shared';
+import type { AdminReviewQuery, ReviewListItem, SupersededReason } from '@youth-kkultong/shared';
 import { PolicyReview } from '../entities/policy-review.entity';
+import { SourcePolicy } from '../entities/source-policy.entity';
+import { Policy } from '../entities/policy.entity';
+
+/** 목록의 시각은 DB의 Date로 받고 서비스에서 ISO 문자열로 변환 */
+export type PolicyReviewListRow = Omit<ReviewListItem, 'createdAt' | 'closedAt'> & {
+  createdAt: Date;
+  closedAt: Date | null;
+};
 
 /** 새 대기 후보에 저장할 원본과 공개 기준본 스냅샷 */
 export type PendingReviewInsert = Pick<PolicyReview,
@@ -17,10 +25,71 @@ export interface SupersededReviewInput {
   reason: SupersededReason;
 }
 
-/** 전달받은 트랜잭션에서 검수 후보 조회와 묶음 저장을 담당 */
+/** 검수 목록과 상세 조회 및 전달받은 트랜잭션에서 후보 묶음 저장을 담당 */
 @Injectable()
 export class PolicyReviewRepository {
   constructor(@Inject(ENVIRONMENT) private readonly environment: Environment) {}
+
+  /** 필터에 맞는 건수 및 목록 조회 */
+  async findReviewList(manager: EntityManager, input: AdminReviewQuery): Promise<{
+    rows: PolicyReviewListRow[]; total: number;
+  }> {
+    const { page = 1, limit = 20, status = 'PENDING', kind, sourcePolicyId, keyword } = input;
+    const query = manager.getRepository(PolicyReview).createQueryBuilder('review')
+      .innerJoin(SourcePolicy, 'source', 'source.id = review.sourcePolicyId');
+
+    // 종료된 3가지(승인·거절·대체) 상태를 조회 or 지정한 한가지 상태만 조회
+    if (status === 'PROCESSED') {
+      query.where('review.status <> :pending', { pending: 'PENDING' });
+    } else {
+      query.where('review.status = :status', { status });
+    }
+    if (kind) query.andWhere('review.kind = :kind', { kind });
+    if (sourcePolicyId) query.andWhere('review.sourcePolicyId = :sourcePolicyId', { sourcePolicyId });
+    if (keyword) {
+      // LIKE의 와일드카드와 이스케이프 문자를 먼저 보호해 검색어 자체를 부분 검색
+      const escaped = keyword.replace(/[\\%_]/g, '\\$&');
+      query.andWhere(`review.rawSnapshot ->> 'plcyNm' ILIKE :keyword ESCAPE '\\'`, { keyword: `%${escaped}%` });
+    }
+
+    // 목록 및 건수 조회 (긴 원문은 응답 자료에 싣지 않음)
+    const total = await query.getCount();
+    const rows = await query.select('review.id', 'id')
+      .addSelect('review.sourcePolicyId', 'sourcePolicyId')
+      .addSelect('source.source', 'source').addSelect('source.externalId', 'externalId')
+      .addSelect(`review.rawSnapshot ->> 'plcyNm'`, 'title')
+      .addSelect('review.kind', 'kind').addSelect('review.status', 'status')
+      .addSelect('review.contentHash', 'contentHash').addSelect('review.baseContentHash', 'baseContentHash')
+      .addSelect('review.createdAt', 'createdAt').addSelect('review.closedAt', 'closedAt')
+      .addSelect('review.reviewedBy', 'reviewedBy').addSelect('review.rejectionReason', 'rejectionReason')
+      .addSelect('review.supersededReason', 'supersededReason')
+      .orderBy(status === 'PROCESSED' ? 'review.closedAt' : 'review.createdAt', 'DESC')
+      .addOrderBy('review.id', 'ASC').offset((page - 1) * limit).limit(limit)
+      .getRawMany<PolicyReviewListRow>();
+
+    return { rows, total };
+  }
+
+  /** 상세 비교에 필요한 후보와 원본 및 현재 공개본과 최신 대기를 같은 트랜잭션에서 조회 */
+  async findReviewDetail(manager: EntityManager, id: string) {
+    this.requireTransaction(manager);
+
+    const review = await manager.getRepository(PolicyReview).findOneBy({ id });
+    if (!review) return null;
+
+    const sourcePolicy = await manager.getRepository(SourcePolicy).findOneOrFail({
+      select: { id: true, source: true, externalId: true, contentHash: true, viewCount: true, lastCollectedAt: true, missingCount: true },
+      where: { id: review.sourcePolicyId },
+    });
+    const publicPolicy = await manager.getRepository(Policy).findOne({
+      select: { id: true, contentHash: true, rawJson: true, viewCount: true },
+      where: { source: sourcePolicy.source, externalId: sourcePolicy.externalId },
+    });
+    const latestPending = await manager.getRepository(PolicyReview).findOne({
+      select: { id: true }, where: { sourcePolicyId: sourcePolicy.id, status: 'PENDING' },
+    });
+    return { review, sourcePolicy, publicPolicy, latestPendingReviewId: latestPending?.id ?? null };
+  }
 
   /** 여러 원본의 대기 후보를 묶음으로 조회 */
   async findPendingReviews(manager: EntityManager, sourcePolicyIds: readonly string[]): Promise<PolicyReview[]> {

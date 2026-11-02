@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-02 · 상태: Step 1~21, 29 완료 · Step 22~28, 30~41 미착수
+수정일: 2026-11-02 · 상태: Step 1~22, 29 완료 · Step 23~28, 30~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -775,3 +775,35 @@ git diff --check
 - API 계약, DB 스키마와 Migration, 패키지 의존성 및 웹 화면 변경은 없다. 순수 판정 함수 단계이므로 DB 통합 테스트와 HTTP의 실제 409 및 트랜잭션 무변경 검증은 이번에 실행하지 않았다. T2-26~27과 T2-32의 공통 판정 부분을 확인했으며, 상세 조회와 `canReview` 연결은 Step 22, 잠금 후 재검사와 저장 및 409 응답 검증은 Step 24~27에서 수행한다. 후보 미존재의 404도 조회 및 처리 서비스에서 확인할 범위다. 기존 컨테이너와 운영 데이터는 유지했다. SPEC 의미 변경 없이 PLAN과 SUMMARY를 완료 상태로 갱신했다.
 
 핵심 읽는 순서: `policy-review-eligibility.ts`의 `PolicyReviewEligibilityContext` → `getPolicyReviewConflict()` → `policy-review-eligibility.spec.ts`. 미해결 실패는 없다. 다음 미완료 순서는 Step 22이며 이번 요청 범위인 Step 21에서 중단한다.
+
+## 28. Step 22 검수 목록과 상세 및 이력 조회 API (2026-11-02)
+
+사용자 요청에 따라 Step 21을 `2608317`(`feat: 검수 가능 여부와 해시 충돌 판정 추가`)로 커밋하고 다음 Step을 수행했다. 사용자가 보완한 판정 함수 주석을 보존했다. AGENT_RULES → PLAN Step 22 → SPEC 3장과 4.1~4.2 및 4.5, 6.3과 7.2, T2-34와 T2-36 및 T2-41~42 → Step 21 완료 기록 → 관리자 모듈과 공용 스키마 및 검수 저장소와 기존 HTTP 테스트를 대조했다. 설계 충돌은 없다.
+
+- `AdminReviewsController`에서 기존 Zod 스키마로 query 및 UUID를 검증한 뒤 `GET /api/v1/admin/reviews`와 `GET /api/v1/admin/reviews/:id`를 제공한다. 처리 이력은 목록의 개별 상태 또는 `status=PROCESSED`로 조회한다. `AdminModule.forHttp()`에서만 조회 컨트롤러와 Policies 모듈을 연결하며 기존 전역 Guard로 데이터 접근 전 인증한다.
+- `PolicyReviewRepository.findReviewList()`는 상태와 종류 및 원본 ID와 후보 제목 검색을 AND로 적용한다. 제목은 당시 `raw_snapshot.plcyNm`을 사용하고 검색어의 `%`, `_`, 역슬래시를 이스케이프해 문자 그대로 대소문자 구분 없이 부분 검색한다. 기본 생성 시각 내림차순 및 UUID 오름차순, PROCESSED의 종료 시각 내림차순 및 UUID 오름차순을 적용한다. 건수와 페이지는 일반 SELECT 두 번으로 읽으며 원본 식별 정보는 JOIN으로 조합해 N+1과 전체 원문 조회를 피한다. 빈 결과와 범위 밖 페이지는 200 빈 배열이다.
+- `PolicyReviewsReadService.findById()`는 읽기 전용 REPEATABLE READ 트랜잭션에서 후보와 최신 원본 정보 및 현재 공개본과 최신 대기 UUID를 읽는다. 당시 기준 및 변경 스냅샷을 제공하며 Step 20의 차이 비교와 Step 21의 검수 가능 여부 판정을 연결한다. 누락만으로 검수를 막지 않고 조회수와 실제 수집 시각 및 누락 횟수는 최신 상태로 제공한다. TypeORM의 트랜잭션 처리가 성공 시 COMMIT, 실패 시 ROLLBACK 및 연결 반환을 담당한다.
+- 인증 전용 HTTP 테스트는 `helpers/admin.ts`의 `adminAuthTestModule()`에서 실제 인증 제공자와 Guard 및 인증 컨트롤러만 등록하도록 조정해 기존 DB 없는 테스트 범위를 유지했다. 전체 관리자 모듈과 실제 DB 연결은 새 통합 테스트와 기존 전체 앱 테스트에서 검증한다. 제품에 테스트 전용 옵션은 추가하지 않았다.
+- `admin-reviews.integration.spec.ts`의 41개 테스트는 별도 임시 스키마에서 필터와 정렬 및 페이지, 와일드카드와 SQL 형태 검색어, 과거 제목과 스냅샷 및 차이 보존, 모든 상태의 상세와 신규 및 누락, 잘못된 query와 UUID의 조회 전 400, 인증 선검사의 401, 없는 후보의 404, 캐시 금지, 공개 한도 120회 소진 후 관리자 목록의 200, N+1 방지, 읽기 전용 격리 수준, 정상 및 오류의 연결 반환과 데이터 무변경 및 500과 503을 확인한다. 후보 SELECT 직후 다른 DB 연결에서 원본과 공개본 및 대기를 변경하고 확정해도 첫 상세는 이전 시점으로 일치하고 다음 조회는 새 상태를 제공함을 재현했다. 실제 수집 저장 서비스로 B→C 후보 교체 후 과거 B의 상세와 제목 검색 및 당시 차이 보존도 검증했다.
+
+### 검증과 실행 상태
+
+```sh
+npm run typecheck
+npm run build --workspace apps/api
+node /tmp/mvp2-step22-verify.cjs before
+node /tmp/mvp2-step22-verify.cjs focused
+node /tmp/mvp2-step22-verify.cjs full
+node /tmp/mvp2-step22-verify.cjs after
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml build api
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml up -d --no-deps --wait api
+node /tmp/mvp2-step22-smoke.cjs
+git diff --check
+```
+
+- shared/API/web 전체 타입 검사와 shared/API 빌드 및 Docker API 프로덕션 빌드 통과. 관련 **6개 스위트 384개 테스트**, 실제 웹 프록시 검증을 포함한 전체 API/DB 회귀 **70개 스위트 2,103개 테스트 모두 통과**. 실패와 건너뜀은 0건이다. 초기 테스트에서 호출 제한 제외 대상인 health를 한도 소진 대상으로 잘못 사용해 공개 정책 경로로 정정했고, 테스트의 JSON 원문 갱신에 TypeORM 재귀 타입 오류가 발생해 매개변수 바인딩 SQL로 정정했다. 최종 관련 및 전체 회귀와 타입 검사는 모두 통과했다.
+- 비밀값을 가린 결과는 `/tmp/mvp2-step22-{focused,full}-results.json`과 `/tmp/mvp2-step22-{focused,full}-output.log`에 있다. 전후 DB 기록은 `/tmp/mvp2-step22-{before,after}.json`에 있다. 기존 공개 3,390건과 원본 3,390건, 검수 0건, 지역 537개 및 Migration 3개의 전체 행 체크섬이 검증 전후 동일하며 잔여 테스트 스키마는 0개다.
+- 기존 API만 새 이미지로 재생성해 healthy 상태로 유지했다. API 직접 주소와 기존 `http://localhost:3000` 웹 프록시 양쪽에서 무인증 목록 401, 인증 목록 200, 잘못된 상세 UUID 400 및 없는 후보 404와 no-store를 실제 확인했다. 조회 검증의 인증값은 출력하거나 파일에 저장하지 않았다. 웹 화면 변경이 없어 기존 web 및 DB 컨테이너는 유지했다. 실제 온통청년 수집과 브라우저 화면 E2E는 실행하지 않았다.
+- API 계약과 DB 스키마 및 Migration, 패키지 의존성 및 SPEC 의미 변경은 없다. 명세에 정의된 조회 경로를 구현했고 PLAN과 SUMMARY를 갱신했다. 누락 목록 API는 Step 23, 승인 및 거절 처리는 Step 24 이후, 관리자 목록과 상세 웹 화면의 실제 데이터 연결은 Step 30 이후 범위다.
+
+핵심 읽는 순서: `admin-reviews.controller.ts` → `policy-reviews-read.service.ts` → `policy-review.repository.ts`의 `findReviewList()`와 `findReviewDetail()` → `admin-reviews.integration.spec.ts`. 미해결 실패는 없다. 다음 미완료 순서는 Step 23이며 이번 요청 범위인 Step 22에서 중단한다.
