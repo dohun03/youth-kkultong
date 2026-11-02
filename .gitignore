@@ -1,4 +1,5 @@
 .env
+.local/
 scripts
 docs/api-research
 node_modules/

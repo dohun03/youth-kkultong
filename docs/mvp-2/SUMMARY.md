@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-02 · 상태: Step 1~19 완료 · Step 20~41 미착수
+수정일: 2026-11-02 · 상태: Step 1~19, 29 완료 · Step 20~28, 30~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -702,3 +702,30 @@ git diff --check
 - 제품 소스와 API 계약, 운영 DB 스키마 및 Migration, 의존성, 실제 관리자 자격과 웹 화면 변경은 없다. DB는 healthy이며 기존 웹 및 API 컨테이너의 중지 상태는 유지했다. 화면 변경이 없어 기존 웹 컨테이너를 재생성하지 않았고 실제 Next 프로덕션 서버는 테스트 후 정리했다. 이번 검증은 Supertest 쿠키 저장소를 사용했으며 Chromium 기반 전체 화면 E2E와 실제 온통청년 수집은 실행하지 않았다. SPEC 의미 변경 없이 PLAN Step 19와 SUMMARY를 완료 상태로 갱신했다.
 
 Step 19 핵심 읽는 순서: `fixtures/admin-proxy.cjs`의 실제 웹 빌드 및 서버 시작 → `admin-proxy.integration.spec.ts`의 beforeAll()과 로그인부터 로그아웃까지의 검증 → Origin 및 입력 오류와 공개 보호 회귀 → afterAll()의 정리. 미해결 실패는 없다. 다음 작업은 Step 20이며 이번 요청 범위에서 중단한다.
+
+## 25. Step 29 관리자 웹 로그인과 공통 화면 선행 구현 (2026-11-02)
+
+사용자가 인증 API를 실제 웹 화면에서 먼저 확인하도록 Step 29의 선행 수행을 명시했다. AGENT_RULES → PLAN Step 29 → SPEC 4장과 7장 및 8.1, T2-36~37 → Step 19 완료 상태 → 웹 구조와 실제 인증 API를 대조했다. 선행 인증 Step 15~19는 완료됐고 Step 29의 인증 흐름은 검수 API 없이 구현할 수 있다. Step 20~28과 Step 30 이후는 미착수로 유지했다.
+
+- `app/admin/admin-session.tsx`에서 같은 출처의 로그인과 me 및 로그아웃 API를 호출한다. 공통 화면 진입과 새로고침 및 경로 이동에서 me를 확인하고 인증이 확인된 뒤에만 보호 화면과 메뉴를 표시한다. 401이면 관리자 정보를 지우고 로그인으로 이동한다. 고정 만료 시각의 타이머와 창 복귀 시 재확인도 적용했다. 이전 조회 응답이 로그인이나 로그아웃 결과를 덮어쓰지 않도록 요청 순서를 확인하고 페이지를 떠나면 조회를 취소한다.
+- `/admin/login`은 아이디와 비밀번호의 명시적 레이블, 비밀번호 마스킹과 자동완성 속성, 필수값 및 길이 제한을 제공한다. 비밀번호의 공백을 보존해 보내고 처리 후 입력을 지운다. 제출 중 버튼을 비활성화하고 같은 제출이 겹치지 않도록 동기 잠금을 둔다. 자격 오류 및 429는 고정 안내를 표시하며 네트워크 오류 원문을 노출하지 않는다.
+- `/admin`은 인증 결과에 따라 로그인 또는 검수 대기로 이동하고, 로그인 성공 경로는 `/admin/reviews`로 고정한다. 공통 메뉴는 검수 대기와 처리 이력 및 누락 정책, 관리자 식별자와 로그아웃이다. 세 보호 페이지는 준비 안내만 제공하고 아직 구현하지 않은 검수 및 누락 데이터 API는 호출하지 않는다. 로그아웃은 서버의 삭제 쿠키를 확인한 뒤 인증 상태를 지우며 응답을 잃으면 안전한 me 조회로 상태를 다시 확인한다.
+- 인증값과 입력값 및 관리자 정보는 localStorage 및 sessionStorage에 저장하지 않는다. 인증 쿠키는 기존 API의 HttpOnly와 Path 및 SameSite 속성을 유지한다. 서버 인증 오류와 무인증 401을 구분해 서버 오류에는 재시도 화면을 제공한다. 관리자 화면은 검색 색인에서 제외하고 기존 색상 및 레이아웃을 사용하며 좁은 화면과 키보드 메뉴 이동을 지원한다.
+- 사용자 추가 요청에 따라 실제 `.env`에 로컬 관리자 설정을 준비했다. 비밀번호와 서명 키는 무작위로 생성하고 `.env`에는 비밀번호 해시만 넣었다. 로그인 정보는 권한 600의 `.local/admin-login.txt`로 제공했다. `.local/`을 Git과 Docker 빌드에서 제외했으며 실제 비밀값은 코드 및 문서와 로그에 기록하지 않았다.
+- `admin-auth.browser.mjs`와 `npm run test:admin --workspace apps/web`을 추가했다. 기존 Playwright와 Chromium을 사용하고 누락된 공유 라이브러리만 `/tmp`에 추출해 시스템 및 프로젝트 의존성은 변경하지 않았다. 한글 화면 검수에는 기존 Windows 글꼴을 테스트 환경에서 사용했다. 정상 로그인과 잘못된 비밀번호, 새로고침, 메뉴 및 로그아웃은 실제 API와 확인했다. 401과 서버 장애 및 429, 짧은 만료 시각은 브라우저 응답을 제어해 클라이언트 분기를 검증했다. 브라우저 저장소 비사용과 쿠키 속성, 중복 제출, 모바일 및 키보드 조작, 기존 실제 공개 목록 20건도 확인했다.
+
+### 검증과 실행 상태
+
+```sh
+NEXT_TELEMETRY_DISABLED=1 npm run typecheck
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml build api web
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml up -d --wait api web
+node /tmp/mvp2-step29-browser-verify.cjs
+git diff --check
+```
+
+- 전체 shared/API/web 타입 검사와 Docker의 API 및 웹 프로덕션 빌드 통과. 실제 Chromium의 최종 **10개 브라우저 테스트 모두 통과**, 실패와 건너뜀은 0건이다. 처음 로컬 Next 빌드는 샌드박스의 TypeScript 자식 프로세스 실행 제약으로 실패했고 Docker 프로덕션 빌드로 다시 검증했다. 이번 Step은 제품 API 및 DB 규칙 변경이 없어 전체 API/DB 회귀와 기존 공개 화면 전체 E2E를 반복하지 않았고 실제 공개 목록 조회를 함께 확인했다.
+- 비밀값을 가린 브라우저 결과는 `/tmp/mvp2-step29-browser-output.log`에 있다. 로그인과 보호 화면 및 모바일 캡처는 `/tmp/mvp2-step29-{login,reviews,mobile}.png`에 보관했다. 테스트 후 브라우저와 임시 컨텍스트를 정리했고 사용자가 바로 확인하도록 새 web 및 현재 인증 API와 기존 DB 컨테이너는 healthy 상태로 유지한다. 화면 주소는 `http://localhost:3000/admin/login`이다.
+- API 계약, DB 스키마 및 Migration, 패키지 의존성 변경은 없다. `.env`는 사용자 요청에 따라 로컬 관리자 설정만 추가했으며 기존 DB 및 수집 설정은 보존했다. `.env`와 로그인 정보 파일은 Git 제외를 확인했다. 화면 변경 규칙에 따라 web 컨테이너를 새 빌드로 재생성했고, 기존 중지된 API도 인증 구현이 반영된 현재 이미지로 시작했다. 실제 온통청년 수집은 실행하지 않았다. PLAN에는 선행 실행과 비연속 완료 상태를 기록했으며 SPEC 의미 변경은 없다.
+
+핵심 읽는 순서: `app/admin/layout.tsx` → `admin-session.tsx`의 인증 확인과 login()/logout() → `login/page.tsx` → 세 보호 경로의 기본 화면 → `test/admin-auth.browser.mjs`. 미해결 실패는 없다. 실제 검수 데이터 조회와 처리는 Step 20~28 및 Step 30 이후 범위다. 이번 요청 범위인 Step 29에서 중단하며 다음 미완료 순서는 Step 20이다.
