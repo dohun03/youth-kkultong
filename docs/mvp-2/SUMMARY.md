@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-02 · 상태: Step 1~22, 29 완료 · Step 23~28, 30~41 미착수
+수정일: 2026-11-03 · 상태: Step 1~23, 29 완료 · Step 24~28, 30~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -807,3 +807,33 @@ git diff --check
 - API 계약과 DB 스키마 및 Migration, 패키지 의존성 및 SPEC 의미 변경은 없다. 명세에 정의된 조회 경로를 구현했고 PLAN과 SUMMARY를 갱신했다. 누락 목록 API는 Step 23, 승인 및 거절 처리는 Step 24 이후, 관리자 목록과 상세 웹 화면의 실제 데이터 연결은 Step 30 이후 범위다.
 
 핵심 읽는 순서: `admin-reviews.controller.ts` → `policy-reviews-read.service.ts` → `policy-review.repository.ts`의 `findReviewList()`와 `findReviewDetail()` → `admin-reviews.integration.spec.ts`. 미해결 실패는 없다. 다음 미완료 순서는 Step 23이며 이번 요청 범위인 Step 22에서 중단한다.
+
+## 29. Step 23 누락 정책 조회 API (2026-11-03)
+
+사용자 요청에 따라 Step 22를 `60a3931`(`feat: 관리자 검수 목록과 상세 및 이력 조회 API 구현`)로 커밋한 뒤 다음 Step을 수행했다. 사용자 주석과 줄 나눔은 보존하고 줄 끝 공백만 정리했다. AGENT_RULES → PLAN Step 23 → SPEC 3장과 4.1 및 4.4~4.5, T2-36 및 T2-41~42 → Step 22 완료 기록 → 기존 원본 저장소와 공용 입력 검증 및 관리자 등록 구조를 대조했다. 명세와 실제 코드의 충돌은 없다.
+
+- `AdminSourcePoliciesController`에서 `GET /api/v1/admin/source-policies/missing`을 제공한다. 기존 `missingPolicyQuerySchema`로 page와 limit 및 keyword와 minMissingCount를 검사하며 기존 관리자 Guard가 입력 검사와 DB 접근보다 먼저 인증을 확인한다.
+- `SourcePolicyRepository.findMissingPolicies()`는 기본 누락 횟수 1 이상인 원본을 공개 여부와 관계없이 조회한다. 최소 누락 횟수와 최신 원본 제목 검색을 AND로 적용하며 검색어의 `%`, `_`, 역슬래시를 문자 그대로 처리한다. 누락 횟수 내림차순과 원본 UUID 오름차순으로 정렬하고 일반 SELECT 두 번으로 건수와 페이지를 읽는다. 공개본은 출처와 외부 ID, 대기는 원본 UUID와 PENDING 조건으로 LEFT JOIN해 공개 UUID와 최신 대기 UUID를 함께 제공한다. 긴 원문 조회와 N+1은 없다.
+- `MissingPoliciesReadService.findList()`에서 조회 결과와 페이지 정보를 응답으로 조립한다. 실제 수집 시각은 ISO 문자열로 변환하고 NULL은 그대로 반환해 이관 시각으로 대체하지 않는다. 공개본이나 대기가 없는 경우 해당 링크 ID는 NULL이다. 기존 Policies와 Admin 모듈에 제공자 및 HTTP 전용 컨트롤러를 등록했다.
+- `admin-missing-policies.integration.spec.ts`의 38개 테스트에서 미공개 신규와 공개 원본, 종료 이력과 최신 대기 링크, 필터와 최신 제목 검색 및 특수 문자, 정렬과 페이지 및 빈 결과와 정수 상한, 잘못된 입력의 조회 전 400, 무인증과 변조 및 만료 쿠키의 조회 전 401, 캐시 금지, 호출 제한 분리, 일반 SELECT 두 번과 DB 무변경, 안전한 500 및 실제 연결 종료의 503을 확인했다. 실제 수집 저장 서비스로 이관 후 미수집 원본의 수집 시각 NULL 유지, 미공개 신규의 누락 목록 포함, 같은 날 추가 누락 및 재등장 후 누락 해제를 검증했다.
+
+### 검증과 실행 상태
+
+```sh
+npm run typecheck
+npm run build --workspace apps/api
+node /tmp/mvp2-step23-verify.cjs before
+node /tmp/mvp2-step23-verify.cjs focused
+node /tmp/mvp2-step23-verify.cjs after
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml build api
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml up -d --no-deps --wait api
+node /tmp/mvp2-step23-smoke.cjs
+git diff --check
+```
+
+- 누락과 검수 조회 및 인증과 입력 검증, 원본 저장 및 수집 저장의 **7개 스위트 412개 테스트 모두 통과**. 실패와 건너뜀은 0건이다. shared/API/web 전체 타입 검사, shared/API 빌드, Docker API 프로덕션 빌드 및 diff 검사도 통과했다. 변경과 관련된 경로를 검증했으며 전체 API/DB 회귀와 브라우저 화면 E2E 및 실제 온통청년 수집은 반복하지 않았다.
+- 비밀값을 가린 결과는 `/tmp/mvp2-step23-focused-results.json`과 `/tmp/mvp2-step23-focused-output.log`, DB 전후 기록은 `/tmp/mvp2-step23-{before,after}.json`에 있다. 기존 공개 3,390건과 원본 3,390건, 검수 0건, 지역 537개 및 Migration 3개의 전체 행 체크섬이 검증 전후 동일하며 잔여 테스트 스키마는 0개다.
+- 기존 API만 새 이미지로 재생성해 healthy 상태로 유지했다. API 직접 주소와 `http://localhost:3000`의 기존 웹 프록시 양쪽에서 무인증 누락 목록의 401, 인증 목록의 200, 잘못된 최소 횟수의 400, 정수 상한 필터의 200 및 no-store를 확인했다. 인증값은 출력하거나 파일에 저장하지 않았다. 웹 화면 변경이 없어 기존 web과 DB 컨테이너는 유지했다.
+- API 계약과 DB 스키마 및 Migration, 패키지 의존성 및 SPEC 의미 변경은 없다. 명세에 정의된 누락 조회 경로를 구현했고 PLAN과 SUMMARY를 갱신했다. 누락 화면의 데이터 연결은 Step 34 범위다.
+
+핵심 읽는 순서: `admin-source-policies.controller.ts` → `missing-policies-read.service.ts` → `source-policy.repository.ts`의 `findMissingPolicies()` → `admin-missing-policies.integration.spec.ts`. 미해결 실패는 없다. 다음 미완료 순서는 Step 24이며 이번 요청 범위인 Step 23에서 중단한다.

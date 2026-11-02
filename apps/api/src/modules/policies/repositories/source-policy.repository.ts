@@ -1,9 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { CollectionResult } from '@youth-kkultong/shared';
+import type { CollectionResult, MissingPolicyItem, MissingPolicyQuery } from '@youth-kkultong/shared';
 import type { EntityManager } from 'typeorm';
 import { ENVIRONMENT } from '../../../common/environment';
 import type { Environment } from '../../../common/environment';
 import { SourcePolicy } from '../entities/source-policy.entity';
+import { Policy } from '../entities/policy.entity';
+import { PolicyReview } from '../entities/policy-review.entity';
+
+/** 누락 목록의 실제 수집 시각을 DB의 Date 또는 NULL로 전달하는 조회 결과 */
+export type MissingPolicyRow = Omit<MissingPolicyItem, 'lastCollectedAt'> & { lastCollectedAt: Date | null };
 
 /** 실제 수집된 원본과 수집 결과를 담는 저장 입력 타입 */
 export type CollectedSourcePolicyInput = Pick<SourcePolicy,
@@ -13,10 +18,38 @@ export type CollectedSourcePolicyInput = Pick<SourcePolicy,
 /** 누락 원본의 ID와 계산된 누락 횟수를 담는 저장 입력 타입 */
 export type MissingSourcePolicyInput = Pick<SourcePolicy, 'id' | 'missingCount'>;
 
-/** 전달받은 트랜잭션에서 SourcePolicy의 잠금 조회와 묶음 저장을 담당 */
+/** 누락 원본 목록 조회와 트랜잭션 안의 원본 잠금 및 묶음 저장을 담당 */
 @Injectable()
 export class SourcePolicyRepository {
   constructor(@Inject(ENVIRONMENT) private readonly environment: Environment) {}
+
+  /** 누락 원본의 건수와 공개본 및 대기 후보 식별 정보를 일반 조회 */
+  async findMissingPolicies(manager: EntityManager, input: MissingPolicyQuery): Promise<{
+    rows: MissingPolicyRow[]; total: number;
+  }> {
+    const { page = 1, limit = 20, minMissingCount = 1, keyword } = input;
+    const query = manager.getRepository(SourcePolicy).createQueryBuilder('original')
+      .where('original.missingCount >= :minMissingCount', { minMissingCount });
+    if (keyword) {
+      // 검색어의 특수 문자를 보호해 최신 원본 제목에서 문자 그대로 부분 검색
+      const escaped = keyword.replace(/[\\%_]/g, '\\$&');
+      query.andWhere(`original.title ILIKE :keyword ESCAPE '\\'`, { keyword: `%${escaped}%` });
+    }
+
+    // 건수와 페이지를 일반 SELECT로 읽고 원본마다 추가 조회하지 않도록 한 번에 결합
+    const total = await query.getCount();
+    const rows = await query
+      .leftJoin(Policy, 'published', 'published.source = original.source AND published.externalId = original.externalId')
+      .leftJoin(PolicyReview, 'pending', 'pending.sourcePolicyId = original.id AND pending.status = :pendingStatus', { pendingStatus: 'PENDING' })
+      .select('original.id', 'sourcePolicyId')
+      .addSelect('original.source', 'source').addSelect('original.externalId', 'externalId')
+      .addSelect('original.title', 'title').addSelect('published.id', 'policyId')
+      .addSelect('original.contentHash', 'contentHash').addSelect('original.lastCollectedAt', 'lastCollectedAt')
+      .addSelect('original.missingCount', 'missingCount').addSelect('pending.id', 'latestPendingReviewId')
+      .orderBy('original.missingCount', 'DESC').addOrderBy('original.id', 'ASC')
+      .offset((page - 1) * limit).limit(limit).getRawMany<MissingPolicyRow>();
+    return { rows, total };
+  }
 
   /** 해당 출처의 원본 전체를 식별자 순서대로 잠그고 조회 */
   async findBySourceForUpdate(manager: EntityManager, source: string): Promise<SourcePolicy[]> {
