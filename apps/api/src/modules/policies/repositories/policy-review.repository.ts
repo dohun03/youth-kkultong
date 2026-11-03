@@ -132,6 +132,22 @@ export class PolicyReviewRepository {
     if (result.affected !== 1) throw new Error('승인할 검수 후보가 없거나 이미 종료되었습니다.');
   }
 
+  /** 잠근 대기 후보에 거절 사유와 처리자 및 종료 시각 저장 */
+  async rejectPendingReview(
+    manager: EntityManager,
+    id: string,
+    reviewedBy: string,
+    reason: string,
+    closedAt: Date,
+  ): Promise<void> {
+    this.requireTransaction(manager);
+    // 대기 상태에만 처리 정보를 기록해 이미 끝난 이력을 보호
+    const result = await manager.getRepository(PolicyReview).update({ id, status: 'PENDING' }, {
+      status: 'REJECTED', reviewedBy, rejectionReason: reason, closedAt,
+    });
+    if (result.affected !== 1) throw new Error('거절할 검수 후보가 없거나 이미 종료되었습니다.');
+  }
+
   /** 여러 원본의 대기 후보를 묶음으로 조회 */
   async findPendingReviews(manager: EntityManager, sourcePolicyIds: readonly string[]): Promise<PolicyReview[]> {
     this.requireTransaction(manager);

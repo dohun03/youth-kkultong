@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-03 · 상태: Step 1~24, 29 완료 · Step 25~28, 30~41 미착수
+수정일: 2026-11-04 · 상태: Step 1~25, 29 완료 · Step 26~28, 30~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -865,3 +865,32 @@ git diff --check
 - 이번 Step은 승인 업무 서비스 구현 범위다. 거절 처리는 Step 25, 인증과 Origin 및 입력 검증을 거친 승인/거절 HTTP 연결은 Step 26, 독립 연결의 검수 및 수집 경쟁 검증은 Step 27에서 수행한다.
 
 핵심 읽는 순서: `policy-review-approval.service.ts`의 `approve()` → `policy-review.repository.ts`의 `findReviewForUpdate()`와 `approvePendingReview()` → `policy.repository.ts`의 `saveApprovedPolicy()` → `policy-review-approval.integration.spec.ts`. 미해결 실패는 없다. 다음 미완료 순서는 Step 25이며 이번 요청 범위인 Step 24에서 중단한다.
+
+## 31. Step 25 검수 거절과 이력 저장 (2026-11-04)
+
+사용자 요청에 따라 Step 24를 `e438ea9`(`feat: 검수 승인과 공개 반영 트랜잭션 구현`)로 커밋한 뒤 다음 Step을 수행했다. 사용자가 정리한 주석과 줄 나눔은 보존하고 줄 끝 공백만 제거했다. 커밋 전 API 타입 검사와 승인 및 공개 저장의 2개 스위트 47개 테스트를 통과했다. AGENT_RULES → PLAN Step 25 → SPEC 4.3과 4.5 및 6.3, T2-31과 T2-33 → Step 24 완료 기록 → 기존 잠금 조회와 공통 충돌 판정 및 거절 입력 스키마를 대조했다. 설계 충돌은 없다.
+
+- `PolicyReviewRejectionService.reject()`를 Policies 모듈에 등록하고 내보냈다. 기존 공용 `rejectReviewSchema`로 사유의 앞뒤 공백을 제거하고 1~1000자, 두 해시와 추가 필드 규칙을 검증한다. 잘못된 입력은 트랜잭션을 열기 전에 고정된 400 예외로 거부한다.
+- 전용 QueryRunner의 READ COMMITTED 트랜잭션에서 Step 24의 `findReviewForUpdate()`로 원본 → 후보 → 현재 공개본 순서로 잠근다. 다시 읽은 상태에 공통 `getPolicyReviewConflict()`를 적용해 후보 미존재는 404, 종료 상태 및 변경본과 공개 기준 충돌은 해당 409 예외로 처리하며 업무 행을 변경하지 않는다.
+- `PolicyReviewRepository.rejectPendingReview()`는 PENDING 조건으로 REJECTED, 사유, 관리자 식별자와 종료 시각만 저장한다. 원본과 공개 내용 및 조회수는 보존하고 당시 스냅샷과 기준본도 유지한다. 정상 처리 응답의 `policyId`는 현재 공개 UUID이며 미공개 신규는 NULL이다. 종료 시각은 저장한 값과 같은 ISO 문자열로 반환한다.
+- `policy-review-rejection.integration.spec.ts`의 31개 사례는 실제 수집으로 만든 신규와 변경 후보의 정상 거절, 최신 조회수 보존, 사유의 길이 경계와 내부 공백 및 HTML 텍스트 보존, 잘못된 입력의 400, 404와 해시 및 공개 UUID 충돌의 409, 누락 후보 처리, 종료 후보 재처리 거부와 반복 수집 시 거절 이력 보존을 확인한다. 테스트 전용 CHECK 제약으로 실제 DB 기록 실패를 재현하고, UPDATE 이후 오류도 주입해 전체 취소를 확인했다. 잠금 순서와 격리 수준, 후보만 갱신하는 SQL 및 연결 반환과 실패 후 정상 재처리도 검증했다.
+
+### 검증과 실행 상태
+
+```sh
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml start --wait db
+node /tmp/mvp2-step25-verify.cjs before
+node /tmp/mvp2-step25-verify.cjs step24
+npm run typecheck
+node /tmp/mvp2-step25-verify.cjs focused
+npm run build --workspace apps/api
+node /tmp/mvp2-step25-verify.cjs after
+git diff --check
+```
+
+- 최초 DB 연결 검증과 커밋 전 테스트는 기존 컨테이너 중지로 `ECONNREFUSED`가 발생했다. 기존 DB 컨테이너만 시작해 healthy 상태를 확인한 뒤 재실행했다. 이후 커밋 전 47개와 Step 25 관련 **7개 스위트 403개 테스트 모두 통과**했으며 최종 실패와 건너뜀은 0건이다. shared/API/web 전체 타입 검사, shared/API 빌드 및 diff 검사도 통과했다.
+- 비밀값을 가린 검증 결과는 `/tmp/mvp2-step25-{step24,focused}-results.json`과 같은 이름의 `-output.log`, DB 전후 기록은 `/tmp/mvp2-step25-{before,after}.json`에 있다. 기존 공개 3,390건, 원본 3,390건, 검수 0건, 지역 537개 및 Migration 3개의 전체 행 체크섬이 검증 전후 동일하며 잔여 테스트 스키마는 0개다.
+- API 계약, DB 스키마와 Migration, 패키지 의존성 및 SPEC 의미 변경은 없다. PLAN과 SUMMARY를 갱신했다. 웹 화면 변경이 없어 컨테이너를 재빌드하지 않았으며 기존 API와 웹의 중지 상태는 유지했다. 실제 온통청년 수집과 전체 API/DB 회귀 및 브라우저 E2E는 반복하지 않았다.
+- 승인과 거절의 HTTP 경로 및 인증과 Origin, 입력 및 오류 응답의 실제 연결은 Step 26, 독립 연결의 검수와 수집 경쟁은 Step 27 범위다. 이번 Step 25 변경은 커밋하지 않고 검수할 수 있는 상태로 남겼다.
+
+핵심 읽는 순서: `policy-review-rejection.service.ts`의 `reject()` → `policy-review.repository.ts`의 `findReviewForUpdate()`와 `rejectPendingReview()` → `policy-review-rejection.integration.spec.ts`. 미해결 실패는 없다. 다음 미완료 순서는 Step 26이며 이번 요청 범위인 Step 25에서 중단한다.
