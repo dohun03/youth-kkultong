@@ -91,6 +91,47 @@ export class PolicyReviewRepository {
     return { review, sourcePolicy, publicPolicy, latestPendingReviewId: latestPending?.id ?? null };
   }
 
+  /** 원본 ID를 먼저 찾고 원본, 후보, 현재 공개본 순서로 잠가 처리할 최신 상태 조회 */
+  async findReviewForUpdate(manager: EntityManager, id: string) {
+    this.requireTransaction(manager);
+
+    // 후보를 먼저 잠그면 수집의 원본 잠금과 순서가 엇갈리므로 식별자만 일반 조회
+    const reference = await manager.getRepository(PolicyReview).findOne({
+      select: { sourcePolicyId: true }, where: { id },
+    });
+    if (!reference) return null;
+
+    // 수집 저장과 같은 원본을 먼저 잠근 뒤 후보를 다시 읽어 대기 상태를 확인할 준비
+    const sourcePolicy = await manager.getRepository(SourcePolicy).findOneOrFail({
+      where: { id: reference.sourcePolicyId }, lock: { mode: 'pessimistic_write' },
+    });
+    const review = await manager.getRepository(PolicyReview).findOne({
+      where: { id }, lock: { mode: 'pessimistic_write' },
+    });
+    if (!review) return null;
+
+    // 현재 공개본은 출처와 외부 ID로 찾아 신규 후보에 이미 공개본이 생긴 경우도 확인
+    const publicPolicy = await manager.getRepository(Policy).findOne({
+      where: { source: sourcePolicy.source, externalId: sourcePolicy.externalId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    return { review, sourcePolicy, publicPolicy };
+  }
+
+  /** 대기 상태의 후보의 (상태 / 처리자 / 종료 시각) 저장 */
+  async approvePendingReview(
+    manager: EntityManager,
+    id: string, reviewedBy: string,
+    closedAt: Date
+  ): Promise<void> {
+    this.requireTransaction(manager);
+    const result = await manager.getRepository(PolicyReview).update(
+      { id, status: 'PENDING' }, // 조건(where)
+      { status: 'APPROVED', reviewedBy, closedAt } // 변경할 값(set)
+    );
+    if (result.affected !== 1) throw new Error('승인할 검수 후보가 없거나 이미 종료되었습니다.');
+  }
+
   /** 여러 원본의 대기 후보를 묶음으로 조회 */
   async findPendingReviews(manager: EntityManager, sourcePolicyIds: readonly string[]): Promise<PolicyReview[]> {
     this.requireTransaction(manager);

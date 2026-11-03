@@ -96,44 +96,60 @@ export class PolicyRepository {
     });
   }
 
-  /** 승인된 정책을 신규 추가하거나 지정한 공개 UUID의 본문을 갱신 */
-  async saveApprovedPolicy(manager: EntityManager, policy: PolicyWriteInput, basePolicyId: string | null): Promise<void> {
+  /** 승인된 정책을 신규 추가하거나 지정한 공개 UUID의 본문을 갱신하고 공개 UUID 반환 */
+  async saveApprovedPolicy(manager: EntityManager, policy: PolicyWriteInput, basePolicyId: string | null): Promise<string> {
     this.requireTransaction(manager);
     this.requireViewCount(policy.viewCount);
     const query = manager.getRepository(Policy).createQueryBuilder();
 
     // 시간대 없는 원본 시각과 JSON 원문을 매개변수로 전달
-    query.setParameters({ registered: policy.sourceRegisteredAt, modified: policy.sourceModifiedAt,
-      raw: JSON.stringify(policy.rawJson) });
+    query.setParameters({
+      registered: policy.sourceRegisteredAt,
+      modified: policy.sourceModifiedAt,
+      raw: JSON.stringify(policy.rawJson)
+    });
 
-    // 공개 본문에 저장할 컬럼을 명시해 기존 정책의 식별자와 생성 시각을 보존
+    // 공개 본문에 저장할 컬럼을 명시 (기존 정책의 식별자와 생성 시각을 보존)
     const values = {
-      title: policy.title, category: policy.category, subcategory: policy.subcategory,
-      description: policy.description, benefitText: policy.benefitText,
-      applyUrl: policy.applyUrl, referenceUrl1: policy.referenceUrl1, referenceUrl2: policy.referenceUrl2,
+      title: policy.title,
+      category: policy.category,
+      subcategory: policy.subcategory,
+      description: policy.description,
+      benefitText: policy.benefitText,
+      applyUrl: policy.applyUrl,
+      referenceUrl1: policy.referenceUrl1,
+      referenceUrl2: policy.referenceUrl2,
       viewCount: policy.viewCount,
       sourceRegisteredAt: () => 'CAST(:registered AS timestamp)',
       sourceModifiedAt: () => 'CAST(:modified AS timestamp)',
-      applicationPeriodCode: policy.applicationPeriodCode, applicationPeriodRaw: policy.applicationPeriodRaw,
-      applicationStartDate: policy.applicationStartDate, applicationEndDate: policy.applicationEndDate,
-      ageMin: policy.ageMin, ageMax: policy.ageMax,
-      jobCodes: policy.jobCodes, schoolCodes: policy.schoolCodes, regionCodes: policy.regionCodes,
-      extraQualification: policy.extraQualification, participationRestriction: policy.participationRestriction,
-      rawJson: () => 'CAST(:raw AS jsonb)', contentHash: policy.contentHash,
+      applicationPeriodCode: policy.applicationPeriodCode,
+      applicationPeriodRaw: policy.applicationPeriodRaw,
+      applicationStartDate: policy.applicationStartDate,
+      applicationEndDate: policy.applicationEndDate,
+      ageMin: policy.ageMin,
+      ageMax: policy.ageMax,
+      jobCodes: policy.jobCodes,
+      schoolCodes: policy.schoolCodes,
+      regionCodes: policy.regionCodes,
+      extraQualification: policy.extraQualification,
+      participationRestriction: policy.participationRestriction,
+      rawJson: () => 'CAST(:raw AS jsonb)',
+      contentHash: policy.contentHash,
       updatedAt: () => 'CURRENT_TIMESTAMP',
     };
 
+    // 최초 승인: 새 공개 UUID를 생성하고 출처와 외부 ID를 함께 저장
     if (basePolicyId === null) {
-      // 최초 승인은 새 공개 UUID를 생성하고 출처와 외부 ID를 함께 저장
-      await query.insert().values({ ...values, source: policy.source, externalId: policy.externalId })
-        .updateEntity(false).execute();
-      return;
+      const result = await query.insert().values({ ...values, source: policy.source, externalId: policy.externalId })
+        .returning('id').updateEntity(false).execute();
+      return result.raw[0].id as string;
     }
 
-    // 기존 승인은 검수 기준 UUID와 출처, 외부 ID가 모두 같은 공개 행을 갱신
+    // 기존 승인: 검수 기준 UUID와 출처, 외부 ID가 모두 같은 공개 행을 갱신
     const result = await query.update().set(values)
       .where({ id: basePolicyId, source: policy.source, externalId: policy.externalId }).execute();
     if (result.affected !== 1) throw new Error('승인 내용을 반영할 공개 기준 정책을 찾을 수 없습니다.');
+    return basePolicyId;
   }
 
   /** 전달받은 묶음의 공개 조회수와 DB 반영 시각을 갱신하고 반영 행 수를 반환 */

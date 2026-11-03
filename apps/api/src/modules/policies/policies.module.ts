@@ -11,6 +11,7 @@ import { PolicyReviewsWriteService } from './services/policy-reviews-write.servi
 import { PolicyCollectionWriteService } from './services/policy-collection-write.service';
 import { PolicyReviewsReadService } from './services/policy-reviews-read.service';
 import { MissingPoliciesReadService } from './services/missing-policies-read.service';
+import { PolicyReviewApprovalService } from './services/policy-review-approval.service';
 
 /** 공개 정책 조회와 원본 저장에 필요한 저장소와 서비스를 등록하는 모듈 */
 @Module({
@@ -20,10 +21,12 @@ import { MissingPoliciesReadService } from './services/missing-policies-read.ser
   providers: [
     PolicyRepository, SourcePolicyRepository, PolicyReviewRepository,
     PolicyReviewsWriteService, PolicyCollectionWriteService, PoliciesSearchService, PoliciesDetailService, PolicyReviewsReadService, MissingPoliciesReadService,
+    PolicyReviewApprovalService,
   ],
   exports: [
     PolicyRepository, SourcePolicyRepository, PolicyReviewRepository,
     PolicyReviewsWriteService, PolicyCollectionWriteService, PolicyReviewsReadService, MissingPoliciesReadService,
+    PolicyReviewApprovalService,
   ],
 })
 export class PoliciesModule {}

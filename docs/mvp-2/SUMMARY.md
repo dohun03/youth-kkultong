@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-03 · 상태: Step 1~23, 29 완료 · Step 24~28, 30~41 미착수
+수정일: 2026-11-03 · 상태: Step 1~24, 29 완료 · Step 25~28, 30~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -837,3 +837,31 @@ git diff --check
 - API 계약과 DB 스키마 및 Migration, 패키지 의존성 및 SPEC 의미 변경은 없다. 명세에 정의된 누락 조회 경로를 구현했고 PLAN과 SUMMARY를 갱신했다. 누락 화면의 데이터 연결은 Step 34 범위다.
 
 핵심 읽는 순서: `admin-source-policies.controller.ts` → `missing-policies-read.service.ts` → `source-policy.repository.ts`의 `findMissingPolicies()` → `admin-missing-policies.integration.spec.ts`. 미해결 실패는 없다. 다음 미완료 순서는 Step 24이며 이번 요청 범위인 Step 23에서 중단한다.
+
+## 30. Step 24 검수 승인과 공개 반영 (2026-11-03)
+
+AGENT_RULES → PLAN Step 24 → SPEC 4.3과 4.5 및 6.3, T2-15와 T2-24~25 → Step 21~23 완료 기록 → 기존 검수 충돌 판정과 스냅샷 저장, 공개 저장 및 모듈 구성을 대조했다. 명세와 실제 코드 사이의 설계 충돌은 없다.
+
+- `PolicyReviewApprovalService.approve()`를 Policies 모듈에 등록하고 내보냈다. TypeORM이 생성한 전용 QueryRunner의 READ COMMITTED 트랜잭션에서 조회, 잠금, 판정, 저장을 실행하며 성공 시 COMMIT, 실패 시 ROLLBACK 후 연결을 반환한다.
+- `PolicyReviewRepository.findReviewForUpdate()`는 후보의 원본 ID만 일반 조회한 뒤 원본 → 후보 → 현재 공개본 순서로 수정 잠금을 획득한다. 잠금 후 다시 읽은 상태와 화면의 두 해시를 Step 21의 공통 규칙으로 확인하고 없는 후보는 404, 종료 상태와 변경본 및 공개 기준 충돌은 해당 409를 반환한다. 이 경우 업무 데이터는 변경하지 않는다.
+- 후보 스냅샷의 필수 구조와 내용 해시를 재검증하고 기존 온통청년 변환 함수로 공개 저장값을 만든다. 출처와 외부 ID도 원본과 대조한다. 공개 본문과 `raw_json`은 검수 스냅샷에서 만들고 `view_count`만 최신 원본 값(NULL 포함)으로 저장한다.
+- `PolicyRepository.saveApprovedPolicy()`가 공개 UUID를 반환하도록 보완했다. 신규는 INSERT의 `RETURNING id`, 변경은 기존 기준 UUID를 사용한다. 기존 UUID와 생성 시각을 보존하며 같은 트랜잭션의 `approvePendingReview()`로 APPROVED, 관리자 식별자와 종료 시각을 저장한다. 과거 스냅샷과 기준본, 원본 행은 유지한다.
+- `policy-review-approval.integration.spec.ts`의 23개 사례는 실제 수집 저장으로 만든 신규와 변경 후보의 승인, 최신 조회수 증가와 NULL, 누락 후보 승인, 원본 우선 잠금과 격리 수준 및 연결 반환, 404와 409의 전체 행 보존, 종료 이력 보호, 손상된 스냅샷의 해시와 구조 및 변환과 식별자 오류를 검증한다. 임시 스키마에 CHECK 제약을 추가해 공개 저장 및 승인 기록의 실제 DB 오류를 각각 재현하고 전체 롤백과 이후 정상 재처리를 확인했다. 승인 기록 직전에는 다른 연결에서 기존 공개본만 보이는지도 확인했다.
+
+### 검증과 실행 상태
+
+```sh
+npm run typecheck
+npm run build --workspace apps/api
+node /tmp/mvp2-step24-verify.cjs before
+node /tmp/mvp2-step24-verify.cjs focused
+node /tmp/mvp2-step24-verify.cjs after
+git diff --check
+```
+
+- 승인 처리와 공개 저장, 후보 저장, 공통 충돌 판정, 수집 저장 및 관리자 검수 조회의 **6개 스위트 164개 테스트 모두 통과**. 실패와 건너뜀은 0건이다. shared/API/web 전체 타입 검사, shared/API 빌드 및 diff 검사도 통과했다.
+- 비밀값을 가린 검증 결과는 `/tmp/mvp2-step24-focused-results.json`과 `/tmp/mvp2-step24-focused-output.log`, DB 전후 기록은 `/tmp/mvp2-step24-{before,after}.json`에 있다. 기존 공개 3,390건, 원본 3,390건, 검수 0건, 지역 537개 및 Migration 3개의 전체 행 체크섬이 검증 전후 동일하며 잔여 테스트 스키마는 0개다.
+- API 계약, DB 스키마와 Migration, 패키지 의존성 및 SPEC 의미 변경은 없다. PLAN과 SUMMARY를 갱신했다. 웹 화면과 기존 컨테이너는 유지했으며 실제 온통청년 수집과 전체 API/DB 회귀 및 브라우저 E2E는 반복하지 않았다.
+- 이번 Step은 승인 업무 서비스 구현 범위다. 거절 처리는 Step 25, 인증과 Origin 및 입력 검증을 거친 승인/거절 HTTP 연결은 Step 26, 독립 연결의 검수 및 수집 경쟁 검증은 Step 27에서 수행한다.
+
+핵심 읽는 순서: `policy-review-approval.service.ts`의 `approve()` → `policy-review.repository.ts`의 `findReviewForUpdate()`와 `approvePendingReview()` → `policy.repository.ts`의 `saveApprovedPolicy()` → `policy-review-approval.integration.spec.ts`. 미해결 실패는 없다. 다음 미완료 순서는 Step 25이며 이번 요청 범위인 Step 24에서 중단한다.
