@@ -2,18 +2,18 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { CollectionResult, JsonValue } from '@youth-kkultong/shared';
 import { QueryFailedError } from 'typeorm';
 import type { QueryRunner } from 'typeorm';
-import { ENVIRONMENT } from '../../../common/environment';
-import type { Environment } from '../../../common/environment';
-import { classifyPolicyCollection } from '../policy-collection';
-import { decidePolicyReview } from '../policy-review-decision';
-import { SourcePolicyRepository } from '../repositories/source-policy.repository';
-import { PolicyRepository } from '../repositories/policy.repository';
-import type { PublicPolicySnapshot } from '../repositories/policy.repository';
-import { PolicyReviewRepository } from '../repositories/policy-review.repository';
-import type { SupersededReviewInput } from '../repositories/policy-review.repository';
-import { PolicyReviewsWriteService } from './policy-reviews-write.service';
-import type { ReviewCandidateInput } from './policy-reviews-write.service';
-import type { PolicyWriteInput } from '../policy-write.types';
+import { ENVIRONMENT } from '../../../../common/environment';
+import type { Environment } from '../../../../common/environment';
+import { classifyPolicyCollection } from '../../rules/collection/policy-collection';
+import { decidePolicyReview } from '../../rules/reviews/policy-review-decision';
+import { SourcePolicyRepository } from '../../repositories/source-policy.repository';
+import { PolicyRepository } from '../../repositories/policy.repository';
+import type { PublicPolicySnapshot } from '../../repositories/policy.repository';
+import { PolicyReviewRepository } from '../../repositories/policy-review.repository';
+import type { SupersededReviewInput } from '../../repositories/policy-review.repository';
+import { PolicyReviewsWriteService } from '../reviews/policy-reviews-write.service';
+import type { ReviewCandidateInput } from '../reviews/policy-reviews-write.service';
+import type { PolicyWriteInput } from '../../types/policy-write.types';
 
 /** 한 번의 정상 전체 수집에서 DB에 확정된 판정과 검수 및 공개 조회수 갱신 건수 */
 export interface PolicyCollectionSaveResult {

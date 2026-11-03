@@ -1,5 +1,5 @@
 import type { PolicyCard } from '@youth-kkultong/shared';
-import type { Policy } from './entities/policy.entity';
+import type { Policy } from '../entities/policy.entity';
 
 /** 목록·상세에서 공통 카드 응답을 만들 때 필요한 필드 */
 export type PolicyCardInput = Pick<Policy,

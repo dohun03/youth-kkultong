@@ -11,7 +11,7 @@ import { PolicyReview } from '../src/modules/policies/entities/policy-review.ent
 import { SourcePolicy } from '../src/modules/policies/entities/source-policy.entity';
 import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 import { PolicyReviewRepository } from '../src/modules/policies/repositories/policy-review.repository';
-import { PolicyReviewApprovalService } from '../src/modules/policies/services/policy-review-approval.service';
+import { PolicyReviewApprovalService } from '../src/modules/policies/services/reviews/policy-review-approval.service';
 import { clearPolicyTables, createCollectionWriter, seedMigratedPolicies } from './helpers/policy-collection';
 
 /** 원문 공백, 미확인 중첩 필드, 날짜와 자격 조건을 포함한 승인 대상 생성 */

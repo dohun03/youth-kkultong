@@ -1,5 +1,5 @@
 import type { ApplicationStatus } from '@youth-kkultong/shared';
-import type { Policy } from './entities/policy.entity';
+import type { Policy } from '../../entities/policy.entity';
 
 /** 수집 단계에서 정규화한 신청기간 정보만 받아 상태를 계산 */
 export type ApplicationPeriod = Pick<Policy,

@@ -1,6 +1,6 @@
 import type { ApplicationStatus } from '@youth-kkultong/shared';
-import { calculateApplicationStatus, getKoreaToday } from '../src/modules/policies/application-status';
-import type { ApplicationPeriod } from '../src/modules/policies/application-status';
+import { calculateApplicationStatus, getKoreaToday } from '../src/modules/policies/rules/public/application-status';
+import type { ApplicationPeriod } from '../src/modules/policies/rules/public/application-status';
 import { transformYouthCenterPolicy } from '../src/modules/ingestion/youth-center/youth-center-policy.transform';
 
 /** 저장된 날짜를 비교하는 상태 계산과 한국 자정 경계를 검증한다. */

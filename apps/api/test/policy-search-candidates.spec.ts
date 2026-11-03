@@ -1,8 +1,8 @@
 import type { ApplicationStatus, PolicySearchRequest } from '@youth-kkultong/shared';
 import * as matching from '../src/modules/matching/evaluate-policy';
-import type { ActiveRegionMap } from '../src/modules/matching/region-match';
-import * as status from '../src/modules/policies/application-status';
-import { buildSearchCandidates } from '../src/modules/policies/policy-search-candidates';
+import type { ActiveRegionMap } from '../src/modules/matching/checks/region-match';
+import * as status from '../src/modules/policies/rules/public/application-status';
+import { buildSearchCandidates } from '../src/modules/policies/rules/public/policy-search-candidates';
 import type { PolicyCandidate } from '../src/modules/policies/repositories/policy.repository';
 import snapshot from '../src/database/seeds/regions.json';
 

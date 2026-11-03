@@ -1,9 +1,9 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { AdminReviewDetail, AdminReviewQuery, PolicySnapshot, ReviewListItem, ReviewListResponse } from '@youth-kkultong/shared';
 import { DataSource } from 'typeorm';
-import { PolicyReviewRepository } from '../repositories/policy-review.repository';
-import { calculatePolicyFieldDiff } from '../policy-field-diff';
-import { getPolicyReviewConflict } from '../policy-review-eligibility';
+import { PolicyReviewRepository } from '../../repositories/policy-review.repository';
+import { calculatePolicyFieldDiff } from '../../rules/reviews/policy-field-diff';
+import { getPolicyReviewConflict } from '../../rules/reviews/policy-review-eligibility';
 
 /** 관리자 검수 목록과 당시 스냅샷 및 현재 상태를 비교하는 상세 응답 조립 */
 @Injectable()

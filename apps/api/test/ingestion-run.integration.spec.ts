@@ -17,7 +17,7 @@ import type { IngestionLogEntry } from '../src/modules/ingestion/services/ingest
 import { IngestionService } from '../src/modules/ingestion/services/ingestion.service';
 import { YouthCenterClient } from '../src/modules/ingestion/youth-center/youth-center.client';
 import { Policy } from '../src/modules/policies/entities/policy.entity';
-import { PolicyCollectionWriteService } from '../src/modules/policies/services/policy-collection-write.service';
+import { PolicyCollectionWriteService } from '../src/modules/policies/services/collection/policy-collection-write.service';
 import { createCollectionWriter, clearPolicyTables, seedMigratedPolicies } from './helpers/policy-collection';
 import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 

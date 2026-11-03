@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises';
 import type { Readable } from 'node:stream';
 import { TextDecoder } from 'node:util';
-import { createAdminPasswordHash } from './modules/admin/services/admin-credentials.service';
+import { createAdminPasswordHash } from '../modules/admin/services/admin-credentials.service';
 
 /** 비밀번호 입력 받기 -> (소유자 전용) 새 파일에 해시를 저장 */
 export async function prepareAdminPassword(input: Readable, outputPath: string): Promise<void> {

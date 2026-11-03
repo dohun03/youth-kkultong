@@ -67,7 +67,7 @@ if (process.env.INGESTION_TEST_MODE === 'SAVE_PAUSE') {
 }
 
 if (process.env.INGESTION_TEST_MODE === 'REVIEW_PAUSE') {
-  const { PolicyReviewsWriteService } = require('../../src/modules/policies/services/policy-reviews-write.service.ts');
+  const { PolicyReviewsWriteService } = require('../../src/modules/policies/services/reviews/policy-reviews-write.service.ts');
   const originalSave = PolicyReviewsWriteService.prototype.saveReviewChanges;
   PolicyReviewsWriteService.prototype.saveReviewChanges = async function (...args) {
     await originalSave.apply(this, args);
@@ -78,7 +78,7 @@ if (process.env.INGESTION_TEST_MODE === 'REVIEW_PAUSE') {
 }
 
 if (process.env.INGESTION_TEST_MODE === 'COMMIT_PAUSE') {
-  const { PolicyCollectionWriteService } = require('../../src/modules/policies/services/policy-collection-write.service.ts');
+  const { PolicyCollectionWriteService } = require('../../src/modules/policies/services/collection/policy-collection-write.service.ts');
   const originalSave = PolicyCollectionWriteService.prototype.saveCollection;
   PolicyCollectionWriteService.prototype.saveCollection = async function (...args) {
     const result = await originalSave.apply(this, args);

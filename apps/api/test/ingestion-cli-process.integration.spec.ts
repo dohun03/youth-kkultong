@@ -32,7 +32,7 @@ describe('독립 CLI 두 개의 잠금 경쟁과 프로세스 종료 복구', ()
 
   /** 실제 CLI 파일을 새 Node 프로세스로 실행하고 출력·종료 코드·진행 신호를 수집한다. */
   function startCli(name: string, mode = '') {
-    const child = spawn(process.execPath, ['--require', join(__dirname, 'fixtures/ingestion-cli.preload.cjs'), join(__dirname, '../src/import-policies.ts')], {
+    const child = spawn(process.execPath, ['--require', join(__dirname, 'fixtures/ingestion-cli.preload.cjs'), join(__dirname, '../src/cli/import-policies.ts')], {
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
       env: { ...process.env, NODE_OPTIONS: '', DATABASE_URL: environment.DATABASE_URL,
         ADMIN_USERNAME: '', ADMIN_PASSWORD_HASH: '', ADMIN_AUTH_SECRET: '', ADMIN_WEB_ORIGIN: '',

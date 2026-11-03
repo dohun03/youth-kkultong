@@ -1,8 +1,8 @@
 # 청년꿀통(youth-kkultong) ARCHITECTURE v0.7
 
-기준: PRD v0.12 (2026-10-28) · 상태: MVP1 실제 구조 유지 · MVP2 설계 확정안
+기준: PRD v0.12 (2026-10-28) · 상태: MVP2 설계 확정안 · API 내부 파일 분류 반영
 
-이 문서는 실행 구조·모듈 경계·데이터 흐름을 정의한다. 제품 정책은 PRD, 컬럼·API·상태 전이·예외·테스트 기준은 `mvp-2/SPEC.md`를 따른다. MVP1 구현 기록은 `mvp-1/SUMMARY.md`이며 MVP2 추가 구조는 아직 구현 전이다.
+이 문서는 실행 구조·모듈 경계·데이터 흐름을 정의한다. 제품 정책은 PRD, 컬럼·API·상태 전이·예외·테스트 기준은 `mvp-2/SPEC.md`를 따른다. 실제 구현과 검증 기록은 `mvp-1/SUMMARY.md`와 `mvp-2/SUMMARY.md`에서 관리한다.
 
 ## 목차
 
@@ -148,7 +148,7 @@ MVP1의 `policies`·`regions`를 유지하고 `source_policies`·`policy_reviews
 
 ## 6. 저장소·디렉터리 구성
 
-기존 모듈별 배치를 유지하고 아래 위치에 MVP2 기능을 추가한다. 상세 파일 분리는 PLAN에서 정한다.
+모듈별 책임을 유지하고 역할별로 배치한다. 같은 역할 안에서 여러 업무를 다루면 함께 읽고 수정하는 업무별 하위 폴더로 묶는다. 아래 API 내부 분류는 2026-11-04 사용자 승인으로 반영한 기준이다.
 
 | 위치 | 역할 |
 | --- | --- |
@@ -159,12 +159,48 @@ MVP1의 `policies`·`regions`를 유지하고 `source_policies`·`policy_reviews
 | `apps/api/src/modules/admin/` | 관리자 모듈. `controllers/`는 HTTP 처리, `services/`는 자격 및 쿠키 처리, `guards/`는 권한과 출처 검사 |
 | `apps/api/src/modules/matching/`, `meta/` | 기존 매칭·메타 정보 |
 | `apps/api/src/database/`, `common/` | 연결·Migration·시드, 설정·오류·로깅 |
+| `apps/api/src/cli/` | HTTP 서버 없이 실행하는 수동 수집과 관리자 비밀번호 해시 준비 진입점 |
 | `packages/shared/` | API 계약·Zod 스키마·공용 함수 |
 | `docs/mvp-1/`, `docs/mvp-2/` | MVP별 SPEC·PLAN·구현 결과 |
 
 **공용 타입에는 API 요청·응답 형식만 둔다.** DB 엔티티는 소속 NestJS 모듈에 둔다. 취업·학력 코드의 실제 값·표시명은 서버에서 관리하고 `MetaModule`을 통해 제공한다. 공용 인터페이스는 이 메타 API의 응답 형식을 정의한다.
 
 `meta`·`policies`의 Controller·Repository·Service는 소속 모듈 안의 `controllers/`·`repositories/`·`services/`에 역할별로 둔다. 모듈 등록 파일은 모듈 루트에 유지하고, 해당 역할의 파일이 아직 없으면 빈 폴더는 만들지 않는다.
+
+Policies는 다음 기준으로 분류한다. 기존 파일명과 클래스 및 함수 이름은 유지한다.
+
+```text
+modules/policies/
+├─ policies.module.ts
+├─ controllers/
+├─ entities/
+├─ repositories/
+├─ services/
+│  ├─ public/       # 공개 검색과 상세 조회
+│  ├─ collection/   # 수집 원본 반영과 누락 조회
+│  └─ reviews/      # 후보 저장, 검수 조회, 승인과 거절
+├─ rules/
+│  ├─ public/       # 신청 상태, 제목 검색, 검색 후보 판정
+│  ├─ collection/   # 수집 결과와 누락 판정
+│  └─ reviews/      # 필드 차이, 후보 조정, 검수 충돌 판정
+├─ responses/       # 공개 카드와 검색 응답 조립
+└─ types/           # 수집과 승인이 함께 쓰는 PolicyWriteInput
+```
+
+- `services/public/`: `policies-search.service.ts`, `policies-detail.service.ts`.
+- `services/collection/`: `policy-collection-write.service.ts`, `missing-policies-read.service.ts`.
+- `services/reviews/`: `policy-reviews-read.service.ts`, `policy-reviews-write.service.ts`, `policy-review-approval.service.ts`, `policy-review-rejection.service.ts`.
+- `rules/public/`: `application-status.ts`, `title-search.ts`, `policy-search-candidates.ts`.
+- `rules/collection/`: `policy-collection.ts`.
+- `rules/reviews/`: `policy-field-diff.ts`, `policy-review-decision.ts`, `policy-review-eligibility.ts`.
+- `responses/`: `policy-card.ts`, `policy-search-response.ts`.
+- `types/`: `policy-write.types.ts`.
+
+Matching의 `checks/`에는 `age-match.ts`, `job-match.ts`, `school-match.ts`, `region-match.ts`를 두고, 종합 판정 `evaluate-policy.ts`와 정렬 `sort-policies.ts`는 Matching 루트에 둔다. 별도 NestJS 모듈은 추가하지 않는다.
+
+Admin은 `controllers/`, `services/`, `guards/`를 유지한다. Ingestion은 공통 `services/`와 출처별 `youth-center/`를 유지한다. Meta, Common, Database는 현재 역할 구분을 유지한다.
+
+`cli/`에는 `import-policies.ts`와 `prepare-admin-password.ts`를 둔다. 수집 명령 `npm run import:policies`는 유지하며 실행 대상은 `dist/cli/import-policies.js`다. 비밀번호 해시 준비의 직접 실행 경로는 `apps/api/dist/cli/prepare-admin-password.js`다. Migration과 시드 CLI는 기존 Database 경로를 사용한다.
 
 ## 7. 실행·배포와 보안
 

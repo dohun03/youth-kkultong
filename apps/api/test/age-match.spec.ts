@@ -1,5 +1,5 @@
-import { checkAge } from '../src/modules/matching/age-match';
-import type { AgeMatchResult, PolicyAgeRange } from '../src/modules/matching/age-match';
+import { checkAge } from '../src/modules/matching/checks/age-match';
+import type { AgeMatchResult, PolicyAgeRange } from '../src/modules/matching/checks/age-match';
 import { transformYouthCenterPolicy } from '../src/modules/ingestion/youth-center/youth-center-policy.transform';
 
 /** 나이 구간의 경계와 불명확한 정책 조건을 보수적으로 판정하는지 검증한다. */

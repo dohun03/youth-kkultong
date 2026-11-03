@@ -3,7 +3,7 @@ import type { EntityManager, QueryRunner } from 'typeorm';
 import { parseEnvironment } from '../src/common/environment';
 import { transformYouthCenterPolicy } from '../src/modules/ingestion/youth-center/youth-center-policy.transform';
 import { createYouthCenterPolicyContentHash } from '../src/modules/ingestion/youth-center/youth-center-policy.hash';
-import { PolicyCollectionCommitError } from '../src/modules/policies/services/policy-collection-write.service';
+import { PolicyCollectionCommitError } from '../src/modules/policies/services/collection/policy-collection-write.service';
 import { createCollectionWriter } from './helpers/policy-collection';
 import type { SourcePolicy } from '../src/modules/policies/entities/source-policy.entity';
 

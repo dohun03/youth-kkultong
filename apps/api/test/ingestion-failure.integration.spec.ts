@@ -17,7 +17,7 @@ import { YouthCenterClient } from '../src/modules/ingestion/youth-center/youth-c
 import type { YouthCenterRawPolicy } from '../src/modules/ingestion/youth-center/youth-center-response.schema';
 import * as hashing from '../src/modules/ingestion/youth-center/youth-center-policy.hash';
 import { Policy } from '../src/modules/policies/entities/policy.entity';
-import { PolicyCollectionWriteService } from '../src/modules/policies/services/policy-collection-write.service';
+import { PolicyCollectionWriteService } from '../src/modules/policies/services/collection/policy-collection-write.service';
 import { createCollectionWriter, clearPolicyTables, seedMigratedPolicies } from './helpers/policy-collection';
 import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 

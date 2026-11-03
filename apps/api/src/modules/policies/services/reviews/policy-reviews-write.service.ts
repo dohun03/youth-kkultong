@@ -1,11 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { JsonValue } from '@youth-kkultong/shared';
 import type { EntityManager } from 'typeorm';
-import { createYouthCenterPolicyContentHash } from '../../ingestion/youth-center/youth-center-policy.hash';
-import type { Policy } from '../entities/policy.entity';
-import type { SourcePolicy } from '../entities/source-policy.entity';
-import { PolicyReviewRepository } from '../repositories/policy-review.repository';
-import type { PendingReviewInsert, SupersededReviewInput } from '../repositories/policy-review.repository';
+import { createYouthCenterPolicyContentHash } from '../../../ingestion/youth-center/youth-center-policy.hash';
+import type { Policy } from '../../entities/policy.entity';
+import type { SourcePolicy } from '../../entities/source-policy.entity';
+import { PolicyReviewRepository } from '../../repositories/policy-review.repository';
+import type { PendingReviewInsert, SupersededReviewInput } from '../../repositories/policy-review.repository';
 
 /** 새로 수집한 원본 + 현재 공개된 정책 */
 export interface ReviewCandidateInput {

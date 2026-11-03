@@ -894,3 +894,30 @@ git diff --check
 - 승인과 거절의 HTTP 경로 및 인증과 Origin, 입력 및 오류 응답의 실제 연결은 Step 26, 독립 연결의 검수와 수집 경쟁은 Step 27 범위다. 이번 Step 25 변경은 커밋하지 않고 검수할 수 있는 상태로 남겼다.
 
 핵심 읽는 순서: `policy-review-rejection.service.ts`의 `reject()` → `policy-review.repository.ts`의 `findReviewForUpdate()`와 `rejectPendingReview()` → `policy-review-rejection.integration.spec.ts`. 미해결 실패는 없다. 다음 미완료 순서는 Step 26이며 이번 요청 범위인 Step 25에서 중단한다.
+
+## 32. 사용자 승인 API 내부 파일 분류 정리 (2026-11-04)
+
+사용자 요청으로 Step 25를 `0c77fa7`(`feat: 검수 거절과 처리 이력 저장 구현`)로 커밋한 뒤 전체 API 소스 구조를 검토했다. 사용자가 24개 파일의 재배치와 배치 규칙 문서 반영을 승인해 별도 수행했다. Step 26은 진행하지 않았다.
+
+- Policies의 18개 파일을 `services/{public,collection,reviews}/`, `rules/{public,collection,reviews}/`, `responses/`, `types/`로 분류했다. Matching의 개별 검사 4개는 `checks/`, 수집과 비밀번호 해시 준비 CLI 2개는 `src/cli/`로 이동했다. 정확한 파일별 배치와 역할은 `ARCHITECTURE.md` 6장에서 관리한다.
+- 소스 import, 테스트와 fixture의 import 및 require, 독립 CLI 자식 프로세스 실행 경로, 비밀번호 CLI의 빌드 경로 및 npm 수집 명령의 실행 대상을 갱신했다. 파일명과 클래스 및 함수 이름, 업무 규칙, API 계약, DB 스키마와 Migration, 의존성 및 관리자 인증의 HTTP 전용 등록은 유지했다.
+- `AGENT_RULES.md`에 새 파일 생성 전 소유 모듈 → 역할 → 업무를 결정하는 절차와 Step 완료 시 배치 점검을 추가했다. 승인된 모듈 내부에서 분류 기준에 맞춘 새 폴더와 파일 및 서비스를 추가하는 작업은 해당 Step에서 직접 처리하며, 모듈 책임 변경과 대규모 이동은 별도 승인 대상으로 구체화했다. ARCHITECTURE에 실제 디렉터리 분류와 CLI 경로를 기록하고 PLAN에 이번 별도 작업을 연결했다.
+- 과거 SUMMARY의 당시 파일 경로는 이력으로 보존했다. 현재 수집 명령은 동일한 `npm run import:policies`이며 실행 파일은 `apps/api/dist/cli/import-policies.js`다. 비밀번호 해시 준비의 직접 실행 경로는 `apps/api/dist/cli/prepare-admin-password.js`로 변경됐다. 현재 파일 위치는 위의 분류 기준을 따른다.
+
+### 검증과 실행 상태
+
+```sh
+npm run typecheck
+npm run build --workspace apps/api
+node /tmp/api-restructure-verify.cjs before
+node /tmp/api-restructure-verify.cjs full
+node /tmp/api-restructure-verify.cjs after
+git diff --check
+```
+
+- shared/API/web 전체 타입 검사, shared/API 빌드 및 전체 API **73개 스위트 2,195개 테스트 모두 통과**. 실패와 건너뜀은 0건이다. 독립 수집 CLI, 비밀번호 준비 CLI, Migration과 시드 CLI, 실제 Next.js 웹 프록시의 통합 테스트를 포함한다. 기존 Node 실험 기능 및 pg 동시 query 사용에 대한 경고는 출력됐으며 테스트 실패는 없다.
+- 24개 파일의 새 소스와 빌드 파일이 모두 존재하고 이전 소스와 빌드 경로는 남지 않는지 확인했다. 소스 파일 수는 이전과 같은 71개다. 정적 상대 import와 require의 미해결 경로는 0개이며 현재 코드와 실행 설정에 남은 이전 이동 경로도 0개다. Git 기준 147개 소스와 테스트 및 스크립트를 비교해 경로 문자열 외 코드와 주석이 동일함을 확인했다.
+- 비밀값을 가린 결과는 `/tmp/api-restructure-full-results.json`과 `/tmp/api-restructure-full-output.log`, DB 전후 기록은 `/tmp/api-restructure-{before,after}.json`에 있다. 공개 3,390건과 원본 3,390건, 검수 0건, 지역 537개 및 Migration 3개의 전체 행 체크섬이 검증 전후 동일하며 잔여 테스트 스키마는 0개다.
+- 실제 온통청년 API 수집은 실행하지 않았으며 테스트의 외부 응답은 fixture를 사용했다. 웹 화면 변경이 없어 기존 컨테이너를 재생성하지 않았다. 이번 재분류 변경은 미커밋 상태로 남겼다.
+
+현재 코드 읽는 순서 예시: `modules/policies/services/public/policies-search.service.ts` → `rules/public/policy-search-candidates.ts` → `responses/policy-search-response.ts`. 검수 처리는 `services/reviews/`, 수집 반영과 누락 조회는 `services/collection/`에서 확인한다. 미해결 실패는 없으며 다음 Step은 사용자 요청 시 진행한다.

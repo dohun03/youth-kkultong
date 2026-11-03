@@ -1,5 +1,5 @@
-import { checkSchool } from '../src/modules/matching/school-match';
-import type { SchoolMatchResult } from '../src/modules/matching/school-match';
+import { checkSchool } from '../src/modules/matching/checks/school-match';
+import type { SchoolMatchResult } from '../src/modules/matching/checks/school-match';
 import { transformYouthCenterPolicy } from '../src/modules/ingestion/youth-center/youth-center-policy.transform';
 import official from './fixtures/eligibility-codes.official.json';
 

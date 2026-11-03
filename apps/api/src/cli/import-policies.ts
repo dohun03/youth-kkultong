@@ -1,8 +1,8 @@
 import 'reflect-metadata';
 import type { INestApplicationContext } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
-import { IngestionService } from './modules/ingestion/services/ingestion.service';
+import { AppModule } from '../app.module';
+import { IngestionService } from '../modules/ingestion/services/ingestion.service';
 
 /** HTTP 서버 없이 정책을 한 번 수집하고 성공(0)·실패(1)·중복 실행(2)을 반환한다. */
 export async function importPolicies(): Promise<number> {

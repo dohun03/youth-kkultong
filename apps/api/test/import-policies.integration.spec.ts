@@ -13,7 +13,7 @@ import type { DataSource, QueryRunner } from 'typeorm';
 import { loadEnvironment } from '../src/common/environment';
 import * as database from '../src/database/data-source';
 import { CreatePolicies1792162800000 } from '../src/database/migrations/1792162800000-create-policies';
-import { importPolicies } from '../src/import-policies';
+import { importPolicies } from '../src/cli/import-policies';
 import { IngestionLockService } from '../src/modules/ingestion/services/ingestion-lock.service';
 import { IngestionLogService } from '../src/modules/ingestion/services/ingestion-log.service';
 

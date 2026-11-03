@@ -1,5 +1,5 @@
 import type { CollectionResult } from '@youth-kkultong/shared';
-import type { SourcePolicy } from './entities/source-policy.entity';
+import type { SourcePolicy } from '../../entities/source-policy.entity';
 
 /** 정상 전체 수집에서 확인된 정책의 판정과 초기화할 누락 횟수 */
 export interface CollectedPolicyResult {

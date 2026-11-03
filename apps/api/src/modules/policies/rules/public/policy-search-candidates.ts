@@ -1,11 +1,11 @@
 import { parsePolicyCategories } from '@youth-kkultong/shared';
 import type { ApplicationStatus, PolicySearchRequest } from '@youth-kkultong/shared';
-import { evaluatePolicy } from '../matching/evaluate-policy';
-import type { PolicyMatchResult } from '../matching/evaluate-policy';
-import type { ActiveRegionMap } from '../matching/region-match';
+import { evaluatePolicy } from '../../../matching/evaluate-policy';
+import type { PolicyMatchResult } from '../../../matching/evaluate-policy';
+import type { ActiveRegionMap } from '../../../matching/checks/region-match';
 import { getTitleSearchTerms, matchesPolicyTitle } from './title-search';
 import { calculateApplicationStatus } from './application-status';
-import type { PolicyCandidate } from './repositories/policy.repository';
+import type { PolicyCandidate } from '../../repositories/policy.repository';
 
 /** 분야·마감·자격 필터를 통과하고 검색 시점의 상태·점수·태그가 붙은 정렬 전 후보 */
 export type MatchedPolicyCandidate = PolicyCandidate & Pick<PolicyMatchResult, 'score' | 'tags'> & {

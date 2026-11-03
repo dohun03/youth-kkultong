@@ -1,11 +1,11 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { ReviewActionRequest, ReviewActionResponse } from '@youth-kkultong/shared';
 import { DataSource } from 'typeorm';
-import { createYouthCenterPolicyContentHash } from '../../ingestion/youth-center/youth-center-policy.hash';
-import { transformYouthCenterPolicy } from '../../ingestion/youth-center/youth-center-policy.transform';
-import { getPolicyReviewConflict } from '../policy-review-eligibility';
-import { PolicyReviewRepository } from '../repositories/policy-review.repository';
-import { PolicyRepository } from '../repositories/policy.repository';
+import { createYouthCenterPolicyContentHash } from '../../../ingestion/youth-center/youth-center-policy.hash';
+import { transformYouthCenterPolicy } from '../../../ingestion/youth-center/youth-center-policy.transform';
+import { getPolicyReviewConflict } from '../../rules/reviews/policy-review-eligibility';
+import { PolicyReviewRepository } from '../../repositories/policy-review.repository';
+import { PolicyRepository } from '../../repositories/policy.repository';
 
 /** 잠금 후 검수 조건과 스냅샷을 확인하고 공개 저장 및 승인 기록을 함께 확정 */
 @Injectable()

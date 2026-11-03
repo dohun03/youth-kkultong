@@ -1,9 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { QueryFailedError } from 'typeorm';
-import { PolicyCollectionCommitError, PolicyCollectionWriteService } from '../../policies/services/policy-collection-write.service';
-import type { PolicyCollectionSaveResult } from '../../policies/services/policy-collection-write.service';
-import type { PolicyWriteInput } from '../../policies/policy-write.types';
+import { PolicyCollectionCommitError, PolicyCollectionWriteService } from '../../policies/services/collection/policy-collection-write.service';
+import type { PolicyCollectionSaveResult } from '../../policies/services/collection/policy-collection-write.service';
+import type { PolicyWriteInput } from '../../policies/types/policy-write.types';
 import { IngestionLockError, IngestionLockService } from './ingestion-lock.service';
 import type { IngestionLockResult } from './ingestion-lock.service';
 import { IngestionLogError, IngestionLogService } from './ingestion-log.service';

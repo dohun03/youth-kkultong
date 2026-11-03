@@ -2,7 +2,7 @@ import { Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import type { AdminReviewDetail, AdminReviewQuery, ReviewListResponse } from '@youth-kkultong/shared';
 import { adminReviewIdSchema, adminReviewQuerySchema } from '@youth-kkultong/shared';
 import { ZodValidationPipe } from '../../../common/zod-validation.pipe';
-import { PolicyReviewsReadService } from '../../policies/services/policy-reviews-read.service';
+import { PolicyReviewsReadService } from '../../policies/services/reviews/policy-reviews-read.service';
 
 /** 인증된 관리자에게 검수 목록과 과거 이력을 포함한 상세 조회 제공 */
 @Controller('admin/reviews')

@@ -1,5 +1,5 @@
-import { checkJob } from '../src/modules/matching/job-match';
-import type { JobMatchResult } from '../src/modules/matching/job-match';
+import { checkJob } from '../src/modules/matching/checks/job-match';
+import type { JobMatchResult } from '../src/modules/matching/checks/job-match';
 import { transformYouthCenterPolicy } from '../src/modules/ingestion/youth-center/youth-center-policy.transform';
 import official from './fixtures/eligibility-codes.official.json';
 

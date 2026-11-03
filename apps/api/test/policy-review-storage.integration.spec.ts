@@ -13,9 +13,9 @@ import { PolicyReview } from '../src/modules/policies/entities/policy-review.ent
 import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 import { SourcePolicyRepository } from '../src/modules/policies/repositories/source-policy.repository';
 import { PolicyReviewRepository } from '../src/modules/policies/repositories/policy-review.repository';
-import { PolicyReviewsWriteService } from '../src/modules/policies/services/policy-reviews-write.service';
-import type { ReviewCandidateInput } from '../src/modules/policies/services/policy-reviews-write.service';
-import { decidePolicyReview } from '../src/modules/policies/policy-review-decision';
+import { PolicyReviewsWriteService } from '../src/modules/policies/services/reviews/policy-reviews-write.service';
+import type { ReviewCandidateInput } from '../src/modules/policies/services/reviews/policy-reviews-write.service';
+import { decidePolicyReview } from '../src/modules/policies/rules/reviews/policy-review-decision';
 
 const collectedAt = new Date('2026-10-29T03:00:00.123Z');
 const closedAt = new Date('2026-10-29T04:00:00.456Z');

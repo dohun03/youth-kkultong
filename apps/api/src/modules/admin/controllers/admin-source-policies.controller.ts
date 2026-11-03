@@ -2,7 +2,7 @@ import { Controller, Get, Inject, Query } from '@nestjs/common';
 import type { MissingPolicyQuery, MissingPolicyResponse } from '@youth-kkultong/shared';
 import { missingPolicyQuerySchema } from '@youth-kkultong/shared';
 import { ZodValidationPipe } from '../../../common/zod-validation.pipe';
-import { MissingPoliciesReadService } from '../../policies/services/missing-policies-read.service';
+import { MissingPoliciesReadService } from '../../policies/services/collection/missing-policies-read.service';
 
 /** 인증된 관리자가 수집에서 누락된 원본 정책을 조회하는 경로 제공 */
 @Controller('admin/source-policies')

@@ -1,8 +1,8 @@
 import type { PolicySearchRequest, SortKey, UserConditions } from '@youth-kkultong/shared';
-import { buildPolicySearchResponse } from '../src/modules/policies/policy-search-response';
-import { buildSearchCandidates } from '../src/modules/policies/policy-search-candidates';
-import type { MatchedPolicyCandidate } from '../src/modules/policies/policy-search-candidates';
-import type { ActiveRegionMap } from '../src/modules/matching/region-match';
+import { buildPolicySearchResponse } from '../src/modules/policies/responses/policy-search-response';
+import { buildSearchCandidates } from '../src/modules/policies/rules/public/policy-search-candidates';
+import type { MatchedPolicyCandidate } from '../src/modules/policies/rules/public/policy-search-candidates';
+import type { ActiveRegionMap } from '../src/modules/matching/checks/region-match';
 import { createPolicySearchSchema } from '@youth-kkultong/shared';
 import { JOB_OPTIONS, SCHOOL_OPTIONS } from '../src/modules/meta/eligibility-codes';
 import snapshot from '../src/database/seeds/regions.json';

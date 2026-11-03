@@ -1,4 +1,4 @@
-import type { Policy } from './entities/policy.entity';
+import type { Policy } from '../entities/policy.entity';
 
 /** 수집 변환과 검수 승인의 공개 저장에 사용할 정책 값 */
 export type PolicyWriteInput = Omit<Policy, 'id' | 'createdAt' | 'updatedAt' | 'sourceRegisteredAt' | 'sourceModifiedAt'> & {

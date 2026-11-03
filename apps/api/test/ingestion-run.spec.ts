@@ -7,7 +7,7 @@ import { IngestionLogError, IngestionLogService } from '../src/modules/ingestion
 import type { IngestionLogEntry } from '../src/modules/ingestion/services/ingestion-log.service';
 import { IngestionService, YouthCenterCollectionValidationError } from '../src/modules/ingestion/services/ingestion.service';
 import { YouthCenterClient } from '../src/modules/ingestion/youth-center/youth-center.client';
-import { PolicyCollectionCommitError, PolicyCollectionWriteService } from '../src/modules/policies/services/policy-collection-write.service';
+import { PolicyCollectionCommitError, PolicyCollectionWriteService } from '../src/modules/policies/services/collection/policy-collection-write.service';
 import { createCollectionWriter, clearPolicyTables, seedMigratedPolicies } from './helpers/policy-collection';
 import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 

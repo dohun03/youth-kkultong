@@ -1,6 +1,6 @@
 import type { ReviewActionRequest } from '@youth-kkultong/shared';
-import { getPolicyReviewConflict } from '../src/modules/policies/policy-review-eligibility';
-import type { PolicyReviewEligibilityContext } from '../src/modules/policies/policy-review-eligibility';
+import { getPolicyReviewConflict } from '../src/modules/policies/rules/reviews/policy-review-eligibility';
+import type { PolicyReviewEligibilityContext } from '../src/modules/policies/rules/reviews/policy-review-eligibility';
 
 /** 공개 A를 기준으로 최신 원본 B를 검수하는 대기 후보 준비 */
 function context(isNew = false): PolicyReviewEligibilityContext {

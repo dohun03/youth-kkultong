@@ -14,7 +14,7 @@ import { CreateRegions1792162801000 } from '../src/database/migrations/179216280
 import snapshot from '../src/database/seeds/regions.json';
 import { seedRegions } from '../src/database/seeds/regions.seed';
 import { createApplication } from '../src/main';
-import * as dates from '../src/modules/policies/application-status';
+import * as dates from '../src/modules/policies/rules/public/application-status';
 import { Policy } from '../src/modules/policies/entities/policy.entity';
 import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 import { RegionRepository } from '../src/modules/meta/repositories/region.repository';

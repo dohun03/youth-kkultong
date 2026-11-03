@@ -15,8 +15,8 @@ import { YouthCenterClient } from '../src/modules/ingestion/youth-center/youth-c
 import { createYouthCenterPolicyContentHash } from '../src/modules/ingestion/youth-center/youth-center-policy.hash';
 import { transformYouthCenterPolicy } from '../src/modules/ingestion/youth-center/youth-center-policy.transform';
 import { Policy } from '../src/modules/policies/entities/policy.entity';
-import { PolicyCollectionWriteService } from '../src/modules/policies/services/policy-collection-write.service';
-import type { PolicyWriteInput } from '../src/modules/policies/policy-write.types';
+import { PolicyCollectionWriteService } from '../src/modules/policies/services/collection/policy-collection-write.service';
+import type { PolicyWriteInput } from '../src/modules/policies/types/policy-write.types';
 import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 
 /** 원본 변환과 해시 계산을 마친 테스트 정책 생성 */

@@ -1,4 +1,4 @@
-import { JOB_OPTIONS, JOB_UNRESTRICTED_CODE } from '../meta/eligibility-codes';
+import { JOB_OPTIONS, JOB_UNRESTRICTED_CODE } from '../../meta/eligibility-codes';
 
 /** 취업 항목의 부합·불일치·확인 필요·미입력·제한 없음을 구분 */
 export type JobMatchResult = 'MATCHED' | 'EXCLUDED' | 'UNKNOWN' | 'NOT_PROVIDED' | 'UNRESTRICTED';

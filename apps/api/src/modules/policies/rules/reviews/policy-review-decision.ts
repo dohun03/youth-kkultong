@@ -1,8 +1,8 @@
 import type { CollectionResult, ReviewKind } from '@youth-kkultong/shared';
-import type { Policy } from './entities/policy.entity';
-import type { SourcePolicy } from './entities/source-policy.entity';
-import type { PolicyReview } from './entities/policy-review.entity';
-import type { SupersededReviewInput } from './repositories/policy-review.repository';
+import type { Policy } from '../../entities/policy.entity';
+import type { SourcePolicy } from '../../entities/source-policy.entity';
+import type { PolicyReview } from '../../entities/policy-review.entity';
+import type { SupersededReviewInput } from '../../repositories/policy-review.repository';
 
 /** 원본 하나의 검수 판단에 필요한 최신 내용과 공개본, 대기와 거절 정보 */
 export interface PolicyReviewContext {

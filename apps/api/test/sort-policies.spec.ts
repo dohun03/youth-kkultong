@@ -1,7 +1,7 @@
 import type { ApplicationStatus, SortKey } from '@youth-kkultong/shared';
 import { sortPolicies } from '../src/modules/matching/sort-policies';
 import type { SortablePolicy } from '../src/modules/matching/sort-policies';
-import { calculateApplicationStatus } from '../src/modules/policies/application-status';
+import { calculateApplicationStatus } from '../src/modules/policies/rules/public/application-status';
 
 /** 목록 정렬의 우선순위·NULL·고정 동점 기준과 입력 불변성을 검증한다. */
 describe('정책 목록 정렬', () => {

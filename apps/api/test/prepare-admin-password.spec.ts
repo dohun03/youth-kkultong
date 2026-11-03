@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { Readable } from 'node:stream';
-import { prepareAdminPassword } from '../src/prepare-admin-password';
+import { prepareAdminPassword } from '../src/cli/prepare-admin-password';
 import { AdminCredentialsService, parseAdminCredentials } from '../src/modules/admin/services/admin-credentials.service';
 
 describe('비밀값을 출력하지 않는 관리자 해시 준비', () => {
@@ -54,7 +54,7 @@ describe('비밀값을 출력하지 않는 관리자 해시 준비', () => {
 
   it('실제 CLI는 비밀번호와 해시를 표준 출력 및 오류 출력에 남기지 않는다', async () => {
     const password = '  cli-test-secret 🔑  ';
-    const result = spawnSync(process.execPath, ['dist/prepare-admin-password.js', output], {
+    const result = spawnSync(process.execPath, ['dist/cli/prepare-admin-password.js', output], {
       cwd: join(__dirname, '..'), input: password, encoding: 'utf8',
     });
     expect(result.status).toBe(0);
@@ -68,7 +68,7 @@ describe('비밀값을 출력하지 않는 관리자 해시 준비', () => {
   it('실제 CLI의 저장 실패와 추가 인자 오류에도 비밀값을 출력하지 않는다', async () => {
     await writeFile(output, '기존 내용');
     for (const args of [[output], [output, 'argument-secret']]) {
-      const result = spawnSync(process.execPath, ['dist/prepare-admin-password.js', ...args], {
+      const result = spawnSync(process.execPath, ['dist/cli/prepare-admin-password.js', ...args], {
         cwd: join(__dirname, '..'), input: 'stdin-secret', encoding: 'utf8',
       });
       expect(result.status).toBe(1);

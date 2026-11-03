@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createYouthCenterPolicyContentHash } from '../src/modules/ingestion/youth-center/youth-center-policy.hash';
-import { classifyPolicyCollection } from '../src/modules/policies/policy-collection';
+import { classifyPolicyCollection } from '../src/modules/policies/rules/collection/policy-collection';
 import type { SourcePolicy } from '../src/modules/policies/entities/source-policy.entity';
 
 const source = 'youthcenter';

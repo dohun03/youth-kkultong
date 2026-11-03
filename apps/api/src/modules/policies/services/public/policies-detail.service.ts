@@ -1,11 +1,11 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { PolicyDetail } from '@youth-kkultong/shared';
 import { DataSource } from 'typeorm';
-import { JOB_OPTIONS, SCHOOL_OPTIONS } from '../../meta/eligibility-codes';
-import { RegionRepository } from '../../meta/repositories/region.repository';
-import { calculateApplicationStatus, getKoreaToday } from '../application-status';
-import { toPolicyCard } from '../policy-card';
-import { PolicyRepository } from '../repositories/policy.repository';
+import { JOB_OPTIONS, SCHOOL_OPTIONS } from '../../../meta/eligibility-codes';
+import { RegionRepository } from '../../../meta/repositories/region.repository';
+import { calculateApplicationStatus, getKoreaToday } from '../../rules/public/application-status';
+import { toPolicyCard } from '../../responses/policy-card';
+import { PolicyRepository } from '../../repositories/policy.repository';
 
 /** 공식 취업·학력 명칭 조회표. 미확인 코드는 원래 코드로 표시 */
 const jobLabels = new Map<string, string>(JOB_OPTIONS.map(({ code, label }) => [code, label]));

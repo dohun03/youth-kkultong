@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { MissingPolicyQuery, MissingPolicyResponse } from '@youth-kkultong/shared';
 import { DataSource } from 'typeorm';
-import { SourcePolicyRepository } from '../repositories/source-policy.repository';
+import { SourcePolicyRepository } from '../../repositories/source-policy.repository';
 
 /** 누락 원본의 목록과 페이지 정보를 관리자 응답으로 조립 */
 @Injectable()

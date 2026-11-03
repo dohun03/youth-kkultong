@@ -3,16 +3,16 @@ import { DatabaseModule } from '../../database/database.module';
 import { PolicyRepository } from './repositories/policy.repository';
 import { MetaModule } from '../meta/meta.module';
 import { PoliciesController } from './controllers/policies.controller';
-import { PoliciesSearchService } from './services/policies-search.service';
-import { PoliciesDetailService } from './services/policies-detail.service';
+import { PoliciesSearchService } from './services/public/policies-search.service';
+import { PoliciesDetailService } from './services/public/policies-detail.service';
 import { SourcePolicyRepository } from './repositories/source-policy.repository';
 import { PolicyReviewRepository } from './repositories/policy-review.repository';
-import { PolicyReviewsWriteService } from './services/policy-reviews-write.service';
-import { PolicyCollectionWriteService } from './services/policy-collection-write.service';
-import { PolicyReviewsReadService } from './services/policy-reviews-read.service';
-import { MissingPoliciesReadService } from './services/missing-policies-read.service';
-import { PolicyReviewApprovalService } from './services/policy-review-approval.service';
-import { PolicyReviewRejectionService } from './services/policy-review-rejection.service';
+import { PolicyReviewsWriteService } from './services/reviews/policy-reviews-write.service';
+import { PolicyCollectionWriteService } from './services/collection/policy-collection-write.service';
+import { PolicyReviewsReadService } from './services/reviews/policy-reviews-read.service';
+import { MissingPoliciesReadService } from './services/collection/missing-policies-read.service';
+import { PolicyReviewApprovalService } from './services/reviews/policy-review-approval.service';
+import { PolicyReviewRejectionService } from './services/reviews/policy-review-rejection.service';
 
 /** 공개 정책 조회와 원본 저장에 필요한 저장소와 서비스를 등록하는 모듈 */
 @Module({

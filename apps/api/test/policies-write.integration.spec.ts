@@ -9,9 +9,9 @@ import { Policy } from '../src/modules/policies/entities/policy.entity';
 import { SourcePolicy } from '../src/modules/policies/entities/source-policy.entity';
 import { PolicyReview } from '../src/modules/policies/entities/policy-review.entity';
 import { SourcePolicyRepository } from '../src/modules/policies/repositories/source-policy.repository';
-import { classifyPolicyCollection } from '../src/modules/policies/policy-collection';
+import { classifyPolicyCollection } from '../src/modules/policies/rules/collection/policy-collection';
 import { CreatePolicyReviewTables1793199600000 } from '../src/database/migrations/1793199600000-create-policy-review-tables';
-import type { PolicyWriteInput } from '../src/modules/policies/policy-write.types';
+import type { PolicyWriteInput } from '../src/modules/policies/types/policy-write.types';
 import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
 
 /** 테스트용 정책 데이터를 만들고 내용 해시 계산 */

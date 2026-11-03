@@ -6,8 +6,8 @@ import { PolicyReview } from '../../src/modules/policies/entities/policy-review.
 import { PolicyRepository } from '../../src/modules/policies/repositories/policy.repository';
 import { SourcePolicyRepository } from '../../src/modules/policies/repositories/source-policy.repository';
 import { PolicyReviewRepository } from '../../src/modules/policies/repositories/policy-review.repository';
-import { PolicyReviewsWriteService } from '../../src/modules/policies/services/policy-reviews-write.service';
-import { PolicyCollectionWriteService } from '../../src/modules/policies/services/policy-collection-write.service';
+import { PolicyReviewsWriteService } from '../../src/modules/policies/services/reviews/policy-reviews-write.service';
+import { PolicyCollectionWriteService } from '../../src/modules/policies/services/collection/policy-collection-write.service';
 import { createYouthCenterPolicyContentHash } from '../../src/modules/ingestion/youth-center/youth-center-policy.hash';
 import { transformYouthCenterPolicy } from '../../src/modules/ingestion/youth-center/youth-center-policy.transform';
 import type { YouthCenterRawPolicy } from '../../src/modules/ingestion/youth-center/youth-center-response.schema';

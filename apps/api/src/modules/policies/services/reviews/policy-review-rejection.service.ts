@@ -2,8 +2,8 @@ import { BadRequestException, ConflictException, Inject, Injectable, NotFoundExc
 import { rejectReviewSchema } from '@youth-kkultong/shared';
 import type { RejectReviewRequest, ReviewActionResponse } from '@youth-kkultong/shared';
 import { DataSource } from 'typeorm';
-import { getPolicyReviewConflict } from '../policy-review-eligibility';
-import { PolicyReviewRepository } from '../repositories/policy-review.repository';
+import { getPolicyReviewConflict } from '../../rules/reviews/policy-review-eligibility';
+import { PolicyReviewRepository } from '../../repositories/policy-review.repository';
 
 /** 잠금 후 검수 조건을 확인하고 거절 사유와 처리 이력을 함께 확정 */
 @Injectable()

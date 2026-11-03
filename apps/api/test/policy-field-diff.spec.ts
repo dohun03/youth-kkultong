@@ -1,5 +1,5 @@
 import type { JsonValue, PolicyFieldDiff } from '@youth-kkultong/shared';
-import { calculatePolicyFieldDiff } from '../src/modules/policies/policy-field-diff';
+import { calculatePolicyFieldDiff } from '../src/modules/policies/rules/reviews/policy-field-diff';
 import { createYouthCenterPolicyContentHash } from '../src/modules/ingestion/youth-center/youth-center-policy.hash';
 
 /** 검수 스냅샷 비교의 필드 존재 여부와 원문 보존 및 기존 내용 해시와의 일치를 검증 */

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { createYouthCenterPolicyContentHash } from '../src/modules/ingestion/youth-center/youth-center-policy.hash';
-import { decidePolicyReview } from '../src/modules/policies/policy-review-decision';
-import type { PolicyReviewContext } from '../src/modules/policies/policy-review-decision';
+import { decidePolicyReview } from '../src/modules/policies/rules/reviews/policy-review-decision';
+import type { PolicyReviewContext } from '../src/modules/policies/rules/reviews/policy-review-decision';
 
 /** 내용이 서로 다른 정책 원문의 실제 해시 생성 */
 function hash(title: string, views = '10'): string {

@@ -1,4 +1,4 @@
-import { getTitleSearchTerms, matchesPolicyTitle } from '../src/modules/policies/title-search';
+import { getTitleSearchTerms, matchesPolicyTitle } from '../src/modules/policies/rules/public/title-search';
 import { createPolicySearchSchema } from '@youth-kkultong/shared';
 
 /** 제목 검색의 단어 분리·문자 비교와 요청 검증을 확인한다. */

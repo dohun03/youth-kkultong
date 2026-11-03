@@ -2,8 +2,8 @@ import { Body, Controller, Get, HttpCode, Inject, Param, Post } from '@nestjs/co
 import type { PolicyDetail, PolicySearchResponse } from '@youth-kkultong/shared';
 import { z } from 'zod';
 import { ZodValidationPipe } from '../../../common/zod-validation.pipe';
-import { PoliciesSearchService } from '../services/policies-search.service';
-import { PoliciesDetailService } from '../services/policies-detail.service';
+import { PoliciesSearchService } from '../services/public/policies-search.service';
+import { PoliciesDetailService } from '../services/public/policies-detail.service';
 
 @Controller('policies')
 export class PoliciesController {

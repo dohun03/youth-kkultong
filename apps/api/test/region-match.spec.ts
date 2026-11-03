@@ -1,5 +1,5 @@
-import { checkRegion } from '../src/modules/matching/region-match';
-import type { ActiveRegionMap, RegionMatchResult } from '../src/modules/matching/region-match';
+import { checkRegion } from '../src/modules/matching/checks/region-match';
+import type { ActiveRegionMap, RegionMatchResult } from '../src/modules/matching/checks/region-match';
 import { transformYouthCenterPolicy } from '../src/modules/ingestion/youth-center/youth-center-policy.transform';
 import snapshot from '../src/database/seeds/regions.json';
 

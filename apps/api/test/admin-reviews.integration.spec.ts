@@ -13,7 +13,7 @@ import { PolicyReview } from '../src/modules/policies/entities/policy-review.ent
 import { SourcePolicy } from '../src/modules/policies/entities/source-policy.entity';
 import { PolicyReviewRepository } from '../src/modules/policies/repositories/policy-review.repository';
 import { PolicyRepository } from '../src/modules/policies/repositories/policy.repository';
-import { PolicyReviewsReadService } from '../src/modules/policies/services/policy-reviews-read.service';
+import { PolicyReviewsReadService } from '../src/modules/policies/services/reviews/policy-reviews-read.service';
 import { createYouthCenterPolicyContentHash } from '../src/modules/ingestion/youth-center/youth-center-policy.hash';
 import { transformYouthCenterPolicy } from '../src/modules/ingestion/youth-center/youth-center-policy.transform';
 import { testAdminValues } from './helpers/admin';

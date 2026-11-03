@@ -1,7 +1,7 @@
 import type { UserConditions } from '@youth-kkultong/shared';
 import { evaluatePolicy } from '../src/modules/matching/evaluate-policy';
 import type { PolicyMatchingInput, PolicyMatchResult } from '../src/modules/matching/evaluate-policy';
-import type { ActiveRegionMap } from '../src/modules/matching/region-match';
+import type { ActiveRegionMap } from '../src/modules/matching/checks/region-match';
 import snapshot from '../src/database/seeds/regions.json';
 
 /** 실제 항목별 함수를 조합해 SPEC T-02~T-11과 점수·태그·보수적 제외를 검증한다. */

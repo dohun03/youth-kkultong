@@ -1,4 +1,4 @@
-import { SCHOOL_OPTIONS, SCHOOL_UNRESTRICTED_CODE } from '../meta/eligibility-codes';
+import { SCHOOL_OPTIONS, SCHOOL_UNRESTRICTED_CODE } from '../../meta/eligibility-codes';
 
 /** 학력 항목의 부합·불일치·확인 필요·미입력·제한 없음을 구분 */
 export type SchoolMatchResult = 'MATCHED' | 'EXCLUDED' | 'UNKNOWN' | 'NOT_PROVIDED' | 'UNRESTRICTED';

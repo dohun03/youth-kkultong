@@ -1,7 +1,7 @@
 import type { INestApplicationContext } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
-import { importPolicies } from '../src/import-policies';
+import { importPolicies } from '../src/cli/import-policies';
 import { IngestionService } from '../src/modules/ingestion/services/ingestion.service';
 
 describe('정책 수집 CLI 결과와 애플리케이션 정리', () => {

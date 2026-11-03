@@ -2,7 +2,7 @@ import { parsePolicyCategories } from '@youth-kkultong/shared';
 import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { Policy } from '../entities/policy.entity';
-import type { PolicyWriteInput } from '../policy-write.types';
+import type { PolicyWriteInput } from '../types/policy-write.types';
 
 /** 목록 카드·신청 상태·자격 판정·정렬에 필요한 값만 담는 서버 내부 자료형 */
 export type PolicyCandidate = Pick<Policy,

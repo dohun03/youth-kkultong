@@ -2,13 +2,13 @@ import { Inject, Injectable } from '@nestjs/common';
 import { createPolicySearchSchema } from '@youth-kkultong/shared';
 import type { PolicySearchResponse } from '@youth-kkultong/shared';
 import { DataSource } from 'typeorm';
-import { ZodValidationPipe } from '../../../common/zod-validation.pipe';
-import { JOB_OPTIONS, SCHOOL_OPTIONS } from '../../meta/eligibility-codes';
-import { RegionRepository } from '../../meta/repositories/region.repository';
-import { getKoreaToday } from '../application-status';
-import { buildSearchCandidates } from '../policy-search-candidates';
-import { buildPolicySearchResponse } from '../policy-search-response';
-import { PolicyRepository } from '../repositories/policy.repository';
+import { ZodValidationPipe } from '../../../../common/zod-validation.pipe';
+import { JOB_OPTIONS, SCHOOL_OPTIONS } from '../../../meta/eligibility-codes';
+import { RegionRepository } from '../../../meta/repositories/region.repository';
+import { getKoreaToday } from '../../rules/public/application-status';
+import { buildSearchCandidates } from '../../rules/public/policy-search-candidates';
+import { buildPolicySearchResponse } from '../../responses/policy-search-response';
+import { PolicyRepository } from '../../repositories/policy.repository';
 
 @Injectable()
 export class PoliciesSearchService {

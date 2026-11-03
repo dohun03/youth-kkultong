@@ -1,7 +1,7 @@
 import type { ReviewActionRequest } from '@youth-kkultong/shared';
-import type { PolicyReview } from './entities/policy-review.entity';
-import type { SourcePolicy } from './entities/source-policy.entity';
-import type { Policy } from './entities/policy.entity';
+import type { PolicyReview } from '../../entities/policy-review.entity';
+import type { SourcePolicy } from '../../entities/source-policy.entity';
+import type { Policy } from '../../entities/policy.entity';
 
 /** (검수 후보, 최신 원본, 현재 공개본) 에서 처리 가능 여부를 확인할 값 */
 export interface PolicyReviewEligibilityContext {

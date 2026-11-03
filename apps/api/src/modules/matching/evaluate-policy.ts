@@ -1,12 +1,12 @@
 import type { MatchTag, UserConditions } from '@youth-kkultong/shared';
-import { checkAge } from './age-match';
-import type { PolicyAgeRange } from './age-match';
-import { checkJob } from './job-match';
-import type { PolicyJobCodes } from './job-match';
-import { checkSchool } from './school-match';
-import type { PolicySchoolCodes } from './school-match';
-import { checkRegion } from './region-match';
-import type { ActiveRegionMap, PolicyRegionCodes } from './region-match';
+import { checkAge } from './checks/age-match';
+import type { PolicyAgeRange } from './checks/age-match';
+import { checkJob } from './checks/job-match';
+import type { PolicyJobCodes } from './checks/job-match';
+import { checkSchool } from './checks/school-match';
+import type { PolicySchoolCodes } from './checks/school-match';
+import { checkRegion } from './checks/region-match';
+import type { ActiveRegionMap, PolicyRegionCodes } from './checks/region-match';
 
 /** 경량 정책 후보의 자격 조건과 추가 자격·참여 제한 설명의 존재 여부 */
 export type PolicyMatchingInput = PolicyAgeRange & PolicyJobCodes & PolicySchoolCodes & PolicyRegionCodes & { hasExtraText: boolean; };
