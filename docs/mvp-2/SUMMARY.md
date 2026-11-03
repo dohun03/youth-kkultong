@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-04 · 상태: Step 1~25, 29 완료 · Step 26~28, 30~41 미착수
+수정일: 2026-11-04 · 상태: Step 1~26, 29 완료 · Step 27~28, 30~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -921,3 +921,34 @@ git diff --check
 - 실제 온통청년 API 수집은 실행하지 않았으며 테스트의 외부 응답은 fixture를 사용했다. 웹 화면 변경이 없어 기존 컨테이너를 재생성하지 않았다. 이번 재분류 변경은 미커밋 상태로 남겼다.
 
 현재 코드 읽는 순서 예시: `modules/policies/services/public/policies-search.service.ts` → `rules/public/policy-search-candidates.ts` → `responses/policy-search-response.ts`. 검수 처리는 `services/reviews/`, 수집 반영과 누락 조회는 `services/collection/`에서 확인한다. 미해결 실패는 없으며 다음 Step은 사용자 요청 시 진행한다.
+
+## 33. Step 26 승인과 거절 API 연결 (2026-11-04)
+
+API 파일 분류 정리는 사용자 요청에 따라 `7b0577b`(`refactor: API 파일 분류와 배치 규칙 정리`)로 커밋됐다. AGENT_RULES → PLAN Step 26 → SPEC 4.3과 4.5 및 6.3과 7장, T2-24와 T2-26~27 및 T2-31과 T2-33 → Step 24~25와 파일 분류 완료 기록 → 관리자 Guard와 공용 입력 스키마 및 기존 처리 서비스를 대조했다. 설계 충돌은 없다.
+
+- 기존 `AdminReviewsController`에 `POST /api/v1/admin/reviews/:id/approve`와 `POST /api/v1/admin/reviews/:id/reject`를 추가했다. 정상 응답은 두 경로 모두 200과 `ReviewActionResponse`다. 기존 Policies 모듈이 내보내는 승인과 거절 서비스를 주입하며 별도 모듈이나 서비스를 추가하지 않았다.
+- 전역 AdminGuard가 쿠키 인증과 정확한 Origin을 검사하고, 컨트롤러는 UUID와 본문을 기존 공용 Zod 스키마로 검증한다. 요청자가 처리자를 지정할 수 없도록 `request.admin.username`을 전달한다. 두 해시만 허용하는 승인과 사유를 추가하는 거절의 엄격한 입력 계약, 사유의 앞뒤 공백 제거, 공통 JSON 형식과 본문 상한 및 호출 제한과 no-store를 그대로 적용한다.
+- 신규 HTTP 통합 테스트는 `apps/api/test/admin-review-actions.integration.spec.ts`에 배치했다. 71개 사례로 상세에서 받은 두 해시의 정상 승인과 최신 조회수 및 NULL 보존, 신규와 변경 후보의 거절, 사유의 길이 경계와 텍스트 보존, 인증 선검사, 출처 검사, UUID와 본문 오류 및 404, 각 해시와 공개 UUID의 409, 대체 후보와 중복 요청의 409, JSON 보호와 429, 실제 DB 제약 실패 시 500과 전체 롤백, 연결 오류 주입의 503 및 응답과 로그의 비밀값 비노출을 확인했다.
+- PLAN과 SUMMARY를 갱신하고 ARCHITECTURE의 Admin 역할 설명에 승인과 거절 경로도 명시했다. 계획된 API 두 개를 구현했으며 공용 API 계약, DB 스키마와 Migration, 패키지 의존성 및 SPEC 의미 변경은 없다.
+
+### 검증과 실행 상태
+
+```sh
+node /tmp/mvp2-step26-verify.cjs before
+npm run typecheck
+node /tmp/mvp2-step26-verify.cjs focused
+npm run build --workspace apps/api
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml build api
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml up -d --no-deps --wait api
+node /tmp/mvp2-step26-smoke.cjs
+node /tmp/mvp2-step26-verify.cjs after
+git diff --check
+```
+
+- 승인과 거절 HTTP 및 검수 조회, 인증과 접근 검사, 공용 입력 검증, 승인과 거절 업무 서비스의 **7개 스위트 462개 테스트 모두 통과**. 실패와 건너뜀은 0건이다. shared/API/web 전체 타입 검사, shared/API 빌드, Docker API 프로덕션 빌드 및 diff 검사도 통과했다.
+- API만 새 이미지로 재생성해 `http://127.0.0.1:4000`에서 healthy 상태로 유지했다. health 200과 양쪽 처리 경로의 무인증 401, 잘못된 본문과 UUID 400, 없는 후보 404 및 출처 누락과 불일치 403, no-store를 실제 포트에서 확인했다. 기존 후보가 없는 임의 UUID만 사용했으며 인증값은 출력하거나 파일에 저장하지 않았다. DB와 기존 웹 컨테이너는 유지했다.
+- 비밀값을 가린 검증 결과는 `/tmp/mvp2-step26-focused-results.json`과 `/tmp/mvp2-step26-focused-output.log`, DB 전후 기록은 `/tmp/mvp2-step26-{before,after}.json`에 있다. 공개 3,390건, 원본 3,390건, 검수 0건, 지역 537개 및 Migration 3개의 전체 행 체크섬이 검증 전후 동일하며 잔여 테스트 스키마는 0개다.
+- Docker의 npm 설치 단계에서 운영 의존성의 high 3건, 전체 설치의 취약점 23건(4 low, 16 moderate, 3 high)이 보고됐다. 의존성은 이번 Step에서 변경하지 않았으며 상세 영향과 수정 버전은 별도 검토 과제로 남긴다. 빌드와 테스트는 통과했다.
+- 전체 API 회귀와 브라우저 E2E 및 실제 온통청년 수집은 반복하지 않았다. 이번에는 실제 HTTP와 DB에서 정상 처리와 순차 중복 요청까지 검증했으며, 독립 연결의 동시 승인과 거절 및 수집 경쟁은 Step 27 범위다. 미해결 테스트 실패는 없으며 변경은 미커밋 상태로 남겼다.
+
+핵심 읽는 순서: `modules/admin/controllers/admin-reviews.controller.ts`의 `approve()`와 `reject()` → `modules/policies/services/reviews/`의 승인과 거절 서비스 → `test/admin-review-actions.integration.spec.ts`. 다음 미완료 순서는 Step 27이며 이번 요청 범위인 Step 26에서 중단한다.

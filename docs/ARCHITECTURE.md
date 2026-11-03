@@ -73,7 +73,7 @@ flowchart TD
 | `PoliciesModule` | 기존 공개 목록·상세·분야 조회, 공개 저장 서비스, 수집 원본·검수 후보의 저장/조회 및 검수 서비스 |
 | 매칭 순수 함수 (`modules/matching/`) | 나이·취업·학력 제외 판단, 지역 관련 점수, 맞춤 정렬. 별도 NestJS 모듈 클래스 없이 정책 서비스에서 사용 |
 | `IngestionModule` | 온통청년 공통 수집 서비스·HTTP 전용 스케줄러·수동 CLI·검증·변환·잠금·로그, 수집분 저장 요청 |
-| `AdminModule` (MVP2) | 최소 관리자 인증·권한 검증, 보호된 검수·이력·누락 조회 API. `PoliciesModule`의 업무 서비스 호출 |
+| `AdminModule` (MVP2) | 최소 관리자 인증·권한 검증, 보호된 검수·이력·누락 조회와 승인·거절 API. `PoliciesModule`의 업무 서비스 호출 |
 | `MetaModule` | DB의 지역 목록(`RegionRepository`)·정책 분야 목록, 서버에 정의한 취업·학력 코드표 제공 |
 | `DatabaseModule` | 공통 TypeORM 연결 설정·Migration·지역 시드 실행 기반 |
 
