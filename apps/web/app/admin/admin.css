@@ -155,3 +155,19 @@
 .review-action-form p { overflow-wrap: anywhere; }
 .review-action-form fieldset > div { display: flex; flex-wrap: wrap; gap: 12px; }
 .review-action-form [role="alert"] { color: #a12622; }
+
+.admin-history .admin-review-row { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.admin-history .admin-review-title h4 { margin: 0; font-size: 16px; line-height: 1.7; overflow-wrap: anywhere; }
+.admin-history-status { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 13px; }
+.admin-history .status-approved { background: #ecfdf5; color: #047857; }
+.admin-history .status-rejected { background: #fef2f2; color: #991b1b; }
+.admin-history .status-superseded { background: #fffbeb; color: #92400e; }
+.admin-history .admin-review-meta { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.admin-history-reason { grid-column: 1 / -1; }
+.admin-history-reason dd { white-space: pre-wrap; }
+.review-policy-history { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border); }
+.review-policy-history .admin-history { margin-top: 16px; padding: 0; border: 0; }
+@media (max-width: 600px) {
+  .admin-history .admin-review-meta { grid-template-columns: minmax(0, 1fr); }
+}
+.admin-detail-history { display: inline-block; margin-left: 20px; color: var(--primary-strong); font-size: 14px; }

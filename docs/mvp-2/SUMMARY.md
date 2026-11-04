@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-04 · 상태: Step 1~32 완료 · Step 33~41 미착수
+수정일: 2026-11-04 · 상태: Step 1~33 완료 · Step 34~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -1143,3 +1143,35 @@ Step 32 완료 후 사용자가 직접 UI와 UX를 확인할 수 있도록 기�
 - 추가 전후 체험 ID를 제외한 기존 공개 3,390건과 원본 3,390건, 기존 검수, 지역 537개 및 Migration 3개의 전체 행 체크섬이 모두 일치했다. 최종 체험 상태는 대기 7건, 승인 1건, 거절 1건, 대체 1건이다. 실제 계정 비밀값은 기존 로컬 파일에서 메모리로만 읽었으며 체험 기록에는 넣지 않았다.
 - 실행 검증: `npm run build --workspace apps/api`, 두 로컬 스크립트의 `node --check`, `node .local/review-demo.cjs seed`, 브라우저 실행 환경에서 `node .local/review-demo-browser.mjs`, `node .local/review-demo.cjs verify`, `git diff --check` 모두 통과했다. 이 작업에서 애플리케이션 소스나 패키지 및 스키마를 바꾸지 않았으므로 Step 32 전체 회귀와 컨테이너 재빌드는 반복하지 않았다. 실행 중인 web과 api 및 db를 유지했다.
 - 추가 ID 및 보존 체크섬은 `.local/review-demo.json`, 실제 화면 검증 결과는 `.local/review-demo-verification.json`, 전체 상세 링크와 추천 체험 순서는 `.local/review-demo-guide.md`, 화면 캡처는 `.local/review-demo-{list,06,07}.png`에 기록했다. 로컬 도구와 기록은 기존 `.gitignore`의 `.local/` 규칙으로 Git에서 제외된다. 데이터 정리 및 추가 체험 후보 보충은 별도 요청 시 기록된 ID만 대상으로 진행한다. 현재 처리 이력 목록과 누락 목록의 연결은 Step 33~34에 남아 있으므로 체험 안내에서 종료 및 누락 상세 링크를 제공했다.
+
+## 41. Step 33 처리 이력 화면 (2026-11-04)
+
+사용자 요청으로 Step 32와 로컬 체험 데이터 준비 기록을 `1412ed4`(`feat: 관리자 검수 승인과 거절 화면 구현`)로 커밋한 뒤 Step 33을 수행했다. `.local/`의 인증 정보와 체험 도구 및 데이터 기록은 커밋에서 제외했다. AGENT_RULES → PLAN Step 33 → SPEC 4.1~4.2와 8.1~8.3 및 T2-33과 T2-46 → 선행 Step 22~32 기록 → 실제 이력 API와 공용 계약 및 상세 화면을 대조했다. 설계 충돌은 없으며 ARCHITECTURE 6장의 관리자 화면 배치와 Sites 스킬의 로컬 작업 절차를 따른다.
+
+- `app/admin/history/page.tsx`에서 `history-list.tsx`의 실제 목록을 연결했다. 기본 PROCESSED와 승인 및 거절과 대체 상태별 필터, 제목 검색과 초기화, 10/20/50개 선택 및 페이지 이동, 로딩과 빈 결과 및 오류와 재시도를 제공한다. 필터 변경 시 첫 페이지로 돌아가고 서버의 항목 순서를 유지한다. 종료 시각은 한국 시각으로 표시하며 처리자와 거절 사유 또는 시스템 대체 사유를 구분한다. 네 대체 이유를 한국어로 표시하고 “대체됨”을 관리자 거절로 표시하지 않는다.
+- `history-list.tsx`는 인증 쿠키와 동일 출처 GET 및 no-store를 사용하고 15초 요청 한도와 화면 이동 시 취소 및 늦은 응답 무시를 적용한다. 목록의 종료 상태와 필터, UUID 및 종료 시각, 사유와 페이지 응답을 검사해 손상된 응답을 오류로 처리한다. 401은 기존 공통 인증 흐름으로 복귀하고 429는 잠시 후 재시도를 안내한다. 정책 제목과 긴 사유는 React 텍스트로 표시하고 모바일 너비에서 줄바꿈한다. 페이지 및 재조회 후에는 결과 또는 오류 안내로 키보드 초점을 연결한다.
+- `app/admin/reviews/[id]/review-history.tsx`는 상세에서 “같은 정책의 처리 이력 보기”를 누를 때 공용 이력 목록을 펼친다. 상세의 sourcePolicyId를 모든 조회 조건에 유지하고 다른 원본 응답을 거부한다. 현재 보고 있는 이력은 별도로 표시하고 각 이력의 링크로 당시 스냅샷 상세를 확인한다. 상세 상단에는 처리 이력 목록 복귀 링크를 추가했다. 승인과 거절 후에는 같은 정책 목록도 다음 조회에서 최신 상태로 확인한다. 이력에는 편집이나 재처리 기능을 추가하지 않았다.
+- 첫 브라우저 회귀에서 새 이력 컴포넌트와 처리 컴포넌트의 형제 key가 같아 상세 재조회 때 DOM이 중복되는 문제를 발견하고 각각의 key를 구분했다. 같은 제목을 가진 실제 이력의 상세 이동은 URL과 상세 영역을 확인하도록 검증 대상을 명확히 했고, 빈 결과의 오류 검사는 Next.js 전역 경로 안내 영역과 구분해 본문 안에서 확인한다.
+- 전체 브라우저 검증이 늘면서 실제 로그인 5회 및 관리자 API 분당 120회 한도에 도달했다. `test/admin-login.mjs`로 인증 준비를 공유하고 429일 때 서버의 Retry-After를 기다린 뒤 유효한 테스트 계정으로 한 번만 재시도한다. 기존 `test/api-pacing.mjs`를 네 관리자 브라우저 파일에서 사용해 실제 브라우저 API 요청 간격을 유지한다. 서버의 인증 및 호출 제한 설정은 그대로 유지한다.
+
+### 검증과 실행 상태
+
+```sh
+node /tmp/mvp2-step33-verify.cjs before
+npm run typecheck
+node /tmp/mvp2-step33-verify.cjs focused
+docker --config /tmp/mvp2-step32-docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml build web
+docker --config /tmp/mvp2-step32-docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml up -d --no-deps --wait web
+npm run typecheck --workspace apps/web
+node /tmp/mvp2-step33-verify.cjs browser
+node /tmp/mvp2-step33-verify.cjs after
+git diff --check
+```
+
+- 이력 목록 및 상세 조회와 처리 완료 이력 보존의 **2개 통합 테스트 스위트 112개 모두 통과**. shared/API/web 전체 타입 검사와 수정 후 웹 타입 검사, 최종 Docker 프로덕션 빌드, 수정한 브라우저 테스트와 로그인 도구 및 호출 간격 도구의 구문 검사도 통과했다.
+- 신규 이력 19개와 기존 인증 12개 및 상세와 처리 39개, 대기 목록 16개를 포함한 **브라우저 테스트 86개 모두 통과**. 실패와 건너뜀은 0건이다. 상태와 제목 및 개수와 페이지, 검색 메타문자와 초기화, 로딩과 정상 빈 결과 및 건수 감소, 401과 429 및 503과 연결 끊김 및 손상 응답과 잘못 섞인 PENDING, 네 대체 이유 및 관리자 거절 구분, 긴 사유와 HTML 텍스트 및 모바일 너비와 키보드 검색을 확인했다. 최초 회귀 실패와 호출 제한 문제를 수정한 뒤 최종 전체 검증을 완료했다.
+- 실제 로그인과 프록시 및 로컬 DB의 체험 처리 이력을 응답 대체 없이 확인했다. 이력 목록에서 과거 대체 상세로 이동하고 같은 원본의 종료 이력 및 현재 이력 표시, 비활성 처리 버튼과 목록 복귀를 확인했다. 다건 페이지와 오류 및 긴 사유 사례만 브라우저에서 응답을 대체했다. 이번 검증에서는 기존 체험 정책에 추가 승인이나 거절을 실행하지 않았다.
+- 비밀값을 가린 최종 로그는 `/tmp/mvp2-step33-browser-output.log`와 `/tmp/mvp2-step33-focused-{results.json,output.log}`, 실제 이력 목록 및 모바일 캡처는 `/tmp/mvp2-step33-{actual,mobile}.png`에 있다. `/tmp/mvp2-step33-{before,after}.json`에서 공개 3,396건과 원본 3,399건, 검수 10건, 지역 537개 및 Migration 3개의 전체 행 체크섬이 동일하고 잔여 테스트 스키마는 0개다. 현재 건수에는 사용자가 앞서 직접 처리한 체험 데이터 상태를 포함한다.
+- web만 최종 빌드로 재생성하고 API와 DB 및 볼륨을 유지했다. 세 서비스 모두 healthy이며 `http://localhost:3000/admin/history`와 API health의 HTTP 200을 확인했다. `.local/review-demo-guide.md`도 실제 이력 화면과 상세 이력 펼침을 안내하도록 맞췄다. API 계약과 DB 스키마 및 Migration, 패키지 의존성 및 SPEC 의미 변경은 없다. PLAN과 SUMMARY만 완료 상태로 갱신했다. 전체 API 및 공개 화면 전체 회귀와 실제 외부 수집은 반복하지 않았다. Step 33 변경은 미커밋 상태로 남겼다.
+
+핵심 읽는 순서: `app/admin/history/history-list.tsx`의 응답 검사와 조회 및 렌더링 → `app/admin/reviews/[id]/review-history.tsx`와 상세 연결 → `test/admin-history.browser.mjs`의 실제 원본별 이력 및 상태별 시나리오. 미해결 검증 실패는 없다. 다음 미완료 순서는 Step 34이며 이번 요청 범위인 Step 33에서 중단한다.

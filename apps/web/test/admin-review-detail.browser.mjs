@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { readFile } from 'node:fs/promises';
+import { loginForAdminTests } from './admin-login.mjs';
+import { paceBrowserContext } from './api-pacing.mjs';
 
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
 const baseUrl = process.env.WEB_TEST_URL ?? 'http://localhost:3000';
@@ -19,24 +21,20 @@ let authenticatedCookies;
 before(async () => {
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
+  await paceBrowserContext(context);
   try {
     const page = await context.newPage();
-    await page.goto(`${baseUrl}/admin/login`);
-    try {
-      await page.getByLabel('아이디', { exact: true }).fill(username);
-      await page.getByLabel('비밀번호', { exact: true }).fill(password);
-    } catch { throw new Error('관리자 로그인 입력에 실패했습니다.'); }
-    await page.getByRole('button', { name: '로그인', exact: true }).click();
-    await page.waitForURL('**/admin/reviews');
+    await loginForAdminTests(page, baseUrl, username, password);
     await page.getByRole('heading', { name: '검수 대기', exact: true }).waitFor();
     authenticatedCookies = await context.cookies();
   } finally { await context.close(); }
-});
+}, { timeout: 90000 });
 after(async () => { await browser?.close(); });
 
 /** 테스트별 인증 문맥을 분리하고 실패 시에도 탭과 연결을 정리 */
 async function withPage(run, viewport = { width: 1280, height: 900 }) {
   const context = await browser.newContext({ viewport });
+  await paceBrowserContext(context);
   await context.addCookies(authenticatedCookies);
   const page = await context.newPage();
   try { await run(page, context); }

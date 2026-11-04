@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { readFile } from 'node:fs/promises';
+import { loginForAdminTests } from './admin-login.mjs';
+import { paceBrowserContext } from './api-pacing.mjs';
 
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
 const baseUrl = process.env.WEB_TEST_URL ?? 'http://localhost:3000';
@@ -30,6 +32,7 @@ async function waitForProtected(page) {
 /** 테스트별로 쿠키와 브라우저 저장소를 분리하고 종료 시 정리 */
 async function withPage(authenticated, run, viewport = { width: 1280, height: 900 }) {
   const context = await browser.newContext({ viewport });
+  await paceBrowserContext(context);
   if (authenticated) await context.addCookies(authenticatedCookies);
   const page = await context.newPage();
   try { await run(page, context); }
@@ -39,17 +42,16 @@ async function withPage(authenticated, run, viewport = { width: 1280, height: 90
 before(async () => {
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
+  await paceBrowserContext(context);
   try {
     // 실제 로그인 화면으로 받은 쿠키를 이후 보호 화면 테스트에 재사용해 로그인 한도를 유지
     const page = await context.newPage();
-    await page.goto(`${baseUrl}/admin/login`);
-    await fillLogin(page);
-    await page.getByRole('button', { name: '로그인', exact: true }).click();
-    await waitForProtected(page);
+    await loginForAdminTests(page, baseUrl, username, password);
+    await page.getByRole('heading', { name: '검수 대기', exact: true }).waitFor();
     authenticatedCookies = await context.cookies();
     assert.ok(authenticatedCookies.some((cookie) => cookie.name === 'youth_admin_auth'));
   } finally { await context.close(); }
-});
+}, { timeout: 90000 });
 after(async () => { await browser?.close(); });
 
 test('무인증 관리자 진입은 로그인으로 이동하며 입력 레이블과 비밀번호 마스킹을 제공한다', async () => {

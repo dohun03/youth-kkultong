@@ -7,6 +7,7 @@ import type { AdminReviewDetail, PolicySnapshot, ReviewStatus, SupersededReason 
 import { useAdminSession } from '../../admin-session';
 import { CurrentPublishedSnapshot, ReviewComparison } from './review-comparison';
 import { ReviewActions } from './review-actions';
+import { ReviewHistory } from './review-history';
 
 /** 상세 조회의 진행과 오류 및 스냅샷 결과 */
 type DetailState = { status: 'loading' } | { status: 'error'; notFound: boolean; message: string }
@@ -107,6 +108,7 @@ export function ReviewDetail({ id }: { id: string }) {
 
   return <section className="admin-panel admin-review-detail">
     <Link className="admin-detail-back" href="/admin/reviews">← 검수 대기 목록으로</Link>
+    <Link className="admin-detail-history" href="/admin/history">처리 이력 목록으로</Link>
     <div className="admin-list-heading"><div><h2>검수 상세</h2><p className="admin-review-id">검수 ID: {id}</p></div>
       <button type="button" className="admin-secondary" disabled={state.status === 'loading' || processing} onClick={() => setAttempt((value) => value + 1)}>새로고침</button></div>
     {actionNotice && <p role="status" className="review-info">{actionNotice}</p>}
@@ -145,11 +147,12 @@ export function ReviewDetail({ id }: { id: string }) {
           <CurrentPublishedSnapshot snapshot={detail.currentPublished} />
         </>}
       </section>
-      <ReviewActions key={`${id}:${attempt}`} detail={detail} onProcessing={setProcessing} onRefresh={(message) => {
+      <ReviewActions key={`actions:${id}:${attempt}`} detail={detail} onProcessing={setProcessing} onRefresh={(message) => {
         setActionNotice(message);
         setProcessing(false);
         setAttempt((value) => value + 1);
       }} />
+      <ReviewHistory key={`history:${id}:${attempt}`} sourcePolicyId={detail.review.sourcePolicyId} currentReviewId={id} />
     </>}
   </section>;
 }

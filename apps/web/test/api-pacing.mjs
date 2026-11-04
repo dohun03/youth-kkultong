@@ -1,6 +1,7 @@
 import { setTimeout } from 'node:timers/promises';
 
-// 전체 검증은 --test-isolation=none --test-concurrency=1로 실행해 이 대기열을 공유한다.
+// 공개 E2E는 --test-isolation=none --test-concurrency=1로 실행해 이 대기열을 공유한다.
+// 관리자 테스트는 파일별 브라우저 문맥끼리 대기열을 공유하고 파일은 순서대로 실행한다.
 // 실제 서버의 분당 120회 제한을 유지하면서 브라우저와 기대값 조회를 합쳐 약 100회로 제한한다.
 let nextRequestAt = 0;
 let queue = Promise.resolve();
