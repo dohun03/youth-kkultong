@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -9,6 +9,7 @@ import type { AdminIdentity } from '@youth-kkultong/shared';
 /** 관리자 인증 상태와 로그인 화면에서 사용할 동작 */
 interface AdminSession {
   login(username: string, password: string): Promise<void>;
+  requireLogin(): void;
   notice: string;
 }
 const SessionContext = createContext<AdminSession | null>(null);
@@ -64,6 +65,15 @@ export function AdminSessionShell({ children }: { children: ReactNode }) {
   const [loggingOut, setLoggingOut] = useState(false);
   // 이전 인증 조회가 뒤늦게 도착해 로그인이나 로그아웃 결과를 덮어쓰지 않도록 순서를 구분
   const authVersion = useRef(0);
+
+  /** 보호 데이터 API의 401 응답을 받으면 관리자 정보를 지우고 재로그인으로 이동 */
+  const requireLogin = useCallback(() => {
+    authVersion.current++;
+    setIdentity(null);
+    setStatus('anonymous');
+    setNotice('로그인이 만료되었습니다. 다시 로그인해 주세요.');
+    router.replace('/admin/login');
+  }, [router]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -147,7 +157,7 @@ export function AdminSessionShell({ children }: { children: ReactNode }) {
     } finally { setLoggingOut(false); }
   }
 
-  const session = { login, notice };
+  const session = { login, requireLogin, notice };
   if (status === 'error') return <main id="main-content" className="admin-page container">
     <h1>관리자 인증 확인</h1><p role="alert">인증 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.</p>
     <button className="retry-button" onClick={() => setAttempt((value) => value + 1)}>다시 시도</button>

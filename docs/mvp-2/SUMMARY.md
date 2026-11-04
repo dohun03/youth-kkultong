@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-04 · 상태: Step 1~29 완료 · Step 30~41 미착수
+수정일: 2026-11-04 · 상태: Step 1~30 완료 · Step 31~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -1010,3 +1010,35 @@ git diff --no-index --check /dev/null apps/api/test/admin-public-isolation.integ
 - API 계약과 업무 서비스, DB 스키마와 Migration, 의존성 및 SPEC 의미 변경 없이 테스트와 PLAN 및 SUMMARY만 갱신했다. 기존 DB와 API 및 웹 컨테이너는 재생성하지 않았다. 브라우저 화면 E2E와 실제 온통청년 API 수집은 실행하지 않았으며 외부 수집 응답은 기존 fixture를 사용했다. 이번 Step 28 변경은 미커밋 상태로 남겼다.
 
 핵심 읽는 순서: `test/admin-public-isolation.integration.spec.ts`의 `publicState()` → 신규와 변경의 대기 및 거절과 누락 시나리오 → 승인 COMMIT 전후 공개 조회 → 관리자 인증 및 출처와 오류 및 로그 보호. 미해결 테스트 실패는 없다. Step 29는 앞서 완료했으므로 다음 미완료 순서는 Step 30이며 이번 요청 범위인 Step 28에서 중단한다.
+
+## 36. Step 30 검수 대기 목록 화면 (2026-11-04)
+
+사용자 요청으로 Step 28을 `f62b089`(`test: 공개 데이터 분리와 관리자 API 계약 검증 추가`)로 커밋하고 선행 완료된 Step 29를 유지한 채 Step 30을 수행했다. AGENT_RULES → PLAN Step 30 → SPEC 4.1과 8.1~8.2 및 T2-41과 T2-46 → Step 22~29 완료 기록 → 공용 타입과 실제 목록 API, 관리자 공통 화면 및 기존 브라우저 테스트를 대조했다. 새 파일 배치는 ARCHITECTURE 6장의 관리자 화면 기준을 따른다. 설계 충돌은 없다. Sites 스킬의 로컬 작업 절차를 참고했으며 기존 Next.js 및 Docker Compose 구성에서 구현하고 실행했다.
+
+- `app/admin/reviews/page.tsx`를 실제 목록 화면으로 교체했다. 인증 확인 후 같은 출처의 `GET /api/v1/admin/reviews`에 status=PENDING과 페이지 및 제목과 종류 조건을 보낸다. 제목과 외부 ID 및 신규/변경, 한국 시각의 등록 시각을 서버 순서대로 표시한다. 기본 20개 및 10/20/50개 선택과 제목 검색 및 종류 필터, 처음/이전/숫자/다음/마지막 이동을 제공한다. 입력 초안은 검색 제출 시 앞뒤 공백을 제거해 적용하며 필터와 표시 개수 변경은 1페이지부터 조회한다. 한글 조합 Enter를 검색 제출로 오인하지 않는다.
+- 로딩과 실제 0건 및 검색 결과 없음, 조회 실패를 구분하고 새로고침과 재시도를 제공한다. 목록 변경으로 현재 페이지에 행이 없으면 첫 페이지로 돌아갈 수 있다. 요청은 15초 후 중단하고 필터 변경 및 화면 종료 시 이전 요청을 취소한다. 늦은 이전 응답이 최신 결과를 덮어쓰지 않도록 활성 요청을 확인한다. 응답에서 화면에 사용하는 UUID와 종류 및 날짜와 페이지 형식을 검사하고, 429 및 서버 오류와 연결 끊김 및 손상 응답을 빈 목록으로 처리하지 않는다. 페이지 이동 및 재시도 후 결과나 오류 안내로 키보드 초점을 이어 준다.
+- `admin-session.tsx`의 공통 문맥에 `requireLogin()`을 추가했다. 목록 API의 401을 받으면 보호 결과와 관리자 정보를 지우고 재로그인을 안내한다. 이전 me 응답이 인증 해제 결과를 덮어쓰지 않도록 기존 요청 버전도 함께 갱신한다. 로그인 정보 및 필터와 관리자 데이터는 브라우저 저장소에 기록하지 않는다.
+- 후보 제목에서 `/admin/reviews/[id]`로 이동하도록 연결했다. 새 상세 경로는 UUID 형식 확인과 선택한 검수 ID 및 목록 복귀를 제공하는 보호된 기본 틀이다. 실제 상세 조회와 비교는 Step 31, 승인과 거절 화면은 Step 32에 구현한다. Step 30에서 연결한 경로가 404로 끊기지 않도록 기본 틀만 추가했으며 비교 및 처리 기능을 완료로 표시하지 않았다.
+- `admin.css`에 기존 색상 기준의 검색과 필터 및 목록과 페이지 표시를 추가했다. 좁은 화면에서는 필터와 목록 정보를 세로로 배치하고 긴 제목 및 외부 ID를 줄바꿈한다. `test/admin-reviews.browser.mjs`에 16개 브라우저 테스트를 추가하고 `test:admin`이 기존 로그인 10개와 함께 실행하도록 변경했다. 기존 로그인 테스트의 준비 중 데이터 API 미호출 검사에서는 이번에 연결한 목록 조회를 허용하고 상세 및 누락의 불필요한 호출은 계속 검사한다.
+
+### 검증과 실행 상태
+
+```sh
+node /tmp/mvp2-step30-verify.cjs before
+npm run typecheck
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml build web
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml up -d --wait api web
+node /tmp/mvp2-step30-verify.cjs focused
+node /tmp/mvp2-step30-verify.cjs browser
+node /tmp/mvp2-step30-verify.cjs after
+git diff --check
+```
+
+- shared/API/web 전체 타입 검사와 Docker 웹 프로덕션 빌드 통과. 실제 Chromium의 관리자 브라우저 **26개 테스트 모두 통과**, 관련 검수 목록과 공용 입력 검증의 API **2개 스위트 273개 테스트 모두 통과**. 실패와 건너뜀은 0건이다. 기존 및 신규 파일의 diff 검사와 브라우저 테스트 JavaScript 구문 검사도 통과했다.
+- 실제 로그인과 웹 프록시의 DB 목록 조회 및 쿠키 속성, 공개 목록 20건과 메뉴 및 로그아웃을 확인했다. 61건의 페이지 이동과 필터, 늦은 응답과 401 및 429와 503 및 연결 끊김, 손상 응답과 로딩, 긴 제목 및 HTML과 모바일 및 키보드 상세 이동은 브라우저의 목록 응답만 대체해 검증했다. 실제 DB에 검수 자료를 추가하지 않았다. 현재 대기 0건이므로 사용자가 실제 화면을 열면 정상 빈 목록을 확인할 수 있다.
+- 최초 브라우저 실행은 누락된 libnspr4와 libnss3 및 libasound2 공유 라이브러리 때문에 실패했다. 기존 Chromium을 사용하고 해당 라이브러리만 `/tmp/mvp2-step30-browser/root`에 추출해 테스트 프로세스에 전달했다. 시스템 및 프로젝트 의존성은 변경하지 않았다. 한글 화면 검수에는 기존 Windows 글꼴을 사용했다. 첫 브라우저 검증에서 두 선택자가 Next.js 전역 경로 알림을 본문 오류와 함께 검사해 실패했으며 `main` 내부의 오류 안내로 범위를 수정한 뒤 최종 26개가 모두 통과했다.
+- 비밀값을 가린 결과는 `/tmp/mvp2-step30-browser-output.log`와 `/tmp/mvp2-step30-focused-{results.json,output.log}`에 있다. 실제 빈 목록 및 자료가 있는 목록과 모바일 캡처는 `/tmp/mvp2-step30-{actual,reviews,mobile}.png`에 있다. DB 전후 기록 `/tmp/mvp2-step30-{before,after}.json`에서 공개 3,390건과 원본 3,390건, 검수 0건, 지역 537개 및 Migration 3개의 전체 행 체크섬이 동일하며 잔여 테스트 스키마는 0개다.
+- 사용자 요청과 웹 화면 변경 규칙에 따라 기존 web 컨테이너를 새 이미지로 재생성했다. 기존 API 컨테이너는 현재 이미지를 그대로 시작했고 DB와 볼륨은 유지했다. 최종 web과 api 및 db 모두 healthy이며 `http://localhost:3000/admin/reviews`, `/admin/login`, `/policies`와 API health의 실제 HTTP 200을 확인했다. 기존 `.local/admin-login.txt`의 로그인 정보와 `.env`는 변경하지 않았다. 테스트 브라우저와 문맥은 종료하고 사용자 확인용 서비스는 계속 가동한다.
+- API 계약과 DB 스키마 및 Migration, 패키지 의존성 및 SPEC 의미 변경은 없다. npm 관리자 테스트 실행 범위와 PLAN 및 SUMMARY를 갱신했다. Docker 설치 단계의 기존 취약점 안내는 Step 26 기록과 같으며 의존성을 수정하지 않았다. 전체 API 회귀 및 기존 공개 화면 전체 E2E와 실제 온통청년 수집은 반복하지 않았다. 이번 Step 30 변경은 미커밋 상태로 남겼다.
+
+핵심 읽는 순서: `app/admin/admin-session.tsx`의 `requireLogin()` → `app/admin/reviews/page.tsx`의 query와 조회 effect 및 렌더링 → `app/admin/reviews/[id]/page.tsx` → `test/admin-reviews.browser.mjs`. 미해결 검증 실패는 없다. 다음 미완료 순서는 Step 31이며 이번 요청 범위인 Step 30에서 중단한다.
