@@ -64,6 +64,53 @@ test('무인증 관리자 진입은 로그인으로 이동하며 입력 레이�
   });
 });
 
+test('로그인 입력 중 창과 탭 및 뒤로 가기 복귀는 폼과 입력값을 유지한다', async () => {
+  await withPage(false, async (page) => {
+    let checks = 0;
+    await page.route('**/api/v1/admin/auth/me', (route) => {
+      checks++;
+      return route.fulfill({ status: 401, json: {} });
+    });
+    await page.goto(`${baseUrl}/admin/login`);
+    await page.getByRole('heading', { name: '관리자 로그인', exact: true }).waitFor();
+    // 실제 비밀번호 대신 합성 초안을 사용해 실패 보고에도 인증값이 포함되지 않도록 준비
+    await page.getByLabel('아이디', { exact: true }).fill('focus-draft-user');
+    await page.getByLabel('비밀번호', { exact: true }).fill('focus-draft-password');
+    await page.evaluate(() => { window.loginFormBeforeFocus = document.querySelector('.admin-login form'); });
+    const initialChecks = checks;
+    for (const event of ['focus', 'visibilitychange', 'pageshow']) {
+      const result = await page.evaluate(async (name) => {
+        if (name === 'visibilitychange') document.dispatchEvent(new Event(name));
+        else if (name === 'pageshow') window.dispatchEvent(new PageTransitionEvent(name, { persisted: true }));
+        else window.dispatchEvent(new Event(name));
+        // 이벤트 처리와 React 렌더링이 끝난 뒤 같은 DOM과 합성 입력이 유지되는지 확인
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        return {
+          sameForm: document.querySelector('.admin-login form') === window.loginFormBeforeFocus,
+          usernameKept: document.querySelector('#admin-username')?.value === 'focus-draft-user',
+          passwordKept: document.querySelector('#admin-password')?.value === 'focus-draft-password',
+          checking: document.querySelector('main')?.textContent.includes('관리자 인증을 확인하고 있습니다.'),
+        };
+      }, event);
+      assert.deepEqual(result, { sameForm: true, usernameKept: true, passwordKept: true, checking: false }, `${event} 복귀 후 로그인 폼 유지`);
+      assert.equal(checks, initialChecks, `${event} 복귀 시 로그인 화면의 추가 인증 조회 없음`);
+    }
+    assert.deepEqual(await page.evaluate(() => [localStorage.length, sessionStorage.length]), [0, 0]);
+  });
+});
+
+test('보호 화면은 창 복귀 시 인증을 다시 확인하고 다른 탭의 로그아웃을 반영한다', async () => {
+  await withPage(true, async (page) => {
+    await page.goto(`${baseUrl}/admin/reviews`);
+    await waitForProtected(page);
+    await page.route('**/api/v1/admin/auth/me', (route) => route.fulfill({ status: 401, json: {} }));
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await page.waitForURL('**/admin/login');
+    await page.getByRole('heading', { name: '관리자 로그인', exact: true }).waitFor();
+    assert.equal(await page.getByRole('heading', { name: '정책 검수 관리' }).count(), 0);
+  });
+});
+
 test('실제 로그인과 새로고침 및 공통 메뉴와 로그아웃이 동작하고 브라우저 저장소를 사용하지 않는다', async () => {
   await withPage(false, async (page, context) => {
     const unexpected = [];

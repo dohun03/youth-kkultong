@@ -101,6 +101,8 @@ export function AdminSessionShell({ children }: { children: ReactNode }) {
   }, [pathname, isLogin, router, attempt]);
 
   useEffect(() => {
+    // 로그인 입력 중에는 폼을 유지하고 보호 화면의 창 복귀에만 인증 재확인을 연결
+    if (isLogin) return;
     // 다른 탭에서 로그아웃하거나 뒤로 가기로 돌아와도 서버 인증을 다시 확인
     const refresh = () => { if (document.visibilityState === 'visible') setAttempt((value) => value + 1); };
     const restore = (event: PageTransitionEvent) => { if (event.persisted) refresh(); };
@@ -112,7 +114,7 @@ export function AdminSessionShell({ children }: { children: ReactNode }) {
       window.removeEventListener('pageshow', restore);
       document.removeEventListener('visibilitychange', refresh);
     };
-  }, []);
+  }, [isLogin]);
 
   useEffect(() => {
     if (!identity) return;

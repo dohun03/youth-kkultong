@@ -1042,3 +1042,29 @@ git diff --check
 - API 계약과 DB 스키마 및 Migration, 패키지 의존성 및 SPEC 의미 변경은 없다. npm 관리자 테스트 실행 범위와 PLAN 및 SUMMARY를 갱신했다. Docker 설치 단계의 기존 취약점 안내는 Step 26 기록과 같으며 의존성을 수정하지 않았다. 전체 API 회귀 및 기존 공개 화면 전체 E2E와 실제 온통청년 수집은 반복하지 않았다. 이번 Step 30 변경은 미커밋 상태로 남겼다.
 
 핵심 읽는 순서: `app/admin/admin-session.tsx`의 `requireLogin()` → `app/admin/reviews/page.tsx`의 query와 조회 effect 및 렌더링 → `app/admin/reviews/[id]/page.tsx` → `test/admin-reviews.browser.mjs`. 미해결 검증 실패는 없다. 다음 미완료 순서는 Step 31이며 이번 요청 범위인 Step 30에서 중단한다.
+
+## 37. 로그인 화면의 창 복귀 시 입력 초기화 수정 (2026-11-04)
+
+사용자 요청으로 Step 30을 `8973ff0`(`feat: 관리자 검수 대기 목록 화면 구현`)로 커밋한 뒤 별도로 신고된 로그인 화면의 깜빡임과 입력 초기화를 확인했다. Step 31은 진행하지 않았다.
+
+- 원인은 `AdminSessionShell`이 로그인 화면에도 focus와 visibilitychange 및 복원된 pageshow의 인증 재확인을 연결한 것이다. 창에 복귀하면 attempt 변경 → me 조회 시작 → checking 화면 표시로 로그인 컴포넌트가 제거됐다. 조회가 401로 끝나 다시 로그인 폼을 만들면서 컴포넌트 내부의 아이디와 비밀번호 상태가 초기화됐다. 문서 전체를 새로고침한 것이 아니라 공통 인증 화면의 조건부 렌더링으로 생긴 버그다.
+- 수정 전 실행 중인 프로덕션 웹에 합성 입력을 넣고 focus 이벤트를 보내 실제 폼 DOM이 바뀌며 두 입력이 사라지는 것을 회귀 테스트 실패로 재현했다. 실제 비밀번호와 로그인 정보는 실패 결과에 포함하지 않았다.
+- `app/admin/admin-session.tsx`에서 로그인 화면에는 창 복귀 이벤트를 등록하지 않도록 수정했다. 로그인 진입 시 me 조회와 로그인 제출, 보호 화면의 창 및 탭 복귀 시 인증 재확인과 다른 탭 로그아웃 반영, 고정 만료 처리는 유지한다. 경로가 바뀌면 기존 이벤트를 정리하고 현재 화면에 맞게 연결한다. 입력값은 기존 React 상태에만 보관한다.
+- `test/admin-auth.browser.mjs`에 두 회귀 테스트를 추가했다. 로그인 입력 중 focus와 visibilitychange 및 복원된 pageshow 각각에서 같은 폼 DOM과 두 입력이 유지되고 추가 me 요청 및 확인 화면이 생기지 않는지 검증한다. 보호 화면의 focus에서 401을 받으면 로그인으로 이동하고 보호 화면을 감추는지도 확인했다. 브라우저 저장소는 계속 사용하지 않는다.
+
+### 검증과 실행 상태
+
+```sh
+node /tmp/admin-login-focus-verify.cjs reproduce
+npm run typecheck --workspace apps/web
+node --check apps/web/test/admin-auth.browser.mjs
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml build web
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml up -d --no-deps --wait web
+node /tmp/admin-login-focus-verify.cjs browser
+git diff --check
+```
+
+- 수정 전 재현 테스트 1개는 예상대로 실패했고 수정 후 기존 인증 및 검수 목록을 포함한 **28개 브라우저 테스트 모두 통과**했다. 최종 실패와 건너뜀은 0건이다. 웹 타입 검사와 Docker 웹 프로덕션 빌드, JavaScript 구문 및 diff 검사도 통과했다. 비밀값을 가린 재현 및 최종 결과는 `/tmp/admin-login-focus-{reproduce,browser}-output.log`에 있다.
+- 기존 API 및 DB를 유지하고 web만 수정 이미지로 재생성했다. 사용자 확인용 `http://localhost:3000/admin/login`을 계속 제공한다. 이미 열려 있던 브라우저는 한 번 새로고침해 수정된 코드를 받아야 한다. API 계약과 DB, 의존성 및 SPEC 의미와 PLAN의 Step 완료 상태는 바뀌지 않았다. 전체 API 회귀는 웹 이벤트 등록만 수정한 범위여서 반복하지 않았다. 이번 버그 수정은 별도 미커밋 상태로 남겼다.
+
+핵심 읽는 순서: `admin-session.tsx`의 창 복귀 이벤트 effect와 checking 렌더링 분기 → `admin-auth.browser.mjs`의 로그인 폼 보존 및 보호 화면 재확인 테스트. 다음 미완료 Step은 31로 유지한다.
