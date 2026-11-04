@@ -78,7 +78,7 @@ export class IngestionService {
     @Inject(IngestionLogService) private readonly logService: IngestionLogService,
   ) {}
 
-  /** 잠금 획득부터 수집 결과 기록까지 실행. CLI에서 이 메서드를 호출 */
+  /** 자동 수집과 CLI가 공유하는 잠금 획득부터 수집 결과 기록까지 실행 */
   async importPolicies(): Promise<IngestionLockResult<PolicyCollectionSaveResult>> {
     // 상태, 에러, 결과를 담을 변수 선언
     const state: IngestionLogEntry = {

@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-04 · 상태: Step 1~35 완료 · Step 36~41 미착수
+수정일: 2026-11-04 · 상태: Step 1~36 완료 · Step 37~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -1249,3 +1249,57 @@ git diff --check
 - API 계약과 DB 스키마 및 Migration, 패키지 의존성 및 SPEC 의미 변경은 없다. PLAN과 SUMMARY를 완료 상태로 갱신했다. PLAN의 검증 대상 중 “모달”은 사용자가 앞서 확인한 실제 승인/거절 확인 폼을 가리키도록 표현을 맞췄다. 전체 API 및 공개 화면 전체 회귀와 실제 외부 수집은 반복하지 않았다. 이번 Step 35 변경은 미커밋 상태로 남겼다.
 
 핵심 읽는 순서: `review-actions.tsx`의 확인 폼과 submit() → `review-detail.tsx`의 결과 및 오류 초점 → `test/admin-accessibility.browser.mjs` → `test/admin-recovery.live.mjs`의 전용 스키마와 실제 HTTP 응답 유실 검증. 미해결 검증 실패는 없다. 다음 미완료 순서는 Step 36이며 이번 요청 범위인 Step 35에서 중단한다.
+
+## 44. Step 36 NestJS 자동 수집과 실행 검증 (2026-11-04)
+
+AGENT_RULES → PLAN Step 36 → SPEC 5.1과 T2-23/40/43 → Step 14 및 Step 35 완료 기록 → HTTP 구성과 수집 서비스, 잠금과 로그 및 독립 CLI 테스트를 대조했다. ARCHITECTURE 6장의 모듈 루트와 services 배치 기준을 적용했다. 선행 Step 1~35는 완료 상태이며 PLAN/SPEC/코드의 설계 충돌은 없다.
+
+### 구현과 파일 배치
+
+- `@nestjs/schedule` **12.0.2**를 API 의존성과 package-lock에 고정했다. 공식 레지스트리의 peerDependencies는 NestJS common/core `^11.0.0 || ^12.0.0`, Node.js 엔진은 `>=20.19.0`으로 현재 NestJS 12.1.3과 Node 24에 맞는다. 설치되는 cron 4.4.0을 타이머 검증에서도 사용한다. 확인 자료는 [공식 패키지](https://www.npmjs.com/package/@nestjs/schedule)와 [NestJS 공식 스케줄 문서](https://docs.nestjs.com/techniques/task-scheduling)다.
+- `modules/ingestion/ingestion-schedule.module.ts`는 HTTP 전용 `forHttp()`에서 `POLICY_SCHEDULE_ENABLED`를 검사한다. 생략은 false, 정확한 문자열 true/false만 허용한다. 빈 값과 대소문자 변형, 공백, 숫자 및 boolean/null 등은 DB 연결 전에 고정된 오류 메시지로 거부한다. 공통 Environment와 AppModule에는 이 설정이나 타이머를 등록하지 않는다.
+- true일 때만 `ScheduleModule.forRoot()` 한 개와 기존 IngestionModule 및 `services/policy-schedule.service.ts` 제공자를 등록한다. `main.ts`의 HTTP 구성에 연결했으며 일반 테스트의 명시적 HTTP 설정은 기본 비활성이다. `.env.example`에 기본값과 운영 주의를 추가하고 Compose api 환경변수에도 기본 false를 전달한다.
+- `PolicyScheduleService.importPolicies()`의 `@Cron('0 0 4 * * *', { name: 'policy-daily-import', timeZone: 'Asia/Seoul' })`에서 기존 IngestionService를 직접 await한다. 공통 서비스가 결과/실패 로그와 잠금 및 연결 정리를 마치면, 스케줄러는 전달된 오류를 고정 안내로 처리하고 API와 다음 예약을 유지한다. 원본 예외와 SQL 및 비밀값을 콘솔에 추가하지 않는다. 결과 건수와 saved 및 commitOutcome의 기존 JSONL 계약은 그대로 유지한다.
+- CLI는 기존 공통 서비스와 종료 코드 0/1/2를 유지한다. HTTP 전용 모듈을 AppModule로 옮기지 않았으므로 수집/Migration/시드 CLI는 활성 또는 잘못된 HTTP 설정에 영향을 받지 않는다.
+
+### 검증 근거
+
+- `test/policy-schedule.spec.ts`: 기본 비활성과 잘못된 설정 11종을 검사하고 DB 연결 전 거부를 확인했다.
+- `test/policy-schedule.integration.spec.ts`: 실제 PostgreSQL 임시 스키마와 별도 NestJS HTTP 서버를 사용한다. 기본/false에 SchedulerRegistry와 제공자가 없고 로그/API 호출도 없는 것을 확인했다. 활성 상태에는 작업 한 개만 등록되며 시간대와 다음 실행을 확인한다. 서버 중지 사이 한국 04:00을 넘도록 Date.now를 시험 시각으로 바꿔 재생성하고, 시작 즉시 보충 호출 없이 다음 날 04:00을 예약하는 것을 확인했다. 서버 종료 시 등록 타이머도 제거된다.
+- 같은 통합 테스트에서 **검증 서버의 등록된 작업만 1초 간격으로 조정**해 실제 타이머를 실행했다. 핸들러 직접 호출로 대체하지 않았다. 첫 외부 응답 403의 FAILED/saved=false 로그, 실패 뒤 health 200 및 활성 예약과 다음 실행을 확인하고, 다음 타이머의 실제 트랜잭션 COMMIT과 SUCCESS/saved=true 및 잠금 재획득을 검증했다. 실제 온통청년 응답은 시험 데이터로 대체하며 운영 DB에는 수집하지 않는다.
+- 기존 `test/ingestion-cli-process.integration.spec.ts`에 스케줄러 선행/CLI 선행 두 경쟁을 추가했다. 별도 HTTP 서버의 실제 예약과 독립 CLI가 같은 고정 Advisory Lock으로 경쟁한다. 잠금 패자는 API 호출 없이 ALREADY_RUNNING을 남기고, 승자만 원본/후보/조회수 및 누락을 확정한다. 경쟁 중 health 200, 경쟁 뒤 다음 자동 실행과 후보 중복 없음, 잠금 정리를 확인했다. 기존 CLI 간 경쟁과 강제 종료 및 공개 읽기 검증도 모두 통과했다.
+- CLI preload에서 종료 시 스케줄러 패키지 미로딩을 확인했다. 수집 CLI는 POLICY_SCHEDULE_ENABLED=true에서도 타이머 없이 자연 종료하고, Migration/시드는 true와 잘못된 HTTP 설정 모두에서 관리자 자격 없이 정상 실행했다. Migration은 자체 process.exit를 사용하므로 exit 훅에서 확인하고 시드 재실행 후 지역 537개를 확인했다.
+- 최초 검증에서 시험 서버의 기존 요청 간격 3초가 1초 시험 예약과 겹친 사례와 Migration의 명시적 종료로 beforeExit 관찰이 누락된 사례를 확인했다. 시험 요청 간격을 0으로 두고 exit 훅에서 확인하도록 고친 뒤 **6개 스위트 76개 모두 통과**했다. 제품 수집의 기본 요청 간격과 재시도/잠금 규칙은 변경하지 않았다.
+
+실행 명령:
+
+```sh
+npm run typecheck
+npm run build --workspace apps/api
+# 접근 가능한 검증용 DATABASE_URL을 환경에 준비하고 실행
+npm run test --workspace apps/api -- --runTestsByPath \
+  test/policy-schedule.spec.ts test/policy-schedule.integration.spec.ts \
+  test/ingestion-cli-process.integration.spec.ts test/admin-cli.integration.spec.ts \
+  test/admin-access.spec.ts test/import-policies.spec.ts
+node --check apps/api/test/fixtures/admin-cli.preload.cjs
+node --check apps/api/test/fixtures/ingestion-cli.preload.cjs
+git diff --check
+```
+
+이번 실행은 기존 비밀값 가림 도구를 `/tmp/mvp2-step36-verify.cjs`로 준비해 접근 가능한 로컬 DB 주소를 자식 프로세스에만 전달했다. 결과는 `/tmp/mvp2-step36-focused-{results.json,output.log}`에 있다. `/tmp/mvp2-step36-{before,after}.json`에서 공개 3,396건, 원본 3,399건, 검수 10건, 지역 537개 및 Migration 3개의 전체 행 체크섬이 동일하며 잔여 테스트 스키마는 0개다.
+
+최종 로그 읽기 보완과 HTTP 설정 변수명 정리 후 영향 범위인 **2개 스위트 17개를 다시 실행해 모두 통과**했다. `/tmp/mvp2-step36-schedule-{results.json,output.log}`에 결과를 보관했다. shared/API/web 전체 타입 검사와 최종 API 타입 검사, 로컬 API 빌드 및 Docker 프로덕션 API 빌드, preload 구문 검사 및 diff 공백 검사도 통과했다.
+
+최종 API 이미지만 재생성했다. 실행 명령은 `DOCKER_CONFIG=/tmp/mvp2-step35-docker docker --config /tmp/mvp2-step35-docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml build api`와 같은 옵션의 `up -d --no-deps --wait api`다. 사용자 Docker 인증 설정은 수정하지 않았다. API 내부에서 스케줄러 12.0.2와 POLICY_SCHEDULE_ENABLED=false를 확인했다. 기존 web과 DB 및 볼륨은 유지하고 세 서비스 모두 healthy이며, API health와 웹 프록시 health, 공개 목록과 관리자 로그인 HTTP 200, 무인증 me 401을 확인했다. `http://localhost:3000`에서 계속 확인할 수 있다. 재생성 후에도 위의 전체 행 체크섬과 잔여 스키마 비교가 동일하다. 미해결 검증 실패는 없으며 변경사항은 미커밋 상태로 남겼다.
+
+### 운영 절차
+
+1. **현재 상태:** 자동 수집은 false다. 이번 Step에서는 `.env`의 실제 자격/설정과 운영 데이터에 손대지 않으며 최종 일일 활성화는 Step 41에서 수행한다. 단일 API 인스턴스와 한국 04:00에 서버가 계속 실행되는 환경이 필요하다.
+2. **최종 활성화:** Step 41에서 수동 수집과 검수, 백업/복원을 확인한 뒤 `.env`의 `POLICY_SCHEDULE_ENABLED=true`를 설정하고 최신 API 이미지로 `docker compose up -d --no-deps --wait api`를 실행한다. 로컬 포트 설정을 사용할 때는 기존처럼 `-f compose.yaml -f compose.local.yaml`을 붙인다. 환경 변경은 컨테이너 재생성에 반영되며 단순 restart로는 바뀌지 않는다. 시작 즉시 수집하지 않고 다음 한국 04:00에 실행한다.
+3. **결과 확인:** `docker compose ps`와 `http://localhost:4000/api/v1/health`로 API 상태를 확인한다. `docker compose exec -T api tail -n 30 /app/logs/policies-import.jsonl`에서 RUN_FINISHED의 runId/status/saved/commitOutcome과 판정 및 검수 후보 건수를 확인한다. 파일 기록이 실패했다면 `docker compose logs --tail=100 api`의 대체 기록도 확인한다. 수집 반영과 관리자 공개 승인을 구분한다.
+4. **실패/서버 중지:** API가 복구되어도 놓친 수집은 자동 보충하지 않는다. 원인을 해결한 뒤 `docker compose exec -T api npm run import:policies --workspace apps/api`로 수동 수집한다. 2는 다른 수집 진행 중이며 1은 실패다. DB 확정 뒤 로그 오류도 1일 수 있으므로 saved/commitOutcome을 함께 확인한다. UNKNOWN이면 DB와 검수 상태를 확인한 후 다음 조치를 결정한다. 시험 때문에 제품의 Cron 표현식이나 공통 재시도 규칙을 바꾸지 않는다.
+5. **비활성화:** `.env`를 false로 바꾸고 같은 방식으로 API를 재생성한다. 환경변수와 로그에 인증키/접속 문자열을 출력하는 확인 명령은 사용하지 않는다.
+
+API 계약과 DB 스키마 및 Migration, SPEC의 기능 의미는 변경하지 않았다. PRD/ARCHITECTURE/SPEC 및 검수 요약은 그대로 유지하며 PLAN과 이 SUMMARY에 실제 구현 및 검증 상태를 반영한다. 전체 API/웹 회귀와 실제 온통청년 수집은 Step 38~40 범위로 남긴다.
+
+핵심 읽는 순서: `ingestion-schedule.module.ts`의 HTTP 설정/조건부 등록 → `policy-schedule.service.ts`의 Cron과 오류 처리 → `main.ts`의 HTTP 구성 → `policy-schedule.integration.spec.ts`의 시간대/실패/다음 실행 → `ingestion-cli-process.integration.spec.ts`의 양방향 경쟁. 다음 미완료 순서는 Step 37이며 이번 요청 범위인 Step 36에서 중단한다.

@@ -32,6 +32,12 @@ const gate = new Promise((resolve) => { resume = resolve; });
 process.on('message', (message) => { if (message === 'RESUME') resume(); });
 // IPC 자체가 CLI의 자연 종료를 붙잡지 않도록 한다. 작업 중에는 DB 연결이 유지된다.
 process.channel?.unref();
+// 스케줄러 패키지를 로드하지 않은 CLI는 예약 타이머도 만들 수 없음
+process.once('beforeExit', () => {
+  if (!Object.keys(require.cache).some((path) => path.includes('/@nestjs/schedule/'))) {
+    process.send?.({ event: 'SCHEDULE_ABSENT' });
+  }
+});
 
 let firstRequest = true;
 globalThis.fetch = async () => {

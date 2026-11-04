@@ -17,6 +17,11 @@ import { CreatePolicies1792162800000 } from '../src/database/migrations/17921628
 import { CreateRegions1792162801000 } from '../src/database/migrations/1792162801000-create-regions';
 import { createApplication } from '../src/main';
 import request from 'supertest';
+import { SchedulerRegistry } from '@nestjs/schedule';
+import { CronTime } from 'cron';
+import { setTimeout as delay } from 'node:timers/promises';
+import { IngestionLogService } from '../src/modules/ingestion/services/ingestion-log.service';
+import { ENVIRONMENT } from '../src/common/environment';
 import { IngestionLockService } from '../src/modules/ingestion/services/ingestion-lock.service';
 import type { IngestionLogEntry } from '../src/modules/ingestion/services/ingestion-log.service';
 import { Policy } from '../src/modules/policies/entities/policy.entity';
@@ -36,6 +41,7 @@ describe('독립 CLI 두 개의 잠금 경쟁과 프로세스 종료 복구', ()
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
       env: { ...process.env, NODE_OPTIONS: '', DATABASE_URL: environment.DATABASE_URL,
         ADMIN_USERNAME: '', ADMIN_PASSWORD_HASH: '', ADMIN_AUTH_SECRET: '', ADMIN_WEB_ORIGIN: '',
+        POLICY_SCHEDULE_ENABLED: 'true',
         YOUTH_CENTER_API_KEY: 'step27-process-key', YOUTH_CENTER_PAGE_SIZE: '2', YOUTH_CENTER_REQUEST_DELAY_MS: '0', POLICY_IMPORT_BATCH_SIZE: '1',
         INGESTION_TEST_SCHEMA: schema, INGESTION_TEST_LOG_DIRECTORY: join(directory, name), INGESTION_TEST_MODE: mode },
     });
@@ -169,6 +175,8 @@ describe('독립 CLI 두 개의 잠금 경쟁과 프로세스 종료 복구', ()
     first.child.send('RESUME');
     const completed = await first.finished;
     expect(completed).toMatchObject({ code: 0, signal: null });
+    expect(first.events).toContain('SCHEDULE_ABSENT');
+    expect(second.events).toContain('SCHEDULE_ABSENT');
     expect((await records(first)).at(-1)).toMatchObject({ status: 'SUCCESS', saved: true, commitOutcome: 'COMMITTED',
       counts: { NEW: 1, CHANGED: 1, UNCHANGED: 0 }, missingCount: 1,
       reviewCreatedCount: 2, reviewSupersededCount: 0, publicViewUpdatedCount: 1 });
@@ -279,6 +287,93 @@ describe('독립 CLI 두 개의 잠금 경쟁과 프로세스 종료 복구', ()
       } finally {
         if (app) await app.close();
         else if (apiDataSource.isInitialized) await apiDataSource.destroy();
+      }
+    }, 30000,
+  );
+
+  it.each(['SCHEDULE_FIRST', 'CLI_FIRST'])(
+    'T2-23: %s 순서에서도 실제 HTTP 타이머와 독립 CLI 중 하나만 수집한다', async (order) => {
+      const apiSource = createDataSource(environment).setOptions({ schema,
+        extra: { options: `-c timezone=${environment.TZ} -c search_path=${schema}` } });
+      const factory = jest.spyOn(database, 'createDataSource').mockReturnValue(apiSource);
+      let app: Awaited<ReturnType<typeof createApplication>> | undefined;
+      let resume!: () => void;
+      const gate = new Promise<void>((resolve) => { resume = resolve; });
+      const scheduleRecords: IngestionLogEntry[] = [];
+      // 이 HTTP 서버의 실제 로그만 전용 임시 폴더로 분리
+      const originalWrite = IngestionLogService.prototype.write;
+      jest.spyOn(IngestionLogService.prototype, 'write').mockImplementation(async function (this: IngestionLogService, entry) {
+        Object.assign(this, { directory: join(directory, 'schedule') });
+        await originalWrite.call(this, entry);
+        scheduleRecords.push(structuredClone(entry));
+      });
+      const fetchMock = jest.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+        await gate;
+        return Response.json({ resultCode: 200, resultMessage: '성공', result: {
+          pagging: { totCount: 2, pageNum: 1, pageSize: 2 },
+          youthPolicyList: [{ plcyNo: 'policy-0', plcyNm: 'CLI가 변경한 제목', inqCnt: '20' },
+            { plcyNo: 'policy-1', plcyNm: 'CLI가 추가한 정책', inqCnt: '1' }],
+        } });
+      });
+
+      /** 등록된 타이머가 공통 서비스에 도달하거나 최종 기록을 남길 때까지 대기 */
+      async function until(check: () => boolean): Promise<void> {
+        for (let attempt = 0; attempt < 300; attempt++) {
+          if (check()) return;
+          await delay(20);
+        }
+        throw new Error('스케줄러와 CLI 경쟁 검증의 진행 신호가 도착하지 않았습니다.');
+      }
+
+      try {
+        try { app = await createApplication({ ...testAdminValues, POLICY_SCHEDULE_ENABLED: 'true' }); }
+        finally { factory.mockRestore(); }
+        Object.assign(app.get(ENVIRONMENT), { YOUTH_CENTER_API_KEY: 'schedule-cli-test-key', YOUTH_CENTER_PAGE_SIZE: 2,
+          YOUTH_CENTER_REQUEST_DELAY_MS: 0 });
+        await app.listen(0, '127.0.0.1');
+        const job = app.get(SchedulerRegistry).getCronJob('policy-daily-import');
+        const before = await state();
+        if (order === 'SCHEDULE_FIRST') {
+          job.setTime(new CronTime('* * * * * *', 'Asia/Seoul'));
+          await until(() => fetchMock.mock.calls.length === 1);
+          await job.stop();
+          const cli = startCli('schedule-blocked-cli'); processes.push(cli);
+          expect(await cli.finished).toMatchObject({ code: 2 });
+          expect(cli.events).not.toContain('API_REQUEST');
+          expect(cli.events).toContain('SCHEDULE_ABSENT');
+          expect((await records(cli)).at(-1)).toMatchObject({ status: 'ALREADY_RUNNING', saved: false });
+          await request(app.getHttpServer()).get('/api/v1/health').expect(200);
+          expect(await state()).toEqual(before);
+          resume();
+          await until(() => scheduleRecords.some(({ event }) => event === 'RUN_FINISHED'));
+          expect(scheduleRecords.at(-1)).toMatchObject({ event: 'RUN_FINISHED', status: 'SUCCESS', saved: true });
+        } else {
+          const cli = startCli('cli-blocked-schedule', 'API_PAUSE'); processes.push(cli);
+          await cli.waitFor('API_PAUSED');
+          job.setTime(new CronTime('* * * * * *', 'Asia/Seoul'));
+          await until(() => scheduleRecords.some(({ event }) => event === 'RUN_FINISHED'));
+          await job.stop();
+          expect(scheduleRecords.at(-1)).toMatchObject({ status: 'ALREADY_RUNNING', saved: false });
+          expect(fetchMock).not.toHaveBeenCalled();
+          expect(await state()).toEqual(before);
+          await request(app.getHttpServer()).get('/api/v1/health').expect(200);
+          cli.child.send('RESUME');
+          expect(await cli.finished).toMatchObject({ code: 0 });
+        }
+        await expectCollected(before);
+        await expectUnlocked();
+        // 경쟁이 끝난 다음 자동 예약도 정상 완료하며 후보를 중복 생성하지 않음
+        resume();
+        const previous = scheduleRecords.filter(({ event }) => event === 'RUN_FINISHED').length;
+        job.start();
+        await until(() => scheduleRecords.filter(({ event }) => event === 'RUN_FINISHED').length > previous);
+        await job.stop();
+        expect(scheduleRecords.at(-1)).toMatchObject({ status: 'SUCCESS', saved: true, reviewCreatedCount: 0 });
+        await expectCollected(before, 2);
+      } finally {
+        resume();
+        if (app) await app.close();
+        else if (apiSource.isInitialized) await apiSource.destroy();
       }
     }, 30000,
   );

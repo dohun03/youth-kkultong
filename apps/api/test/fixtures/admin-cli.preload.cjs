@@ -6,3 +6,9 @@ const originalCreate = database.createDataSource;
 database.createDataSource = (environment) => originalCreate(environment).setOptions({
   schema, extra: { options: `-c timezone=${environment.TZ} -c search_path=${schema}` },
 });
+// 명시적으로 종료하는 Migration과 자연 종료하는 시드 모두 예약 모듈 미로딩 확인
+process.once('exit', () => {
+  if (!Object.keys(require.cache).some((path) => path.includes('/@nestjs/schedule/'))) {
+    require('node:fs').writeSync(1, 'CLI_SCHEDULE_ABSENT\n');
+  }
+});
