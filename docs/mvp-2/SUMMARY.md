@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-04 · 상태: Step 1~30 완료 · Step 31~41 미착수
+수정일: 2026-11-04 · 상태: Step 1~31 완료 · Step 32~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -1068,3 +1068,35 @@ git diff --check
 - 기존 API 및 DB를 유지하고 web만 수정 이미지로 재생성했다. 사용자 확인용 `http://localhost:3000/admin/login`을 계속 제공한다. 이미 열려 있던 브라우저는 한 번 새로고침해 수정된 코드를 받아야 한다. API 계약과 DB, 의존성 및 SPEC 의미와 PLAN의 Step 완료 상태는 바뀌지 않았다. 전체 API 회귀는 웹 이벤트 등록만 수정한 범위여서 반복하지 않았다. 이번 버그 수정은 별도 미커밋 상태로 남겼다.
 
 핵심 읽는 순서: `admin-session.tsx`의 창 복귀 이벤트 effect와 checking 렌더링 분기 → `admin-auth.browser.mjs`의 로그인 폼 보존 및 보호 화면 재확인 테스트. 다음 미완료 Step은 31로 유지한다.
+
+## 38. Step 31 검수 상세 비교 화면 (2026-11-04)
+
+사용자 요청으로 로그인 화면 복귀 버그 수정을 `427c04c`(`fix: 로그인 화면 복귀 시 입력 초기화 방지`)로 커밋한 뒤 Step 31을 수행했다. AGENT_RULES → PLAN Step 31 → SPEC 3장과 4.2 및 8.1~8.2, T2-32와 T2-34~35 및 T2-46~47 → Step 22~30 및 로그인 수정 기록 → 상세 API와 공용 타입, 실제 수집 원본 필드 및 기존 관리자 화면을 대조했다. 파일 배치는 ARCHITECTURE 6장의 관리자 화면 기준을 따르며 설계 충돌은 없다.
+
+- `app/admin/reviews/[id]/page.tsx`는 UUID 검사 후 `review-detail.tsx`의 상세 화면을 연결한다. 같은 출처의 상세 API를 인증 쿠키와 no-store로 조회하며 응답의 후보 ID와 스냅샷 및 화면에서 쓰는 필드를 확인한다. 로딩과 404 및 429, 일반 오류와 연결 끊김 및 손상 응답을 구분하고 재조회할 수 있다. 15초 요청 한도와 화면 이동 시 취소 및 늦은 응답 무시를 적용했다. 401은 기존 공통 인증 문맥에서 보호 데이터를 닫고 로그인으로 이동한다.
+- `review-comparison.tsx`는 보관된 기준본과 변경본을 나란히 표시하고 모바일에서는 위아래로 배치한다. 서버의 `changedFields`를 판정 기준으로 사용해 기본적으로 변경 항목만 보여주고 전체 항목 보기에서는 동일 항목도 제공한다. 추가와 삭제 및 변경을 명시하고 MVP1에서 쓰는 원본 필드는 한국어 이름으로, 미확인 필드는 원래 키와 함께 기타 변경 항목으로 표시한다. 최상위 inqCnt는 비교에서 제외하고 최신 수집 및 현재 공개 조회수를 별도로 표시한다.
+- 없는 필드와 NULL 및 빈 문자열을 구분하고 자료형을 표시한다. 문자열의 앞뒤 공백과 줄바꿈을 임의로 제거하지 않으며 공백뿐인 값은 JSON 이스케이프 표기로 구분한다. 객체와 배열은 JSON 텍스트로 표시하고 배열 순서를 보존한다. 긴 값은 앞 400자와 최대 8줄을 먼저 표시하고 더보기 및 접기로 원문 전체를 확인한다. 원문과 사유는 React 텍스트로 렌더링하며 실제 링크는 절대 HTTP(S) 주소만 새 탭 보호 속성과 함께 제공한다. 특수 원문 키도 일반 필드로 취급한다.
+- 검수 당시 스냅샷을 현재 공개 원문으로 대체하지 않는다. 신규의 기준본 없음은 후보 생성 당시의 상태로 명시하므로 신규 승인 이력의 현재 공개본과 구분된다. 최신 원본 및 현재 공개 내용 변경 안내와 최신 대기 후보 링크, 현재 공개본의 전체 원문 펼침 및 공개 상세 링크를 제공한다. 공개 UUID가 바뀌고 해시가 같은 방어 경로도 서버의 canReview=false를 그대로 따르고 공개 기준 불일치를 안내한다. 누락 횟수는 별도로 경고하고 누락만으로 처리 가능 여부를 바꾸지 않는다. 실제 수집 시각과 조회수의 NULL도 그대로 구분한다.
+- 대기와 승인 및 거절과 대체 상태, 종료 시각과 처리자 및 사유를 표시한다. 승인과 거절 버튼은 canReview에 따라 활성 및 비활성 상태를 연결했다. **Step 31의 버튼은 준비 안내만 제공하며 POST를 보내지 않는다.** 승인 확인과 거절 입력 및 실제 처리와 상세 재조회는 Step 32 범위로 남겼다. 관리자 데이터는 브라우저 저장소에 기록하지 않는다.
+
+### 검증과 실행 상태
+
+```sh
+node /tmp/mvp2-step31-verify.cjs before
+npm run typecheck
+npm run typecheck --workspace apps/web
+node /tmp/mvp2-step31-verify.cjs focused
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml build web
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml up -d --no-deps --wait web
+node /tmp/mvp2-step31-verify.cjs browser
+node /tmp/mvp2-step31-verify.cjs after
+git diff --check
+```
+
+- 신규 상세 브라우저 21개와 기존 인증 12개 및 목록 16개를 포함한 **49개 브라우저 테스트 모두 통과**. 상세 API와 필드 비교 및 검수 가능 여부의 **3개 스위트 88개 테스트 모두 통과**. 실패와 건너뜀은 0건이다. shared/API/web 전체 타입 검사와 최종 웹 타입 검사, Docker 웹 프로덕션 빌드, 브라우저 테스트 구문 및 신규 파일을 포함한 diff 검사도 통과했다.
+- 상세의 기준/변경/현재 공개본 분리와 전체 항목, 추가 NULL과 삭제 및 빈 문자열과 공백, 객체와 배열 및 긴 유니코드 원문, 신규 승인 이력과 과거 종료 상태, 최신 후보 이동과 누락 및 canReview, 401과 404 및 429와 503 및 연결 오류, 안전한 텍스트와 링크 및 특수 키, 모바일 세로 배치와 가로 넘침 및 키보드 토글을 확인했다. 실제 로그인과 프록시의 빈 목록 및 없는 UUID의 404도 확인했다. 현재 실제 검수 후보는 0건이므로 비교 사례의 상세 응답만 브라우저에서 대체했다. 실제 DB에 검수 자료를 넣거나 승인 및 거절을 실행하지 않았다.
+- 최종 안내문 보완 후 웹 재빌드 시 자동 승인 검토가 사용량 한도로 한 차례 실행되지 않았다. 사용자 재개 요청 후 같은 승인 경로로 빌드와 배포 및 최종 49개 검증을 완료했다. 초기 48개 통과에 이어 신규 승인 이력의 당시 기준본 안내를 추가 검증했으며 미실행 상태로 남은 필수 검증은 없다.
+- 비밀값을 가린 결과는 `/tmp/mvp2-step31-browser-output.log`와 `/tmp/mvp2-step31-focused-{results.json,output.log}`, 비교 및 모바일 캡처는 `/tmp/mvp2-step31-{comparison,mobile}.png`에 있다. DB 전후 기록 `/tmp/mvp2-step31-{before,after}.json`에서 공개 3,390건과 원본 3,390건, 검수 0건, 지역 537개 및 Migration 3개의 전체 행 체크섬이 동일하며 잔여 테스트 스키마는 0개다.
+- 기존 web만 최종 이미지로 재생성하고 API 및 DB와 볼륨은 유지했다. 최종 web과 api 및 db 모두 healthy이며 `http://localhost:3000/admin/reviews`와 `/admin/login` 및 API health의 HTTP 200을 확인했다. 사용자 확인용 서비스는 계속 가동한다. API 계약과 DB 스키마 및 Migration, 의존성 및 SPEC 의미 변경은 없다. PLAN과 SUMMARY를 완료 상태로 갱신했다. 전체 API 회귀 및 실제 온통청년 수집은 반복하지 않았다. 이번 Step 31 변경은 미커밋 상태로 남겼다.
+
+핵심 읽는 순서: `app/admin/reviews/[id]/page.tsx` → `review-detail.tsx`의 조회와 상태 안내 → `review-comparison.tsx`의 비교와 원문 표시 → `test/admin-review-detail.browser.mjs`. 다음 미완료 순서는 Step 32이며 이번 요청 범위인 Step 31에서 중단한다.
