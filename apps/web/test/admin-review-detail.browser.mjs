@@ -154,7 +154,7 @@ test('긴 원문은 원래 공백과 줄바꿈 및 유니코드를 유지한 채
   });
 });
 
-test('신규는 기준본 없음과 모든 항목 추가를 표시하고 처리 버튼은 실제 저장을 실행하지 않는다', async () => {
+test('신규는 기준본 없음과 모든 항목 추가를 표시하고 승인 확인을 취소하면 전송하지 않는다', async () => {
   await withPage(async (page) => {
     const value = fixture();
     value.base = null;
@@ -169,7 +169,9 @@ test('신규는 기준본 없음과 모든 항목 추가를 표시하고 처리 
     assert.equal(await page.getByRole('button', { name: '승인', exact: true }).isEnabled(), true);
     assert.ok((await page.locator('.review-change-kind').allTextContents()).every((text) => text === '추가'));
     await page.getByRole('button', { name: '승인', exact: true }).click();
-    await page.getByRole('status').filter({ hasText: '승인 및 거절 기능은 준비 중입니다.' }).waitFor();
+    await page.getByRole('form', { name: '승인 확인', exact: true }).waitFor();
+    await page.getByRole('button', { name: '취소', exact: true }).click();
+    assert.equal(await page.getByRole('form', { name: '승인 확인', exact: true }).count(), 0);
     assert.equal(posts, 0);
   });
 });
@@ -379,3 +381,234 @@ test('좁은 화면에서는 기준본과 변경본을 위아래로 표시하고
     await page.screenshot({ path: '/tmp/mvp2-step31-mobile.png', fullPage: true });
   }, { width: 390, height: 844 });
 });
+
+/** 처리 응답과 상세 재조회 순서를 기록하고 확정된 서버 상태를 재현 */
+async function actionScenario(page, value, handlePost) {
+  const calls = [];
+  await page.route(`**/api/v1/admin/reviews/${value.review.id}`, (route) => {
+    calls.push({ method: 'GET' });
+    return route.fulfill({ json: value });
+  });
+  // 실제 DB에 쓰지 않고 처리 요청 본문과 응답 이후 재조회 흐름을 검증
+  await page.route(`**/api/v1/admin/reviews/${value.review.id}/*`, async (route) => {
+    assert.equal(route.request().method(), 'POST');
+    calls.push({ method: 'POST', path: new URL(route.request().url()).pathname, body: route.request().postDataJSON() });
+    await handlePost(route, value);
+  });
+  await page.goto(`${baseUrl}/admin/reviews/${value.review.id}`);
+  await page.getByRole('heading', { name: value.review.title, exact: true }).waitFor();
+  return calls;
+}
+
+/** 승인과 거절 후 상세에서 반환할 확정 상태를 구성 */
+function closeReview(value, status, reason = null) {
+  value.review.status = status;
+  value.review.reviewedBy = 'fixture-reviewer';
+  value.review.closedAt = '2026-11-04T07:00:00.000Z';
+  value.review.rejectionReason = reason;
+  value.canReview = false;
+  value.latestPendingReviewId = null;
+  if (status === 'APPROVED') value.currentPublished = { ...structuredClone(value.target), id: publicId, viewCount: 99 };
+}
+
+for (const kind of ['CHANGED', 'NEW']) {
+  test(`${kind} 승인은 확인 후 두 해시를 전송하고 상세를 다시 조회한다`, async () => {
+    await withPage(async (page) => {
+      const value = fixture();
+      if (kind === 'NEW') { value.review.kind = kind; value.base = null; value.currentPublished = null; value.review.baseContentHash = null; }
+      const calls = await actionScenario(page, value, async (route, current) => {
+        closeReview(current, 'APPROVED');
+        await route.fulfill({ json: { reviewId, status: 'APPROVED', policyId: publicId, closedAt: current.review.closedAt } });
+      });
+      await page.getByRole('button', { name: '승인', exact: true }).click();
+      assert.equal(calls.length, 1);
+      await page.getByRole('button', { name: '승인 확정', exact: true }).click();
+      await page.getByText('처리가 끝난 검수 이력입니다. 상태: 승인됨', { exact: true }).waitFor();
+      assert.deepEqual(calls.map((call) => call.method), ['GET', 'POST', 'GET']);
+      assert.deepEqual(calls[1].body, { contentHash: 'b'.repeat(64), baseContentHash: kind === 'NEW' ? null : 'a'.repeat(64) });
+      assert.ok(calls[1].path.endsWith('/approve'));
+      assert.ok((await page.locator('.review-facts').textContent()).includes('fixture-reviewer'));
+      assert.ok((await page.locator('.review-facts').textContent()).includes('2026. 11. 04. 16:00'));
+      await page.locator('.review-current-snapshot summary').click();
+      assert.ok((await page.locator('.review-current-snapshot').textContent()).includes('검수 정책 B'));
+      assert.equal(await page.getByRole('button', { name: '거절', exact: true }).isDisabled(), true);
+    });
+  });
+}
+
+test('거절 사유의 공백과 1001자는 제출하지 않고 1000자 사유를 정리해 전송한다', async () => {
+  await withPage(async (page) => {
+    const value = fixture();
+    const originalPublic = structuredClone(value.currentPublished);
+    const prefix = '<img src=x onerror="window.injected=true">\n';
+    const reason = prefix + '사'.repeat(1000 - prefix.length);
+    assert.equal(reason.length, 1000);
+    const calls = await actionScenario(page, value, async (route, current) => {
+      closeReview(current, 'REJECTED', route.request().postDataJSON().reason);
+      await route.fulfill({ json: { reviewId, status: 'REJECTED', policyId: publicId, closedAt: current.review.closedAt } });
+    });
+    await page.getByRole('button', { name: '거절', exact: true }).click();
+    const input = page.getByLabel('거절 사유 (필수, 1~1000자)', { exact: true });
+    for (const invalid of ['', ' \n\t ', '사'.repeat(1001)]) {
+      await input.fill(invalid);
+      await page.getByRole('button', { name: '거절 확정', exact: true }).click();
+      await page.getByRole('alert').filter({ hasText: '1~1000자' }).waitFor();
+      assert.equal(calls.length, 1);
+    }
+    await input.fill(`  ${reason} \n`);
+    await page.getByRole('button', { name: '거절 확정', exact: true }).click();
+    await page.getByText('처리가 끝난 검수 이력입니다. 상태: 거절됨', { exact: true }).waitFor();
+    assert.deepEqual(calls.map((call) => call.method), ['GET', 'POST', 'GET']);
+    assert.deepEqual(calls[1].body, { contentHash: 'b'.repeat(64), baseContentHash: 'a'.repeat(64), reason });
+    assert.ok(calls[1].path.endsWith('/reject'));
+    assert.equal(await page.locator('.review-notices pre').textContent(), reason);
+    assert.equal(await page.locator('.review-notices img').count(), 0);
+    assert.equal(await page.evaluate(() => window.injected === true), false);
+    assert.deepEqual(value.currentPublished, originalPublic);
+    assert.deepEqual(await page.evaluate(() => [localStorage.length, sessionStorage.length]), [0, 0]);
+  });
+});
+
+test('처리 중 연속 제출은 한 번만 전송하고 확인 폼과 새로고침을 잠근다', async () => {
+  await withPage(async (page) => {
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const calls = await actionScenario(page, fixture(), async (route, value) => {
+      await gate;
+      closeReview(value, 'APPROVED');
+      await route.fulfill({ json: {} });
+    });
+    try {
+      await page.getByRole('button', { name: '승인', exact: true }).click();
+      await page.getByRole('form', { name: '승인 확인', exact: true }).evaluate((form) => { form.requestSubmit(); form.requestSubmit(); });
+      await page.getByRole('status').filter({ hasText: '처리 중입니다.' }).waitFor();
+      for (const name of ['승인', '거절', '승인 확정', '취소', '새로고침']) {
+        assert.equal(await page.getByRole('button', { name, exact: true }).isDisabled(), true);
+      }
+      assert.equal(calls.filter((call) => call.method === 'POST').length, 1);
+      release();
+      await page.getByText('처리가 끝난 검수 이력입니다. 상태: 승인됨', { exact: true }).waitFor();
+      assert.equal(calls.filter((call) => call.method === 'POST').length, 1);
+    } finally { release(); }
+  });
+});
+
+for (const code of ['REVIEW_NOT_PENDING', 'REVIEW_CONTENT_CONFLICT', 'REVIEW_BASE_CONFLICT']) {
+  test(`${code} 충돌은 상세를 갱신하고 변경 사실을 안내한다`, async () => {
+    await withPage(async (page) => {
+      const calls = await actionScenario(page, fixture(), async (route, value) => {
+        if (code === 'REVIEW_NOT_PENDING') closeReview(value, 'REJECTED', '다른 요청에서 처리됨');
+        else { value.canReview = false; value.latestSource.contentHash = 'c'.repeat(64); }
+        await route.fulfill({ status: 409, json: { code, message: '내부 원문을 노출하지 않음' } });
+      });
+      await page.getByRole('button', { name: '승인', exact: true }).click();
+      await page.getByRole('button', { name: '승인 확정', exact: true }).click();
+      await page.getByRole('status').filter({ hasText: '후보의 내용 또는 처리 상태가 변경되었습니다.' }).waitFor();
+      await page.getByRole('heading', { name: fixture().review.title, exact: true }).waitFor();
+      assert.deepEqual(calls.map((call) => call.method), ['GET', 'POST', 'GET']);
+      assert.equal(await page.getByRole('button', { name: '승인', exact: true }).isDisabled(), true);
+      assert.ok(!(await page.locator('main').textContent()).includes('내부 원문을 노출하지 않음'));
+    });
+  });
+}
+
+for (const failure of ['500', '503', '연결 끊김', '승인 후 연결 끊김']) {
+  test(`${failure} 처리는 POST를 반복하지 않고 상세에서 확정 여부를 확인한다`, async () => {
+    await withPage(async (page) => {
+      const calls = await actionScenario(page, fixture(), async (route, value) => {
+        if (failure === '승인 후 연결 끊김') closeReview(value, 'APPROVED');
+        if (failure.includes('연결 끊김')) await route.abort('failed');
+        else await route.fulfill({ status: Number(failure), json: { private: 'DB 내부 오류' } });
+      });
+      await page.getByRole('button', { name: '승인', exact: true }).click();
+      await page.getByRole('button', { name: '승인 확정', exact: true }).click();
+      await page.getByRole('status').filter({ hasText: '상태와 처리 정보를 먼저 확인해 주세요.' }).waitFor();
+      await page.getByRole('heading', { name: fixture().review.title, exact: true }).waitFor();
+      assert.deepEqual(calls.map((call) => call.method), ['GET', 'POST', 'GET']);
+      assert.equal(await page.locator('.review-detail-badges .admin-badge').textContent(), failure === '승인 후 연결 끊김' ? '승인됨' : '검수 대기');
+      assert.equal(await page.getByRole('form', { name: '승인 확인', exact: true }).count(), 0);
+      assert.ok(!(await page.locator('main').textContent()).includes('DB 내부 오류'));
+    });
+  });
+}
+
+test('처리 후 상세 조회까지 실패하면 오류와 GET 재시도만 제공한다', async () => {
+  await withPage(async (page) => {
+    const value = fixture();
+    const calls = await actionScenario(page, value, async (route, current) => {
+      closeReview(current, 'APPROVED');
+      await route.abort('failed');
+    });
+    let recovered = false;
+    await page.route(`**/api/v1/admin/reviews/${reviewId}`, (route) => {
+      calls.push({ method: 'GET' });
+      return route.fulfill(recovered ? { json: value } : { status: 503, json: {} });
+    });
+    await page.getByRole('button', { name: '승인', exact: true }).click();
+    await page.getByRole('button', { name: '승인 확정', exact: true }).click();
+    await page.getByRole('heading', { name: '상세를 불러오지 못했습니다', exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: '승인', exact: true }).count(), 0);
+    recovered = true;
+    await page.getByRole('button', { name: '다시 시도', exact: true }).click();
+    await page.getByText('처리가 끝난 검수 이력입니다. 상태: 승인됨', { exact: true }).waitFor();
+    assert.deepEqual(calls.map((call) => call.method), ['GET', 'POST', 'GET', 'GET']);
+  });
+});
+
+test('처리 요청의 401은 로그인으로 이동하고 보호 데이터를 닫는다', async () => {
+  await withPage(async (page) => {
+    let expired = false;
+    await page.route('**/api/v1/admin/auth/me', (route) => expired ? route.fulfill({ status: 401, json: {} }) : route.continue());
+    const calls = await actionScenario(page, fixture(), async (route) => {
+      expired = true;
+      await route.fulfill({ status: 401, json: {} });
+    });
+    await page.getByRole('button', { name: '거절', exact: true }).click();
+    await page.getByLabel('거절 사유 (필수, 1~1000자)', { exact: true }).fill('검토 결과 거절');
+    await page.getByRole('button', { name: '거절 확정', exact: true }).click();
+    await page.waitForURL('**/admin/login');
+    assert.equal(await page.locator('.review-field').count(), 0);
+    assert.equal(calls.filter((call) => call.method === 'POST').length, 1);
+  });
+});
+
+test('모바일 신규 거절은 기준 해시 null을 보내고 공개본 없음과 사유를 표시한다', async () => {
+  await withPage(async (page) => {
+    const value = fixture();
+    value.review.kind = 'NEW';
+    value.base = null;
+    value.currentPublished = null;
+    value.review.baseContentHash = null;
+    const calls = await actionScenario(page, value, async (route, current) => {
+      closeReview(current, 'REJECTED', route.request().postDataJSON().reason);
+      await route.fulfill({ json: { reviewId, status: 'REJECTED', policyId: null, closedAt: current.review.closedAt } });
+    });
+    await page.getByRole('button', { name: '거절', exact: true }).click();
+    const input = page.getByLabel('거절 사유 (필수, 1~1000자)', { exact: true });
+    await input.fill('신청 조건 확인 필요');
+    assert.equal(await input.evaluate((element) => element === document.activeElement), true);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.screenshot({ path: '/tmp/mvp2-step32-mobile.png', fullPage: true });
+    await page.getByRole('button', { name: '거절 확정', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    await page.getByText('처리가 끝난 검수 이력입니다. 상태: 거절됨', { exact: true }).waitFor();
+    assert.deepEqual(calls[1].body, { contentHash: 'b'.repeat(64), baseContentHash: null, reason: '신청 조건 확인 필요' });
+    await page.getByText('현재 공개된 정책이 없습니다.', { exact: true }).waitFor();
+    assert.equal(await page.locator('.review-notices pre').textContent(), '신청 조건 확인 필요');
+  }, { width: 390, height: 844 });
+});
+
+for (const status of [400, 403, 404, 429]) {
+  test(`처리 ${status} 응답은 상세 확인 후 새 확인 폼에서만 재시도할 수 있다`, async () => {
+    await withPage(async (page) => {
+      const calls = await actionScenario(page, fixture(), (route) => route.fulfill({ status, json: { message: '노출하면 안 되는 오류 원문' } }));
+      await page.getByRole('button', { name: '승인', exact: true }).click();
+      await page.getByRole('button', { name: '승인 확정', exact: true }).click();
+      await page.getByRole('heading', { name: fixture().review.title, exact: true }).waitFor();
+      await page.getByRole('status').filter({ hasText: status === 429 ? '요청이 많아' : status === 403 ? '요청 출처를' : status === 404 ? '검수 후보를 찾을 수 없습니다.' : '입력값을 확인' }).waitFor();
+      assert.equal(await page.getByRole('form', { name: '승인 확인', exact: true }).count(), 0);
+      assert.deepEqual(calls.map((call) => call.method), ['GET', 'POST', 'GET']);
+      assert.ok(!(await page.locator('main').textContent()).includes('노출하면 안 되는 오류 원문'));
+    });
+  });
+}

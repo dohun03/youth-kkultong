@@ -6,6 +6,7 @@ import { adminReviewIdSchema } from '@youth-kkultong/shared';
 import type { AdminReviewDetail, PolicySnapshot, ReviewStatus, SupersededReason } from '@youth-kkultong/shared';
 import { useAdminSession } from '../../admin-session';
 import { CurrentPublishedSnapshot, ReviewComparison } from './review-comparison';
+import { ReviewActions } from './review-actions';
 
 /** 상세 조회의 진행과 오류 및 스냅샷 결과 */
 type DetailState = { status: 'loading' } | { status: 'error'; notFound: boolean; message: string }
@@ -65,13 +66,15 @@ export function ReviewDetail({ id }: { id: string }) {
   const [state, setState] = useState<DetailState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const [actionNotice, setActionNotice] = useState('');
+  const [processing, setProcessing] = useState(false);
+
+  useEffect(() => { setActionNotice(''); setProcessing(false); }, [id]);
 
   useEffect(() => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
     let active = true;
     setState({ status: 'loading' });
-    setActionNotice('');
     /** 인증 실패와 없는 후보 및 일시적인 오류를 구분해 상세 조회 */
     async function load(): Promise<void> {
       try {
@@ -105,7 +108,8 @@ export function ReviewDetail({ id }: { id: string }) {
   return <section className="admin-panel admin-review-detail">
     <Link className="admin-detail-back" href="/admin/reviews">← 검수 대기 목록으로</Link>
     <div className="admin-list-heading"><div><h2>검수 상세</h2><p className="admin-review-id">검수 ID: {id}</p></div>
-      <button type="button" className="admin-secondary" disabled={state.status === 'loading'} onClick={() => setAttempt((value) => value + 1)}>새로고침</button></div>
+      <button type="button" className="admin-secondary" disabled={state.status === 'loading' || processing} onClick={() => setAttempt((value) => value + 1)}>새로고침</button></div>
+    {actionNotice && <p role="status" className="review-info">{actionNotice}</p>}
     {state.status === 'loading' && <p role="status" className="admin-list-state">검수 상세를 불러오고 있습니다.</p>}
     {state.status === 'error' && <div role="alert" className="admin-list-state"><h3>{state.notFound ? '검수 후보가 없습니다' : '상세를 불러오지 못했습니다'}</h3>
       <p>{state.message}</p>{!state.notFound && <button type="button" className="retry-button" onClick={() => setAttempt((value) => value + 1)}>다시 시도</button>}</div>}
@@ -141,14 +145,11 @@ export function ReviewDetail({ id }: { id: string }) {
           <CurrentPublishedSnapshot snapshot={detail.currentPublished} />
         </>}
       </section>
-      <section className="review-actions" aria-label="검수 처리">
-        <p className="admin-description" id="review-actions-notice">승인 및 거절 기능은 준비 중입니다. 현재는 변경 내용과 검수 가능 여부를 확인할 수 있습니다.</p>
-        <div><button type="button" className="admin-search-button" disabled={!detail.canReview} aria-describedby="review-actions-notice"
-          onClick={() => setActionNotice('승인 및 거절 기능은 준비 중입니다.')}>승인</button>
-          <button type="button" className="admin-secondary" disabled={!detail.canReview} aria-describedby="review-actions-notice"
-            onClick={() => setActionNotice('승인 및 거절 기능은 준비 중입니다.')}>거절</button></div>
-        {actionNotice && <p role="status" className="review-info">{actionNotice}</p>}
-      </section>
+      <ReviewActions key={`${id}:${attempt}`} detail={detail} onProcessing={setProcessing} onRefresh={(message) => {
+        setActionNotice(message);
+        setProcessing(false);
+        setAttempt((value) => value + 1);
+      }} />
     </>}
   </section>;
 }

@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-04 · 상태: Step 1~31 완료 · Step 32~41 미착수
+수정일: 2026-11-04 · 상태: Step 1~32 완료 · Step 33~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -1100,3 +1100,46 @@ git diff --check
 - 기존 web만 최종 이미지로 재생성하고 API 및 DB와 볼륨은 유지했다. 최종 web과 api 및 db 모두 healthy이며 `http://localhost:3000/admin/reviews`와 `/admin/login` 및 API health의 HTTP 200을 확인했다. 사용자 확인용 서비스는 계속 가동한다. API 계약과 DB 스키마 및 Migration, 의존성 및 SPEC 의미 변경은 없다. PLAN과 SUMMARY를 완료 상태로 갱신했다. 전체 API 회귀 및 실제 온통청년 수집은 반복하지 않았다. 이번 Step 31 변경은 미커밋 상태로 남겼다.
 
 핵심 읽는 순서: `app/admin/reviews/[id]/page.tsx` → `review-detail.tsx`의 조회와 상태 안내 → `review-comparison.tsx`의 비교와 원문 표시 → `test/admin-review-detail.browser.mjs`. 다음 미완료 순서는 Step 32이며 이번 요청 범위인 Step 31에서 중단한다.
+
+## 39. Step 32 관리자 화면의 승인과 거절 (2026-11-04)
+
+AGENT_RULES → PLAN Step 32 → SPEC 4.3~4.5와 6.3 및 8.1~8.2, T2-24와 T2-31 및 T2-46 → 선행 Step 24~31 완료 기록 → 공용 요청 스키마와 실제 처리 API 및 상세 화면을 대조했다. 기존 API와 DB 계약을 그대로 연결하며 설계 충돌은 없다. Sites 스킬의 로컬 작업 절차를 적용했고 파일 배치는 ARCHITECTURE 6장의 관리자 화면 기준을 따른다.
+
+- `app/admin/reviews/[id]/review-actions.tsx`에 승인 확인과 거절 사유 입력 및 확인 폼을 추가했다. 사용자가 확인한 상세의 `contentHash`와 `baseContentHash`를 그대로 전송하며 신규의 기준 해시는 명시적 JSON null로 보낸다. 공용 Zod 스키마로 검증하고 거절 사유의 앞뒤 공백을 제거한다. 빈 값과 공백뿐인 값 및 1000자 초과는 전송하지 않는다. 사유와 정책 제목은 React 텍스트로 표시한다.
+- 처리 중 ref 잠금으로 같은 렌더 안의 연속 제출도 막고 승인과 거절, 확정 및 취소, 상세 새로고침을 비활성화한다. 동일 출처 프록시와 인증 쿠키를 사용하며 15초 요청 한도와 화면을 떠날 때 요청 취소 및 늦은 결과 무시를 적용했다. 입력 사유나 관리자 데이터를 브라우저 저장소와 로그에 기록하지 않는다.
+- `review-detail.tsx`는 처리 결과 안내를 유지하며 상세를 재조회한다. 승인과 거절이 끝난 상태와 처리자, 한국 시각 및 거절 사유는 재조회 결과로 표시하고 현재 공개본도 갱신한다. 409는 내용이나 처리 상태의 변경을 알리고 새 상세를 확인한다. 5xx와 연결 끊김은 확정 여부가 불명확하다고 안내한 뒤 GET으로 확인하며 POST를 자동 반복하지 않는다. 상세 확인도 실패하면 처리 폼을 닫고 GET 재시도만 제공한다. 401은 기존 공통 인증 흐름으로 로그인 화면에 복귀하며 400과 403, 404 및 429도 고정 안내와 상세 확인을 제공한다.
+- `admin.css`에 기존 화면과 같은 형태의 확인 폼과 반응형 사유 입력 스타일을 추가했다. 이름 있는 폼과 입력 레이블, 오류 안내, 처리 중 상태 및 초점 이동을 제공하고 모바일 너비와 키보드 제출을 확인했다.
+
+### 검증과 실행 상태
+
+```sh
+node /tmp/mvp2-step32-verify.cjs before
+npm run typecheck
+node /tmp/mvp2-step32-verify.cjs focused
+docker --config /tmp/mvp2-step32-docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml build web
+docker --config /tmp/mvp2-step32-docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml up -d --no-deps --wait web
+node /tmp/mvp2-step32-verify.cjs browser
+node /tmp/mvp2-step32-verify.cjs after
+node --check apps/web/test/admin-review-detail.browser.mjs
+git diff --check
+```
+
+- 승인과 거절 HTTP 계약, 승인 저장, 거절 저장 및 공개 데이터 분리의 **4개 통합 테스트 스위트 172개 모두 통과**. 격리된 PostgreSQL 스키마에서 승인 시 공개 반영과 UUID 유지, 거절 시 공개 유지, 사유와 해시 검증 및 경쟁 요청과 실패 시 보존을 확인했다. 전체 shared/API/web 타입 검사와 Docker 프로덕션 빌드, 브라우저 테스트 구문 검사를 통과했다.
+- 기존 인증 12개와 목록 16개, 상세 및 처리 39개를 포함한 **브라우저 테스트 67개 모두 통과**. 실패와 건너뜀은 0건이다. 신규 및 변경의 두 해시와 null, 확인 취소, 빈 사유와 공백 및 1001자 차단과 1000자 허용, 사유 텍스트 표시, 연속 제출 차단과 폼 잠금, 처리 정보 및 현재 공개본 갱신, 세 충돌 코드와 400/401/403/404/429, 500/503 및 처리 전후 연결 끊김, 상세 확인 실패 후 GET 재시도, 모바일 폼과 키보드 제출을 검증했다.
+- 실제 관리자 로그인과 기존 프록시 및 공개 목록을 사용했다. 실제 검수 후보는 0건이므로 브라우저의 상세 및 처리 응답은 대체했으며 실제 운영 데이터에 후보를 넣거나 승인과 거절을 실행하지 않았다. API 저장 검증은 위의 격리 스키마에서 수행했다. 전체 API 및 공개 화면 전체 회귀와 실제 외부 수집은 반복하지 않았다.
+- 비밀값을 가린 검증 결과는 `/tmp/mvp2-step32-browser-output.log`와 `/tmp/mvp2-step32-focused-{results.json,output.log}`, 모바일 확인 폼 캡처는 `/tmp/mvp2-step32-mobile.png`에 있다. `/tmp/mvp2-step32-{before,after}.json`에서 공개 3,390건과 원본 3,390건, 검수 0건, 지역 537개 및 Migration 3개의 전체 행 체크섬이 동일하며 잔여 테스트 스키마는 0개다.
+- 첫 Docker 빌드는 기존 Docker Desktop 인증 도우미의 WSL 통신 오류로 실패했다. `/tmp/mvp2-step32-docker/config.json`의 임시 빈 인증 설정을 사용해 공개 Node 이미지 기반 빌드를 완료했으며 사용자 Docker 설정은 수정하지 않았다. 기존 web만 새 빌드로 재생성하고 API와 DB 및 볼륨을 유지했다. web과 api 및 db 모두 healthy 상태로 `http://localhost:3000`에서 확인할 수 있다.
+- API 계약과 DB 스키마 및 Migration, 패키지 의존성 및 SPEC 의미 변경은 없다. PLAN과 SUMMARY를 완료 상태로 갱신했다. 이번 변경은 커밋하지 않았다.
+
+핵심 읽는 순서: `review-actions.tsx`의 submit()과 확인 폼 → `review-detail.tsx`의 처리 결과 안내 및 재조회 → `test/admin-review-detail.browser.mjs`의 actionScenario()와 승인 및 거절 시나리오. 미해결 검증 실패는 없다. 다음 미완료 순서는 Step 33이며 이번 요청 범위인 Step 32에서 중단한다.
+
+## 40. 사용자 승인 로컬 UI 체험 데이터 준비 (2026-11-04)
+
+Step 32 완료 후 사용자가 직접 UI와 UX를 확인할 수 있도록 기존 로컬 DB에 식별 가능한 체험 정책을 추가하는 방식을 제안했고 사용자가 진행을 승인했다. 기존 Step 범위와 API 및 DB 스키마, 판정 규칙은 그대로 유지했다. Step 33 이후 화면은 진행하지 않았다.
+
+- `[UI 확인용]` 제목과 `ui-demo-20261104-01`~`09` 외부 ID를 가진 가상 원본 9개와 검수 10건을 추가했다. 신규 승인 및 신규 거절, 기존 공개본과 지원 금액 및 기간 비교, 긴 원문과 추가 및 삭제와 NULL 및 빈 문자열, 누락 3회 경고, 승인과 거절 완료, 이전 후보 대체 및 최신 후보 이동을 확인할 수 있다. 변경 비교의 공개 기준본 4개와 실제 승인한 신규 1개가 공개 목록에도 체험용 제목으로 표시된다. 실제 지원사업 데이터가 아니다.
+- `.local/review-demo.cjs`에서 기존 변환 및 해시와 검수 스냅샷 저장 로직을 사용하고, 수집과 같은 Advisory Lock을 잡은 단일 트랜잭션으로 체험 ID만 추가했다. 전체 수집 저장을 호출하지 않아 기존 원본의 누락 횟수와 수집 정보에 영향을 주지 않았다. 외부 전체 수집은 실행하지 않았다. 기존 ID 충돌 시 중단하며 추가 대상 ID를 DB 저장 전에 기록한다. 재실행은 기록된 상태만 확인하고 중복 추가나 초기화를 하지 않는다.
+- `.local/review-demo-browser.mjs`로 응답 대체 없이 실제 웹 로그인과 동일 출처 API 및 DB를 사용했다. 06번을 화면에서 승인해 후보 원문이 공개본에 반영된 것을 확인하고, 07번을 사유와 함께 거절해 공개본 전체가 유지되는 것을 확인했다. 실제 관리자 처리자와 종료 시각 및 사유도 재조회했다. 나머지 7건은 PENDING과 canReview=true 및 활성 처리 버튼을 확인한 뒤 사용자가 직접 처리하도록 보존했다. 04번의 긴 원문 더보기와 05번 누락 경고, 08번 이전 후보의 비활성 버튼 및 최신 후보 링크, 실제 검수 대기 목록 7건도 확인했다.
+- 추가 전후 체험 ID를 제외한 기존 공개 3,390건과 원본 3,390건, 기존 검수, 지역 537개 및 Migration 3개의 전체 행 체크섬이 모두 일치했다. 최종 체험 상태는 대기 7건, 승인 1건, 거절 1건, 대체 1건이다. 실제 계정 비밀값은 기존 로컬 파일에서 메모리로만 읽었으며 체험 기록에는 넣지 않았다.
+- 실행 검증: `npm run build --workspace apps/api`, 두 로컬 스크립트의 `node --check`, `node .local/review-demo.cjs seed`, 브라우저 실행 환경에서 `node .local/review-demo-browser.mjs`, `node .local/review-demo.cjs verify`, `git diff --check` 모두 통과했다. 이 작업에서 애플리케이션 소스나 패키지 및 스키마를 바꾸지 않았으므로 Step 32 전체 회귀와 컨테이너 재빌드는 반복하지 않았다. 실행 중인 web과 api 및 db를 유지했다.
+- 추가 ID 및 보존 체크섬은 `.local/review-demo.json`, 실제 화면 검증 결과는 `.local/review-demo-verification.json`, 전체 상세 링크와 추천 체험 순서는 `.local/review-demo-guide.md`, 화면 캡처는 `.local/review-demo-{list,06,07}.png`에 기록했다. 로컬 도구와 기록은 기존 `.gitignore`의 `.local/` 규칙으로 Git에서 제외된다. 데이터 정리 및 추가 체험 후보 보충은 별도 요청 시 기록된 ID만 대상으로 진행한다. 현재 처리 이력 목록과 누락 목록의 연결은 Step 33~34에 남아 있으므로 체험 안내에서 종료 및 누락 상세 링크를 제공했다.

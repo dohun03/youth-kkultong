@@ -147,3 +147,11 @@
   .review-field h4 { padding: 10px 12px; }
   .review-value-columns > section { padding: 14px 12px; }
 }
+
+.review-action-form { margin-top: 20px; }
+.review-action-form fieldset { min-width: 0; margin: 0; padding: 18px; border: 1px solid var(--border); border-radius: 10px; }
+.review-action-form legend, .review-action-form label { font-weight: 700; }
+.review-action-form textarea { display: block; box-sizing: border-box; width: 100%; margin-top: 8px; padding: 12px; resize: vertical; font: inherit; }
+.review-action-form p { overflow-wrap: anywhere; }
+.review-action-form fieldset > div { display: flex; flex-wrap: wrap; gap: 12px; }
+.review-action-form [role="alert"] { color: #a12622; }
