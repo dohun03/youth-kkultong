@@ -171,3 +171,20 @@
   .admin-history .admin-review-meta { grid-template-columns: minmax(0, 1fr); }
 }
 .admin-detail-history { display: inline-block; margin-left: 20px; color: var(--primary-strong); font-size: 14px; }
+
+.admin-missing .admin-review-row { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.admin-missing .admin-review-meta { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.admin-missing-minimum { flex: 0 1 150px; min-width: 0; }
+.admin-missing-minimum input { width: 100%; box-sizing: border-box; }
+.admin-filter-error { flex-basis: 100%; margin: 0; color: #991b1b; font-size: 14px; }
+.admin-missing-links { display: flex; flex-wrap: wrap; gap: 12px 24px; font-size: 14px; }
+.admin-missing-links a { color: var(--primary-strong); font-weight: 650; }
+.admin-missing-links p { margin: 0; }
+.admin-missing .is-published { background: #ecfdf5; color: #047857; }
+.admin-missing .is-unpublished { background: #f1f5f9; color: #475569; }
+.admin-missing .admin-review-title .admin-badge { flex: 0 0 auto; white-space: nowrap; }
+@media (max-width: 600px) {
+  .admin-missing .admin-review-meta { grid-template-columns: minmax(0, 1fr); }
+  .admin-missing .admin-review-filters > .admin-missing-minimum { flex: 1 1 140px; }
+  .admin-missing .admin-review-filters > .admin-missing-limit { flex: 1 1 88px; min-width: 88px; }
+}

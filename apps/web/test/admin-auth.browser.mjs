@@ -116,9 +116,9 @@ test('보호 화면은 창 복귀 시 인증을 다시 확인하고 다른 탭�
 test('실제 로그인과 새로고침 및 공통 메뉴와 로그아웃이 동작하고 브라우저 저장소를 사용하지 않는다', async () => {
   await withPage(false, async (page, context) => {
     const unexpected = [];
-    // 연결된 검수 목록 외에 아직 준비 중인 상세 및 누락 API를 호출하는지 확인
+    // 목록 메뉴 이동만으로 검수 상세 API를 호출하지 않는지 확인
     page.on('request', (request) => {
-      if (/\/api\/v1\/admin\/(source-policies|reviews\/)/.test(request.url())) unexpected.push(request.url());
+      if (/\/api\/v1\/admin\/reviews\//.test(request.url())) unexpected.push(request.url());
     });
     await page.goto(`${baseUrl}/admin/login`);
     await fillLogin(page);

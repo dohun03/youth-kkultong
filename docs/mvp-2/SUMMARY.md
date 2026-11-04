@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-04 · 상태: Step 1~33 완료 · Step 34~41 미착수
+수정일: 2026-11-04 · 상태: Step 1~34 완료 · Step 35~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -1175,3 +1175,38 @@ git diff --check
 - web만 최종 빌드로 재생성하고 API와 DB 및 볼륨을 유지했다. 세 서비스 모두 healthy이며 `http://localhost:3000/admin/history`와 API health의 HTTP 200을 확인했다. `.local/review-demo-guide.md`도 실제 이력 화면과 상세 이력 펼침을 안내하도록 맞췄다. API 계약과 DB 스키마 및 Migration, 패키지 의존성 및 SPEC 의미 변경은 없다. PLAN과 SUMMARY만 완료 상태로 갱신했다. 전체 API 및 공개 화면 전체 회귀와 실제 외부 수집은 반복하지 않았다. Step 33 변경은 미커밋 상태로 남겼다.
 
 핵심 읽는 순서: `app/admin/history/history-list.tsx`의 응답 검사와 조회 및 렌더링 → `app/admin/reviews/[id]/review-history.tsx`와 상세 연결 → `test/admin-history.browser.mjs`의 실제 원본별 이력 및 상태별 시나리오. 미해결 검증 실패는 없다. 다음 미완료 순서는 Step 34이며 이번 요청 범위인 Step 33에서 중단한다.
+
+## 42. Step 34 누락 정책 화면 (2026-11-04)
+
+사용자 요청으로 Step 33을 `c028235`(`feat: 관리자 처리 이력 화면 구현`)로 커밋한 뒤 Step 34를 수행했다. `.local/` 인증 및 체험 파일은 기존 제외 규칙을 유지했다. AGENT_RULES → PLAN Step 34 → SPEC 4.4와 8.1 및 8.3, T2-42와 T2-46 → 선행 Step 23 및 Step 30~33 완료 기록 → 공용 누락 계약과 실제 조회 및 수집 저장 코드를 대조했다. 설계 충돌은 없으며 기존 Sites 로컬 작업 절차와 ARCHITECTURE 6장의 관리자 화면 배치 기준을 유지한다.
+
+- `app/admin/missing/page.tsx`를 실제 누락 목록으로 연결했다. 최신 원본의 제목과 외부 ID, 연속 누락 횟수, 마지막 실제 수집의 한국 시각, 공개 여부를 표시한다. lastCollectedAt=null은 “아직 실제 수집 기록 없음”으로 표시한다. 공개본과 최신 대기 후보의 네 조합에 맞춰 각각의 상세 링크를 제공하고, 두 링크가 모두 없어도 원본을 목록에 남긴다. 누락만으로 공개가 중단되지 않는다는 안내를 제공한다.
+- 제목과 최소 누락 횟수 초안을 검색 제출 때 함께 적용한다. 공용 missingPolicyQuerySchema로 빈 값과 0 및 음수, 소수와 지수 표기, DB 정수 상한 초과를 거부하고 잘못된 필터는 API에 보내지 않는다. 기본 최소 횟수는 1이며 제목과 최소 횟수는 AND 조건으로 전송한다. 검색과 초기화 및 표시 개수 변경은 첫 페이지부터 읽으며 서버의 누락 횟수 및 UUID 순서를 그대로 유지한다. 10/20/50개 선택과 처음 및 이전, 다음과 마지막 및 숫자 페이지 이동을 제공한다.
+- 목록은 동일 출처 GET과 인증 쿠키 및 no-store를 사용한다. 응답의 UUID와 nullable 링크 및 실제 수집 시각, 누락 횟수 및 페이지를 확인한다. 로딩과 정상 0건, 검색 결과 없음 및 페이지 건수 감소, 401과 429 및 일반 오류와 재시도를 구분하고 15초 요청 한도와 이동 시 취소 및 늦은 응답 무시를 적용한다. 페이지 및 재조회 후에는 결과나 오류 안내로 초점을 연결한다. 제목과 외부 ID는 React 텍스트로 표시하며 관리자 데이터를 브라우저 저장소에 기록하지 않는다.
+- `admin.css`에 누락 정보와 링크 및 숫자 필터의 반응형 배치를 추가했다. 실제 모바일 캡처에서 긴 제목에 눌린 공개 여부 배지와 좁은 숫자 및 표시 개수 필드를 확인한 뒤, 배지 줄바꿈을 막고 두 필터에 필요한 폭을 배정했다. 최종 캡처에서 선택값과 배지 표시 및 가로 넘침 없음을 확인했다.
+- `test/admin-missing.browser.mjs`를 추가했다. 기존 인증 메뉴 테스트의 “아직 연결되지 않은 누락 API 호출 없음” 기대는 누락 목록 연결에 맞춰 수정하고, 메뉴 이동만으로 검수 상세 API를 호출하지 않는 기준은 유지했다. 기존 인증 준비와 API 호출 간격 도구를 재사용하며 서버의 보호 설정은 바꾸지 않았다.
+
+### 검증과 실행 상태
+
+```sh
+node /tmp/mvp2-step34-verify.cjs before
+npm run typecheck
+node /tmp/mvp2-step34-verify.cjs focused
+docker --config /tmp/mvp2-step32-docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml build web
+docker --config /tmp/mvp2-step32-docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml up -d --no-deps --wait web
+node /tmp/mvp2-step34-verify.cjs browser
+node /tmp/mvp2-step34-verify.cjs missing-browser
+node /tmp/mvp2-step34-verify.cjs after
+node --check apps/web/test/admin-missing.browser.mjs
+node --check apps/web/test/admin-auth.browser.mjs
+git diff --check
+```
+
+- 누락 HTTP API와 수집 저장의 **2개 통합 테스트 스위트 58개 모두 통과**. 실제 PostgreSQL의 격리 스키마에서 미공개 신규 및 이관 후 미수집 원본의 누락 조회, NULL 수집 시각, 공개 및 대기 링크, 최소 횟수와 검색 및 정렬, 재수집 후 재등장 원본의 누락 해제를 확인했다. 실제 운영 DB에 전체 수집을 실행하거나 체험 원본의 누락 횟수를 바꾸지 않았다.
+- 신규 누락 21개와 기존 인증 12개, 이력 19개 및 상세와 처리 39개, 대기 목록 16개를 포함한 **브라우저 테스트 107개 모두 통과**. 이후 누락 화면에만 적용한 모바일 배치 보완마다 해당 **21개를 재검증해 모두 통과**했다. 실패와 건너뜀은 0건이다. 제목과 최소 횟수의 동시 적용 및 잘못된 입력 차단, 개수와 페이지 및 초기화, 공개/대기의 네 조합과 NULL 시각, 응답에서 빠진 재등장 원본의 새로고침 후 제거, 오류와 재시도 및 이전 검색의 늦은 응답, HTML 텍스트와 긴 제목, 모바일 및 키보드 검색을 확인했다.
+- 실제 관리자 로그인과 프록시 및 로컬 DB의 누락 05번 체험 정책을 응답 대체 없이 확인하고 미공개 및 누락 3회와 대기 상세 이동 및 경고 안내를 검증했다. 다건 페이지와 오류, NULL 시각 및 재등장 후 목록 갱신 등 추가 사례는 브라우저 응답으로 대체했다. 재등장의 실제 저장과 누락 조회 연계는 위의 격리 DB 통합 테스트에서 검증했다. 기존 체험 정책에 추가 승인이나 거절은 실행하지 않았다.
+- shared/API/web 전체 타입 검사와 최종 Docker 프로덕션 빌드 및 테스트 구문 검사, diff 공백 검사가 통과했다. 비밀값을 가린 결과는 `/tmp/mvp2-step34-{browser,missing-browser}-output.log`와 `/tmp/mvp2-step34-focused-{results.json,output.log}`, 실제 목록 및 최종 모바일 캡처는 `/tmp/mvp2-step34-{actual,mobile}.png`에 있다.
+- `/tmp/mvp2-step34-{before,after}.json`에서 공개 3,396건과 원본 3,399건, 검수 10건, 지역 537개 및 Migration 3개의 전체 행 체크섬이 동일하며 잔여 테스트 스키마는 0개다. 사용자가 직접 처리한 체험 상태를 유지했다. web만 최종 빌드로 재생성하고 API 및 DB와 볼륨을 유지했으며 세 서비스 모두 healthy 상태를 확인했다. `http://localhost:3000/admin/missing`와 API health는 HTTP 200이다.
+- API 계약과 DB 스키마 및 Migration, 패키지 의존성 및 SPEC 의미 변경은 없다. PLAN과 SUMMARY를 완료 상태로 갱신하고 `.local/review-demo-guide.md`에 누락 화면과 최소 횟수 검색 체험을 안내했다. 전체 API 및 공개 화면 전체 회귀와 실제 외부 수집은 반복하지 않았다. Step 34 변경은 미커밋 상태로 남겼다.
+
+핵심 읽는 순서: `app/admin/missing/page.tsx`의 응답 검사 → 검색 조건 검증과 조회 effect → 누락 정보 및 링크 렌더링 → `test/admin-missing.browser.mjs`의 실제 조회 및 NULL과 링크 조합, 재등장 후 갱신 시나리오. 미해결 검증 실패는 없다. 다음 미완료 순서는 Step 35이며 이번 요청 범위인 Step 34에서 중단한다.
