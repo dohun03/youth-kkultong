@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-04 · 상태: Step 1~27, 29 완료 · Step 28, 30~41 미착수
+수정일: 2026-11-04 · 상태: Step 1~29 완료 · Step 30~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -981,3 +981,32 @@ git diff --check
 - 기존 서비스 수정 없이 Step 27의 완료 조건을 충족했다. API 계약, DB 스키마와 Migration, 의존성 및 SPEC 의미 변경은 없다. PLAN과 SUMMARY의 완료 상태를 갱신했으며 변경은 미커밋 상태다.
 
 핵심 읽는 순서: `test/policy-review-concurrency.integration.spec.ts`의 `compete()` → 신규 및 변경 후보 경쟁 시나리오 → 공개 기준 방어 시나리오 → 기존 `policy-review.repository.ts`의 `findReviewForUpdate()`와 `policy-collection-write.service.ts`의 `saveTransaction()`. 미해결 테스트 실패는 없다. 다음 미완료 순서는 Step 28이며 이번 요청 범위인 Step 27에서 중단한다.
+
+## 35. Step 28 공개 데이터 분리와 관리자 API 계약 검증 (2026-11-04)
+
+사용자 요청으로 Step 27을 `ae871cc`(`test: 동시 검수와 수집 저장 경쟁 검증 추가`)로 커밋한 뒤 다음 Step을 수행했다. AGENT_RULES → PLAN Step 28 → SPEC 4장과 7장 및 8.4, T2-36과 T2-38 및 T2-41과 T2-45 → Step 22~27 완료 기록 → 공개 조회와 메타, 관리자 인증 및 검수와 누락 API 및 기존 테스트를 대조했다. 설계 충돌은 없다. 누락이나 거절 뒤에도 기존 승인본은 계속 공개한다는 SPEC을 기준으로 확인했다.
+
+- `apps/api/test/admin-public-isolation.integration.spec.ts`에 47개 통합 테스트를 추가했다. 실제 NestJS 앱과 관리자 Guard 및 기존 수집 저장 서비스를 격리된 PostgreSQL 스키마에 연결했다. 신규와 변경 각각의 대기 및 거절과 누락 상태에서 공개 검색과 상세 및 분야가 미승인 본문을 노출하지 않는지 HTTP로 검증했다. 미승인 제목과 분야로 검색하면 빈 배열이며 원본과 후보 UUID로 공개 상세를 요청해도 404다. 기존 공개본의 본문과 UUID 및 분야는 유지하고 조회수만 최신 수집값을 반영한다.
+- 신규와 변경 승인의 실제 공개 저장 및 승인 기록 직후, COMMIT 전 시점에 별도 HTTP 요청으로 공개 검색과 상세 및 분야를 조회했다. 확정 전에는 기존 공개본을 계속 읽고 확정 뒤에는 승인된 내용과 분야를 제공한다. 변경 승인은 공개 UUID를 유지한다. 신규 승인 후 수집에서 누락돼도 공개 결과는 보존하며 공개 카드와 상세의 전체 응답 형식에 관리자 스냅샷이나 검수 정보가 추가되지 않음을 확인했다.
+- 검수 목록과 상세 및 누락, 승인과 거절 및 me의 각 경로에서 쿠키 없음과 변조 및 만료와 중복을 401로 거부하고 DB 연결을 사용하지 않음을 확인했다. 로그인과 로그아웃 및 승인과 거절의 Origin 누락과 불일치, 내부 주소 및 끝 슬래시를 403으로 거부한다. 전달 헤더에 정상 출처를 넣어도 우회되지 않으며 업무 데이터는 그대로다.
+- 관리자 데이터 다섯 경로 각각에서 내부 오류와 DB 연결 오류를 주입해 500과 503의 고정된 코드 및 안전한 한국어 문구와 no-store, 업무 데이터 무변경을 확인했다. 오류에 요청 원문과 쿠키 및 비밀번호와 서명 키를 포함해도 응답과 로그에 노출되지 않는다. 정상 로그인과 me, 목록과 상세 및 누락, 승인과 거절 및 처리 이력과 로그아웃의 로그에서도 인증값과 원문 및 거절 사유를 기록하지 않는다. 인증된 이력 응답과 검수 DB에는 거절 사유가 정상 보존된다.
+- 전체 회귀에서 기존 검수 목록 41개 및 누락 목록 38개, 처리 HTTP 71개, 인증 29개와 접근 검사 35개, 공용 입력 검증 232개, 실제 Next.js 프록시 10개를 함께 실행했다. 상태와 종류 및 원본 ID와 제목의 AND 조건, 메타문자 검색, 정렬과 페이지 및 빈 결과와 상한, 400과 404 및 409, JSON과 본문 보호 및 호출 제한, 인증 선검사와 출처 및 캐시 금지 계약을 재확인했다. 기존 공개 검색과 상세 및 메타, 매칭과 수집 및 독립 CLI 검증도 모두 통과했다.
+
+### 검증과 실행 상태
+
+```sh
+node /tmp/mvp2-step28-verify.cjs before
+node /tmp/mvp2-step28-verify.cjs single
+npm run typecheck
+npm run build --workspace apps/api
+node /tmp/mvp2-step28-verify.cjs full
+node /tmp/mvp2-step28-verify.cjs after
+git diff --check
+git diff --no-index --check /dev/null apps/api/test/admin-public-isolation.integration.spec.ts
+```
+
+- 신규 47개 테스트와 전체 API **76개 스위트 2,331개 테스트 모두 통과**. 실패와 건너뜀은 0건이다. shared/API/web 전체 타입 검사, shared/API 빌드 및 기존 파일과 신규 파일의 diff 검사도 통과했다. 기존 Node.js VM Modules 실험 기능과 pg 동시 query 호출의 폐기 예정 경고는 출력됐으며 테스트 실패는 없다.
+- 검증 실행기는 비밀값을 출력하지 않고 로컬 DB `127.0.0.1:5433`을 테스트 프로세스 환경에만 전달한다. 결과는 `/tmp/mvp2-step28-{single,full}-results.json`과 같은 이름의 `-output.log`, DB 전후 기록은 `/tmp/mvp2-step28-{before,after}.json`에 있다. 공개 3,390건과 원본 3,390건, 검수 0건, 지역 537개 및 Migration 3개의 전체 행 체크섬이 검증 전후 동일하다. 잔여 테스트 스키마와 임시 프록시 프로젝트는 0개다.
+- API 계약과 업무 서비스, DB 스키마와 Migration, 의존성 및 SPEC 의미 변경 없이 테스트와 PLAN 및 SUMMARY만 갱신했다. 기존 DB와 API 및 웹 컨테이너는 재생성하지 않았다. 브라우저 화면 E2E와 실제 온통청년 API 수집은 실행하지 않았으며 외부 수집 응답은 기존 fixture를 사용했다. 이번 Step 28 변경은 미커밋 상태로 남겼다.
+
+핵심 읽는 순서: `test/admin-public-isolation.integration.spec.ts`의 `publicState()` → 신규와 변경의 대기 및 거절과 누락 시나리오 → 승인 COMMIT 전후 공개 조회 → 관리자 인증 및 출처와 오류 및 로그 보호. 미해결 테스트 실패는 없다. Step 29는 앞서 완료했으므로 다음 미완료 순서는 Step 30이며 이번 요청 범위인 Step 28에서 중단한다.
