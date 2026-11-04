@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-04 · 상태: Step 1~26, 29 완료 · Step 27~28, 30~41 미착수
+수정일: 2026-11-04 · 상태: Step 1~27, 29 완료 · Step 28, 30~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -952,3 +952,32 @@ git diff --check
 - 전체 API 회귀와 브라우저 E2E 및 실제 온통청년 수집은 반복하지 않았다. 이번에는 실제 HTTP와 DB에서 정상 처리와 순차 중복 요청까지 검증했으며, 독립 연결의 동시 승인과 거절 및 수집 경쟁은 Step 27 범위다. 미해결 테스트 실패는 없으며 변경은 미커밋 상태로 남겼다.
 
 핵심 읽는 순서: `modules/admin/controllers/admin-reviews.controller.ts`의 `approve()`와 `reject()` → `modules/policies/services/reviews/`의 승인과 거절 서비스 → `test/admin-review-actions.integration.spec.ts`. 다음 미완료 순서는 Step 27이며 이번 요청 범위인 Step 26에서 중단한다.
+
+## 34. Step 27 동시 검수와 수집 경쟁 검증 (2026-11-04)
+
+AGENT_RULES → PLAN Step 27 → SPEC 6.2~6.3 및 T2-28~30과 T2-33 → Step 24~26 완료 기록 → 실제 검수 및 수집 저장 서비스와 저장소를 대조했다. 파일 배치는 ARCHITECTURE 6장을 확인했다. 이전 Step은 완료 상태이며 문서와 코드의 설계 충돌은 없다.
+
+- `apps/api/test/policy-review-concurrency.integration.spec.ts`에 18개 DB 통합 테스트를 추가했다. 임시 스키마에 기존 Migration을 적용하고 두 요청에 별도의 연결 풀과 PostgreSQL 연결을 사용한다. 첫 요청의 COMMIT 직전만 제어하고 실제 조회와 저장 및 잠금은 기존 서비스를 그대로 실행한다. `pg_stat_activity`와 `pg_blocking_pids()`로 두 번째 요청이 첫 연결의 원본 행 잠금에서 실제로 대기함을 확인한다. 시간만 기다린 뒤 경쟁이 발생했다고 간주하지 않는다.
+- 신규 및 변경 후보 각각에서 승인 두 개, 승인 후 거절, 거절 후 승인의 경쟁을 검증했다. 첫 요청만 확정되고 두 번째는 다시 읽은 종료 상태로 409 `REVIEW_NOT_PENDING`을 반환한다. 원본 → 후보 → 공개본 잠금과 READ COMMITTED, 성공의 COMMIT 및 실패의 ROLLBACK과 연결 반환을 확인했다. 중복 공개 행과 처리 이력은 생기지 않는다.
+- 수집과 승인의 두 확정 순서 각각에서 동일 본문의 조회수 갱신과 새 본문 저장을 재현했다. 수집이 먼저 새 내용을 확정하면 이전 후보는 SUPERSEDED가 되어 오래된 승인이 거부된다. 동일 본문이면 후보 스냅샷과 최신 조회수로 승인된다. 승인이 먼저 확정되면 후속 수집은 승인된 공개본을 기준으로 동일 후보 생략 또는 새 CHANGED 후보 생성을 판단한다. 확정 전 일반 SELECT는 기존 원본과 이력 및 공개본을 계속 읽는다.
+- 격리 스키마에서 공개 해시 변경, 같은 해시의 공개 UUID 변경, 신규 후보에 공개본 생성, 공개본과 원본 일치의 방어 경로를 구성했다. 오래된 승인은 반복해도 409 `REVIEW_BASE_CONFLICT`이며 업무 행 전체가 그대로다. 다음 동일 원본 수집에서 기존 대기를 PUBLIC_BASE_CHANGED 또는 MATCHES_PUBLIC로 정리하고 현재 공개 기준의 새 후보 생성 여부를 확인했다. 새 후보 승인은 현재 공개 UUID와 최신 조회수를 유지한다. 종료된 APPROVED와 REJECTED 및 SUPERSEDED의 승인과 거절 재요청은 409이며 반복 수집에도 당시 이력이 보존된다.
+- 테스트의 공개 UUID 변경은 처음에 기본키를 직접 갱신해 외래키 제약에 걸렸다. 과거 기준 행의 외부 ID를 옮기고 같은 해시의 새 공개 행을 구성하는 방식으로 fixture를 수정했다. 기존 외래키와 스키마를 유지한 최종 18개 테스트는 모두 통과했다. 테스트 도중 검증이 실패해도 확정 대기를 풀고 진행 중 요청을 마친 뒤 연결과 임시 스키마를 정리한다.
+
+### 검증과 실행 상태
+
+```sh
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml up -d --wait db
+node /tmp/mvp2-step27-verify.cjs before
+node /tmp/mvp2-step27-verify.cjs focused
+npm run typecheck
+npm run build --workspace apps/api
+node /tmp/mvp2-step27-verify.cjs after
+git diff --check
+```
+
+- 신규 동시성 테스트 및 기존 승인과 거절, 수집 저장, 관리자 처리 HTTP와 후보 판정의 **6개 스위트 206개 테스트 모두 통과**. 실패와 건너뜀은 0건이다. shared/API/web 전체 타입 검사, shared/API 빌드 및 diff 검사도 통과했다. 기존 Node.js VM Modules 실험 기능 경고는 출력됐으며 테스트 실패는 없다.
+- 검증 실행기는 루트 `.env`의 비밀값을 출력하지 않고 로컬 DB 주소 `127.0.0.1:5433`을 테스트 프로세스 환경에만 전달한다. 결과는 `/tmp/mvp2-step27-focused-results.json`과 `/tmp/mvp2-step27-focused-output.log`, DB 전후 기록은 `/tmp/mvp2-step27-{before,after}.json`에 있다. 기존 공개 3,390건과 원본 3,390건, 검수 0건, 지역 537개 및 Migration 3개의 전체 행 체크섬이 검증 전후 동일하며 잔여 테스트 스키마는 0개다.
+- 테스트에 필요한 기존 DB 컨테이너만 시작해 healthy 상태로 유지했다. API와 웹 컨테이너는 재생성하지 않았다. 전체 API 회귀와 브라우저 E2E, 실제 온통청년 API 수집은 실행하지 않았다.
+- 기존 서비스 수정 없이 Step 27의 완료 조건을 충족했다. API 계약, DB 스키마와 Migration, 의존성 및 SPEC 의미 변경은 없다. PLAN과 SUMMARY의 완료 상태를 갱신했으며 변경은 미커밋 상태다.
+
+핵심 읽는 순서: `test/policy-review-concurrency.integration.spec.ts`의 `compete()` → 신규 및 변경 후보 경쟁 시나리오 → 공개 기준 방어 시나리오 → 기존 `policy-review.repository.ts`의 `findReviewForUpdate()`와 `policy-collection-write.service.ts`의 `saveTransaction()`. 미해결 테스트 실패는 없다. 다음 미완료 순서는 Step 28이며 이번 요청 범위인 Step 27에서 중단한다.
