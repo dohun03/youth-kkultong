@@ -27,7 +27,7 @@ export default function AdminLoginPage() {
     } finally { setPassword(''); inFlight.current = false; setSubmitting(false); }
   }
 
-  return <main id="main-content" className="admin-login container">
+  return <main id="main-content" tabIndex={-1} className="admin-login container">
     <section className="admin-login-card" aria-labelledby="admin-login-title">
       <p className="admin-eyebrow">청년꿀통 관리자</p>
       <h1 id="admin-login-title">관리자 로그인</h1>

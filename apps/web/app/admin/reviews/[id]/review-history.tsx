@@ -9,6 +9,8 @@ export function ReviewHistory({ sourcePolicyId, currentReviewId }: { sourcePolic
   return <section className="review-policy-history">
     <button type="button" className="admin-secondary" aria-expanded={open} aria-controls="policy-history-list"
       onClick={() => setOpen((value) => !value)}>{open ? '같은 정책의 처리 이력 접기' : '같은 정책의 처리 이력 보기'}</button>
-    {open && <div id="policy-history-list"><HistoryList key={sourcePolicyId} sourcePolicyId={sourcePolicyId} currentReviewId={currentReviewId} /></div>}
+    <div id="policy-history-list" hidden={!open}>
+      {open && <HistoryList key={sourcePolicyId} sourcePolicyId={sourcePolicyId} currentReviewId={currentReviewId} />}
+    </div>
   </section>;
 }

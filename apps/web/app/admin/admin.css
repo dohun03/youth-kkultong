@@ -188,3 +188,9 @@
   .admin-missing .admin-review-filters > .admin-missing-minimum { flex: 1 1 140px; }
   .admin-missing .admin-review-filters > .admin-missing-limit { flex: 1 1 88px; min-width: 88px; }
 }
+
+.review-action-form textarea:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
+@media (max-width: 600px) {
+  .admin-history .admin-review-filters > .admin-history-status-filter { flex: 1 1 160px; }
+  .admin-history .admin-review-filters > .admin-history-limit { flex: 1 1 88px; min-width: 88px; }
+}

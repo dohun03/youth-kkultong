@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { adminReviewIdSchema } from '@youth-kkultong/shared';
 import type { AdminReviewDetail, PolicySnapshot, ReviewStatus, SupersededReason } from '@youth-kkultong/shared';
@@ -68,6 +68,10 @@ export function ReviewDetail({ id }: { id: string }) {
   const [attempt, setAttempt] = useState(0);
   const [actionNotice, setActionNotice] = useState('');
   const [processing, setProcessing] = useState(false);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const noticeRef = useRef<HTMLParagraphElement>(null);
+  const errorRef = useRef<HTMLHeadingElement>(null);
+  const focusAfterLoad = useRef(false);
 
   useEffect(() => { setActionNotice(''); setProcessing(false); }, [id]);
 
@@ -101,6 +105,13 @@ export function ReviewDetail({ id }: { id: string }) {
     return () => { active = false; clearTimeout(timeout); controller.abort(); };
   }, [id, attempt, requireLogin]);
 
+  useEffect(() => {
+    // 재조회로 사라진 버튼 대신 최종 결과나 오류 안내에서 키보드 탐색을 계속
+    if (!focusAfterLoad.current || state.status === 'loading') return;
+    const target = state.status === 'error' ? errorRef.current : noticeRef.current ?? titleRef.current;
+    if (target) { target.focus({ preventScroll: true }); focusAfterLoad.current = false; }
+  }, [state]);
+
   const detail = state.status === 'success' ? state.detail : null;
   const sourceChanged = detail !== null && detail.target.contentHash !== detail.latestSource.contentHash;
   const publicChanged = detail !== null && (detail.base === null ? detail.currentPublished !== null
@@ -109,12 +120,16 @@ export function ReviewDetail({ id }: { id: string }) {
   return <section className="admin-panel admin-review-detail">
     <Link className="admin-detail-back" href="/admin/reviews">← 검수 대기 목록으로</Link>
     <Link className="admin-detail-history" href="/admin/history">처리 이력 목록으로</Link>
-    <div className="admin-list-heading"><div><h2>검수 상세</h2><p className="admin-review-id">검수 ID: {id}</p></div>
-      <button type="button" className="admin-secondary" disabled={state.status === 'loading' || processing} onClick={() => setAttempt((value) => value + 1)}>새로고침</button></div>
-    {actionNotice && <p role="status" className="review-info">{actionNotice}</p>}
+    <div className="admin-list-heading"><div><h2 ref={titleRef} tabIndex={-1}>검수 상세</h2><p className="admin-review-id">검수 ID: {id}</p></div>
+      <button type="button" className="admin-secondary" disabled={state.status === 'loading' || processing} onClick={() => {
+        focusAfterLoad.current = true; setAttempt((value) => value + 1);
+      }}>새로고침</button></div>
+    {actionNotice && <p ref={noticeRef} tabIndex={-1} role="status" className="review-info">{actionNotice}</p>}
     {state.status === 'loading' && <p role="status" className="admin-list-state">검수 상세를 불러오고 있습니다.</p>}
-    {state.status === 'error' && <div role="alert" className="admin-list-state"><h3>{state.notFound ? '검수 후보가 없습니다' : '상세를 불러오지 못했습니다'}</h3>
-      <p>{state.message}</p>{!state.notFound && <button type="button" className="retry-button" onClick={() => setAttempt((value) => value + 1)}>다시 시도</button>}</div>}
+    {state.status === 'error' && <div role="alert" className="admin-list-state"><h3 ref={errorRef} tabIndex={-1}>{state.notFound ? '검수 후보가 없습니다' : '상세를 불러오지 못했습니다'}</h3>
+      <p>{state.message}</p>{!state.notFound && <button type="button" className="retry-button" onClick={() => {
+        focusAfterLoad.current = true; setAttempt((value) => value + 1);
+      }}>다시 시도</button>}</div>}
     {detail && <>
       <header className="review-detail-heading"><div className="review-detail-badges"><span className={`admin-review-kind ${detail.review.kind === 'NEW' ? 'is-new' : 'is-changed'}`}>{detail.review.kind === 'NEW' ? '신규' : '변경'}</span>
         <span className="admin-badge">{statusLabels[detail.review.status]}</span><span className={`review-eligibility${detail.canReview ? ' can-review' : ''}`}>{detail.canReview ? '검수 가능' : '검수 불가'}</span></div>
@@ -148,6 +163,7 @@ export function ReviewDetail({ id }: { id: string }) {
         </>}
       </section>
       <ReviewActions key={`actions:${id}:${attempt}`} detail={detail} onProcessing={setProcessing} onRefresh={(message) => {
+        focusAfterLoad.current = true;
         setActionNotice(message);
         setProcessing(false);
         setAttempt((value) => value + 1);

@@ -147,10 +147,10 @@ export function HistoryList({ sourcePolicyId, currentReviewId }: { sourcePolicyI
             if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.keyCode === 229)) event.preventDefault();
           }} />
           <button type="submit" className="admin-search-button">검색</button></div></div>
-      <div><label htmlFor="history-status">처리 상태</label><select id="history-status" value={query.status}
+      <div className="admin-history-status-filter"><label htmlFor="history-status">처리 상태</label><select id="history-status" value={query.status}
         onChange={(event) => updateFilters({ status: event.target.value as HistoryStatus })}>
         {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
-      <div><label htmlFor="history-limit">표시 개수</label><select id="history-limit" value={query.limit}
+      <div className="admin-history-limit"><label htmlFor="history-limit">표시 개수</label><select id="history-limit" value={query.limit}
         onChange={(event) => updateFilters({ limit: Number(event.target.value) })}>
         {[10, 20, 50].map((limit) => <option key={limit} value={limit}>{limit}개</option>)}</select></div>
       {(hasFilters || keywordInput) && <button type="button" className="admin-secondary admin-reset" onClick={() => {

@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-04 · 상태: Step 1~34 완료 · Step 35~41 미착수
+수정일: 2026-11-04 · 상태: Step 1~35 완료 · Step 36~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -1210,3 +1210,42 @@ git diff --check
 - API 계약과 DB 스키마 및 Migration, 패키지 의존성 및 SPEC 의미 변경은 없다. PLAN과 SUMMARY를 완료 상태로 갱신하고 `.local/review-demo-guide.md`에 누락 화면과 최소 횟수 검색 체험을 안내했다. 전체 API 및 공개 화면 전체 회귀와 실제 외부 수집은 반복하지 않았다. Step 34 변경은 미커밋 상태로 남겼다.
 
 핵심 읽는 순서: `app/admin/missing/page.tsx`의 응답 검사 → 검색 조건 검증과 조회 effect → 누락 정보 및 링크 렌더링 → `test/admin-missing.browser.mjs`의 실제 조회 및 NULL과 링크 조합, 재등장 후 갱신 시나리오. 미해결 검증 실패는 없다. 다음 미완료 순서는 Step 35이며 이번 요청 범위인 Step 34에서 중단한다.
+
+## 43. Step 35 관리자 화면 오류와 접근성 검증 (2026-11-04)
+
+사용자 요청으로 Step 34를 `5723fff`(`feat: 관리자 누락 정책 화면 구현`)로 커밋한 뒤 Step 35를 수행했다. AGENT_RULES → PLAN Step 35 → SPEC 8.1~8.3 및 T2-46~47 → 선행 Step 29~34의 실제 검증 범위 → 인증과 상세 처리, 비교 및 이력과 누락 코드를 대조했다. 기존 Sites 로컬 작업 절차와 ARCHITECTURE 6장의 관리자 화면 배치를 유지한다. API와 DB 계약 및 기능 의미의 충돌은 없다.
+
+- `review-actions.tsx`에서 인라인 승인 및 거절 확인 폼을 열거나 전환할 때 확정 버튼 또는 사유 입력으로 초점을 연결한다. 취소와 Escape는 폼을 연 버튼으로 복귀하며 빈 사유 제출은 사유 입력으로 돌아간다. 처리 중 잠금을 유지하고, textarea의 오류 설명 ID는 오류가 있을 때만 연결한다. 처리 POST의 401은 공통 로그인 복귀만 수행하도록 추가 상세 재조회를 정리했다.
+- `review-detail.tsx`는 처리 후 재조회 및 수동 새로고침과 재시도 뒤 결과 안내나 오류 제목으로 초점을 연결한다. 성공 여부를 확인할 GET이 실패해도 자동 POST를 반복하지 않는 기존 흐름을 유지한다. `review-history.tsx`는 접힌 상태에서도 aria-controls가 가리키는 영역 ID를 보존한다. 거절 사유 입력에 키보드 초점 테두리를 명시했다.
+- 신규 키보드 검증에서 본문 건너뛰기 링크가 관리자 본문에 실제 초점을 주지 못하는 문제를 확인했다. `admin-session.tsx`의 보호 및 인증 확인과 오류 본문, `login/page.tsx`의 로그인 본문에 tabIndex=-1을 추가해 본문으로 이동한 뒤 탐색할 수 있도록 보완했다. 로그인 입력 유지 및 기존 인증 흐름도 함께 회귀 검증했다.
+- `test/admin-accessibility.browser.mjs`에 오류 복구와 초점 및 320/390px 검증 17개를 추가했다. 승인과 거절의 응답 유실, 처리 후 GET 실패 및 재시도, 처리 POST와 후속 GET 각각의 401, 409 후 최신 후보로 이동, 브라우저 시계를 이용한 15초 제한 후 대기 및 확정 상태 확인을 검증한다. 취소와 Escape 및 폼 전환, 빈 사유 초점과 접근성 연결 ID, 로그인과 세 목록의 본문 건너뛰기, 긴 원문 및 위험한 URL과 HTTP(S) 새 탭 보호를 확인한다.
+- `test/admin-recovery.live.mjs`는 실제 PostgreSQL의 전용 임시 스키마와 별도 NestJS HTTP 서버, 합성 계정 및 실제 Next.js 화면을 연결한다. 공개본이 없는 신규 승인과 누락 3회인 기존 공개 정책 거절을 준비하고, 처리 API의 200 응답을 받은 직후 브라우저 전송만 끊어 실제 COMMIT 후 응답 유실을 재현한다. 두 사례 모두 상세 GET 두 번과 처리 POST 한 번으로 확정 상태와 처리자 및 종료 시각, 같은 정책 이력까지 확인했다. 승인은 후보 원문이 공개되었고 거절은 공개 행 전체가 보존되며 HTML 형태의 사유도 텍스트로 표시됐다. 테스트 종료 시 브라우저와 서버 및 연결, 생성한 임시 스키마를 정리한다.
+- 실제 응답 유실의 모바일 캡처에서 이력 상태 선택 문구가 잘리는 것을 확인해 `history-list.tsx`의 두 필터에 역할별 클래스를 붙이고 모바일 폭을 보완했다. 최종 캡처와 해당 영향 범위의 브라우저 재검증을 완료했다. 기존 확인 폼과 비교 및 목록 구조를 유지하며 패키지와 별도 인프라를 추가하지 않았다.
+
+### 검증과 실행 상태
+
+```sh
+node /tmp/mvp2-step35-verify.cjs before
+npm run typecheck
+npm run build --workspace apps/api
+node /tmp/mvp2-step35-verify.cjs focused
+DOCKER_CONFIG=/tmp/mvp2-step35-docker docker --config /tmp/mvp2-step35-docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml build web
+DOCKER_CONFIG=/tmp/mvp2-step35-docker docker --config /tmp/mvp2-step35-docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml up -d --no-deps --wait web
+npm run typecheck --workspace apps/web
+node /tmp/mvp2-step35-verify.cjs browser
+node /tmp/mvp2-step35-verify.cjs affected-browser
+node /tmp/mvp2-step35-verify.cjs live-browser
+node /tmp/mvp2-step35-verify.cjs after
+node --check apps/web/test/admin-accessibility.browser.mjs
+node --check apps/web/test/admin-recovery.live.mjs
+git diff --check
+```
+
+- 관리자 오류 및 처리 HTTP 계약과 공개 데이터 분리의 **2개 통합 테스트 스위트 118개 모두 통과**. shared/API/web 전체 타입 검사와 수정 후 웹 타입 검사, 현재 API 빌드와 최종 Docker 웹 프로덕션 빌드 및 신규 테스트 구문 검사가 통과했다.
+- 신규 접근성 17개와 기존 인증 12개 및 목록 16개, 상세와 처리 39개, 이력 19개와 누락 21개를 포함한 **브라우저 테스트 124개 모두 통과**. 최초 본문 건너뛰기 검증 3건의 실패 원인을 수정한 뒤 전체 회귀를 통과했다. 마지막 모바일 이력 필터 보완 후에는 해당 영향 범위인 **접근성과 이력 36개를 다시 실행해 모두 통과**했다. 실제 COMMIT 후 응답 유실의 **별도 브라우저 테스트 2개도 최종 빌드에서 모두 통과**했다. 미해결 실패 및 건너뜀은 0건이다.
+- 일반 브라우저 검증은 실제 로그인과 같은 출처 프록시 및 기존 읽기 API를 사용하고 오류 및 시간 초과와 비교 원문 사례는 응답을 대체했다. 별도 응답 유실 테스트는 합성 자격과 현재 빌드한 실제 API 및 격리 DB를 사용하며 HTTP 요청을 해당 서버로 전달한다. API 계약 응답 자체를 가짜 승인이나 거절 결과로 대체하지 않고 실제 COMMIT 이후 전송만 끊었다. 이 별도 테스트는 현재 API 빌드와 DATABASE_URL 및 브라우저 실행 환경을 준비한 뒤 `node --test apps/web/test/admin-recovery.live.mjs`로 실행할 수 있다.
+- 최초 Docker 빌드는 기존 인증 도우미의 WSL 통신 오류로 실패했다. `/tmp/mvp2-step35-docker/config.json`의 임시 빈 인증 설정과 DOCKER_CONFIG를 명시해 빌드를 완료했으며 사용자 Docker 설정을 수정하지 않았다. web만 최종 빌드로 재생성하고 기존 API 및 DB와 볼륨은 유지했다. 세 서비스 모두 healthy이며 관리자 로그인과 대기 및 이력과 누락, API health의 HTTP 200을 확인했다. `http://localhost:3000`에서 계속 확인할 수 있다.
+- 비밀값을 가린 결과는 `/tmp/mvp2-step35-{browser,affected-browser,live-browser}-output.log`와 `/tmp/mvp2-step35-focused-{results.json,output.log}`에 있다. 최종 320/390px 비교 및 이력 캡처는 `/tmp/mvp2-step35-mobile-{320,390}.png`, 실제 DB 확정 후 응답 유실 캡처는 `/tmp/mvp2-step35-live-{approve,reject}.png`에 있다. `/tmp/mvp2-step35-{before,after}.json`에서 공개 3,396건과 원본 3,399건, 검수 10건, 지역 537개 및 Migration 3개의 전체 행 체크섬이 동일하며 잔여 테스트 스키마는 0개다. 기존 체험 정책에는 추가 승인과 거절을 실행하지 않았다.
+- API 계약과 DB 스키마 및 Migration, 패키지 의존성 및 SPEC 의미 변경은 없다. PLAN과 SUMMARY를 완료 상태로 갱신했다. PLAN의 검증 대상 중 “모달”은 사용자가 앞서 확인한 실제 승인/거절 확인 폼을 가리키도록 표현을 맞췄다. 전체 API 및 공개 화면 전체 회귀와 실제 외부 수집은 반복하지 않았다. 이번 Step 35 변경은 미커밋 상태로 남겼다.
+
+핵심 읽는 순서: `review-actions.tsx`의 확인 폼과 submit() → `review-detail.tsx`의 결과 및 오류 초점 → `test/admin-accessibility.browser.mjs` → `test/admin-recovery.live.mjs`의 전용 스키마와 실제 HTTP 응답 유실 검증. 미해결 검증 실패는 없다. 다음 미완료 순서는 Step 36이며 이번 요청 범위인 Step 35에서 중단한다.

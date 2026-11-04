@@ -19,6 +19,23 @@ export function ReviewActions({ detail, onProcessing, onRefresh }: {
   const pending = useRef(false);
   const active = useRef(true);
   const controller = useRef<AbortController | null>(null);
+  const approveButton = useRef<HTMLButtonElement>(null);
+  const rejectButton = useRef<HTMLButtonElement>(null);
+  const confirmButton = useRef<HTMLButtonElement>(null);
+  const reasonInput = useRef<HTMLTextAreaElement>(null);
+  const openedAction = useRef<'approve' | 'reject' | null>(null);
+
+  useEffect(() => {
+    // 확인 폼을 열면 핵심 입력으로 이동하고 취소하면 폼을 연 버튼으로 복귀
+    if (action) {
+      openedAction.current = action;
+      if (action === 'reject') reasonInput.current?.focus();
+      else confirmButton.current?.focus();
+    } else if (openedAction.current) {
+      (openedAction.current === 'approve' ? approveButton : rejectButton).current?.focus();
+      openedAction.current = null;
+    }
+  }, [action]);
 
   useEffect(() => {
     active.current = true;
@@ -30,7 +47,11 @@ export function ReviewActions({ detail, onProcessing, onRefresh }: {
     if (!action || !detail.canReview || pending.current) return;
     const hashes = { contentHash: detail.review.contentHash, baseContentHash: detail.review.baseContentHash };
     const parsed = action === 'reject' ? rejectReviewSchema.safeParse({ ...hashes, reason }) : reviewActionSchema.safeParse(hashes);
-    if (!parsed.success) { setError('거절 사유를 앞뒤 공백 제외 1~1000자로 입력해 주세요.'); return; }
+    if (!parsed.success) {
+      setError('거절 사유를 앞뒤 공백 제외 1~1000자로 입력해 주세요.');
+      reasonInput.current?.focus();
+      return;
+    }
 
     // 상태 갱신 전 연속 제출도 막고 전송 중에는 확인 폼과 새로고침을 잠금
     pending.current = true;
@@ -40,13 +61,14 @@ export function ReviewActions({ detail, onProcessing, onRefresh }: {
     controller.current = new AbortController();
     const timeout = setTimeout(() => controller.current?.abort(), 15000);
     let notice = '응답을 확인하지 못했습니다. 상세를 다시 조회합니다. 상태와 처리 정보를 먼저 확인해 주세요. 자동으로 다시 제출하지 않습니다.';
+    let shouldRefresh = true;
     try {
       const response = await fetch(`/api/v1/admin/reviews/${encodeURIComponent(detail.review.id)}/${action}`, {
         method: 'POST', credentials: 'same-origin', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(parsed.data), signal: controller.current.signal,
       });
       if (!active.current) return;
-      if (response.status === 401) { requireLogin(); return; }
+      if (response.status === 401) { shouldRefresh = false; requireLogin(); return; }
       if (response.ok) {
         notice = `${action === 'approve' ? '승인' : '거절'} 요청이 처리되었습니다. 다시 조회한 상태와 처리 정보를 확인해 주세요.`;
       } else if (response.status === 409) {
@@ -61,26 +83,30 @@ export function ReviewActions({ detail, onProcessing, onRefresh }: {
       // 응답이 끊겨도 서버에서 확정됐을 수 있으므로 POST 대신 GET으로 결과를 확인
     } finally {
       clearTimeout(timeout);
-      if (active.current) onRefresh(notice);
+      if (active.current && shouldRefresh) onRefresh(notice);
     }
   }
 
   return <section className="review-actions" aria-label="검수 처리" aria-busy={submitting}>
     <p className="admin-description" id="review-actions-notice">승인하면 검수한 변경본이 공개됩니다. 거절하면 현재 공개본을 유지합니다.</p>
-    <div><button type="button" className="admin-search-button" disabled={!detail.canReview || submitting}
+    <div><button ref={approveButton} type="button" className="admin-search-button" disabled={!detail.canReview || submitting}
       aria-describedby="review-actions-notice" onClick={() => { setAction('approve'); setError(''); }}>승인</button>
-      <button type="button" className="admin-secondary" disabled={!detail.canReview || submitting}
+      <button ref={rejectButton} type="button" className="admin-secondary" disabled={!detail.canReview || submitting}
         aria-describedby="review-actions-notice" onClick={() => { setAction('reject'); setError(''); }}>거절</button></div>
     {action && <form className="review-action-form" aria-label={action === 'approve' ? '승인 확인' : '거절 확인'}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && !pending.current) { event.preventDefault(); setAction(null); setError(''); }
+      }}
       onSubmit={(event) => { event.preventDefault(); void submit(); }}>
       <fieldset disabled={submitting}><legend>{action === 'approve' ? '승인 확인' : '거절 확인'}</legend>
         <p>{action === 'approve' ? `“${detail.review.title}”의 변경본을 공개하시겠습니까?` : '거절 사유를 입력한 뒤 확인해 주세요.'}</p>
         {action === 'reject' && <><label htmlFor="review-reason">거절 사유 (필수, 1~1000자)</label>
-          <textarea id="review-reason" autoFocus rows={5} value={reason} aria-describedby="review-reason-count review-action-error"
+          <textarea ref={reasonInput} id="review-reason" rows={5} value={reason}
+            aria-describedby={`review-reason-count${error ? ' review-action-error' : ''}`}
             aria-invalid={Boolean(error)} onChange={(event) => { setReason(event.target.value); setError(''); }} />
           <p id="review-reason-count">앞뒤 공백 제외 {reason.trim().length.toLocaleString('ko-KR')} / 1,000자</p></>}
         {error && <p id="review-action-error" role="alert">{error}</p>}
-        <div><button type="submit" autoFocus={action === 'approve'} className="admin-search-button">{action === 'approve' ? '승인 확정' : '거절 확정'}</button>
+        <div><button ref={confirmButton} type="submit" className="admin-search-button">{action === 'approve' ? '승인 확정' : '거절 확정'}</button>
           <button type="button" className="admin-secondary" onClick={() => { setAction(null); setError(''); }}>취소</button></div>
       </fieldset>
     </form>}

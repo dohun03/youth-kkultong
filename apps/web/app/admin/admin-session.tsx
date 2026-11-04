@@ -160,17 +160,17 @@ export function AdminSessionShell({ children }: { children: ReactNode }) {
   }
 
   const session = { login, requireLogin, notice };
-  if (status === 'error') return <main id="main-content" className="admin-page container">
+  if (status === 'error') return <main id="main-content" tabIndex={-1} className="admin-page container">
     <h1>관리자 인증 확인</h1><p role="alert">인증 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.</p>
     <button className="retry-button" onClick={() => setAttempt((value) => value + 1)}>다시 시도</button>
   </main>;
   if (status === 'checking' || (isLogin && status === 'authenticated') || (!isLogin && status !== 'authenticated') || pathname === '/admin') {
-    return <main id="main-content" className="admin-page container"><p role="status">관리자 인증을 확인하고 있습니다.</p></main>;
+    return <main id="main-content" tabIndex={-1} className="admin-page container"><p role="status">관리자 인증을 확인하고 있습니다.</p></main>;
   }
   if (isLogin) return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>;
 
   return <SessionContext.Provider value={session}>
-    <main id="main-content" className="admin-page container">
+    <main id="main-content" tabIndex={-1} className="admin-page container">
       <header className="admin-heading">
         <div><p className="admin-eyebrow">관리자 공간</p><h1>정책 검수 관리</h1></div>
         <div className="admin-account"><span>{identity?.username}님</span>
