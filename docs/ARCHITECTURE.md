@@ -221,7 +221,9 @@ Admin은 `controllers/`, `services/`, `guards/`를 유지한다. Ingestion은 �
 
 관리자 요청은 기존 웹 프록시와 같은 출처로 처리하며, 익명 공개 API의 CORS·요청 계약을 불필요하게 바꾸지 않는다. 인증 쿠키와 관리자 비밀값은 URL·브라우저 저장소·로그에 기록하지 않는다. 환경변수의 비밀값은 `.env` 또는 운영 비밀 저장소로 전달하며 Git에 커밋하지 않는다. TypeORM의 `synchronize`는 `false`로 고정하고 스키마 변경은 Migration으로 관리한다.
 
-로컬 DB 검수는 기존 `compose.local.yaml`의 `127.0.0.1:5433` 연결만 사용한다. 기본 DB 내부 네트워크·볼륨은 유지한다. 실행·접속은 `mvp-1/OPERATIONS.md`, MVP2 백업·복원 명령은 `mvp-2/OPERATIONS.md`를 따른다.
+Compose용 DB 이름·사용자·비밀번호는 `.env`의 `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`에서 관리한다. Compose는 이 값을 DB 컨테이너에 전달하고 API의 내부 `DATABASE_URL`을 구성한다. API는 기존 `environment.ts`에서 전달받은 `DATABASE_URL`을 검증한다. 호스트에서 API나 CLI를 직접 실행할 때는 호스트 접속 주소를 사용한 `DATABASE_URL`을 따로 설정한다. 실행 환경변수가 `.env`보다 우선하며, 파일 역할과 설정 반영 절차는 `mvp-1/OPERATIONS.md` 1절을 따른다.
+
+PC 접속용 IP·포트는 `.env`의 `BIND_IP=127.0.0.1`, `WEB_PORT=3000`, `API_PORT=4000`, `DB_PORT=5433`으로 관리한다. 컨테이너 내부 포트와 서비스 주소는 고정하며 이 네 항목은 Compose에서 사용하므로 API 설정 스키마에 추가하지 않는다. 로컬 DB 공개는 `compose.local.yaml`을 함께 적용할 때만 사용한다. 기본 DB 내부 네트워크·볼륨은 유지한다. 실행·접속은 `mvp-1/OPERATIONS.md`, MVP2 백업·복원 명령은 `mvp-2/OPERATIONS.md`를 따른다.
 
 ## 8. 검증 기준과 설계 결정
 

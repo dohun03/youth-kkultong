@@ -1567,6 +1567,18 @@ API 빌드와 전체 타입 검사, Node 구문 및 운영 문서의 Bash 구문
 
 `OPERATIONS.md`에 실제 호출과 보관본 재입력의 실행·증거 확인 절차를 추가하고 PLAN과 SUMMARY를 Step 40 완료로 맞췄다. API 계약·DB 스키마·Migration·의존성·SPEC 의미는 변경하지 않았다. 남은 운영 주의점은 실제 외부 응답의 중복/변화 시 로그를 확인하고 새 수동 수집을 판단하는 것이며, 대상 환경 전환의 최종 확인과 자동 수집 활성화는 Step 41에서 수행한다. 핵심 읽는 순서: `migration-collection.live.cjs`의 빈 DB 복원/쓰기 연결 확인 → Migration과 동일 자료 검사 → 실제 CLI/성공 원문 검증 분기 → 원본·후보·공개 대조와 관리자 검수 → `OPERATIONS.md` 4절. 커밋하지 않고 요청 범위인 Step 40에서 중단한다.
 
+## 49. 사용자 추가 요청: DB 환경변수 관리 정리 (2026-11-05)
+
+사용자가 승인한 `.env` 중심의 DB 설정 정리만 수행했다. 실제 수집, 백업 복원과 DB 전환, Step 41의 자동 수집 활성화는 실행하지 않았다.
+
+- `.env`에 `POSTGRES_DB=youth_kkultong`, `POSTGRES_USER=youth_kkultong`을 추가했다. 기존 비밀번호와 다른 설정값을 유지했고 Git 제외 상태다.
+- `.env.example`에도 두 항목과 Docker/호스트 직접 실행의 접속 주소 차이를 설명했다. `compose.yaml`은 DB 이름과 사용자의 고정값을 제거하고 필수 환경변수를 참조한다. 같은 값으로 DB 컨테이너 설정과 API 내부 `DATABASE_URL`을 구성한다.
+- API는 기존 `DATABASE_URL` 검증을 그대로 사용하므로 `environment.ts`와 DB 연결 코드 수정은 없다. 사용자가 편집 중인 `database.module.ts`, `main.ts`도 유지했다.
+- `ARCHITECTURE.md` 7장과 MVP1 `OPERATIONS.md` 1절에 파일별 역할, 설정 반영과 DB 준비 방법을 정리했다. PLAN과 SPEC의 기능·API·스키마 변경은 없다.
+- `docker compose --env-file .env -f compose.yaml config --format json` 및 `compose.local.yaml`을 함께 적용한 구성의 변경 전후 SHA-256이 각각 동일했다. 별도 프로세스 환경변수로 임의 DB 이름·사용자를 전달한 검사에서도 API 접속 주소와 DB 설정에 같은 값이 반영됐다. 출력에서 비밀번호와 전체 접속 주소를 공개하지 않았다. `.env` 항목과 자동 수집 false 유지, `git diff --check`도 확인했다.
+
+Compose 설정 해석 검사만 수행했으며 컨테이너 재시작·재생성, DB 접속·쓰기, 외부 수집은 실행하지 않았다. 현재 연결 대상과 데이터는 그대로이며 별도 컨테이너 반영 작업은 필요하지 않다(해석된 설정값이 변경 전과 동일). 이후 실제 값을 변경하면 해당 설정으로 컨테이너를 재생성한다. 추천 커밋: `chore: DB 이름과 사용자 설정을 env로 통합`.
+
 ## 50. 사용자 요청: 복원 DB를 실제 사이트에 연결하고 수동 수집 (2026-11-05)
 
 사용자가 제안한 백업 → 별도 DB 복원 → MVP2 이관 → 현재 사이트 연결 전환 → 실제 수집 한 번의 실행을 승인했다. 검수 승인·거절은 사용자가 직접 수행하도록 남기고 자동 수집은 false를 유지했다. Step 41의 일일 활성화는 진행하지 않았다.
@@ -1602,3 +1614,13 @@ API 빌드와 전체 타입 검사, Node 구문 및 운영 문서의 Bash 구문
 - 작업 근거는 `backups/site-preview-1793881085877-47feac/`의 `operation.json`, `final-state.json`, `collection-cli.log`, `ingestion-logs-after.jsonl`, 각 단계 로그와 SHA-256에 보관했다. 백업·환경 파일은 Git 제외와 디렉터리 700·파일 600을 유지한다. 기존 TypeORM 스키마 조회의 pg 중단 예정 경고는 검증 실패를 일으키지 않았다.
 
 실행 명령은 `npm run build --workspace apps/api`, `/tmp/youth-site-switch.cjs`의 `prepare` → `resume` → `collect`, `/tmp/youth-site-browser-check.cjs`다. 준비 단계에서 최신 API 빌드·기존 백업 복원 검증·새 DB 이관 및 스키마 검사, 수집 단계에서 실제 CLI와 기존 DB/공개 본문 보존, 브라우저 단계에서 조회만 검증했다. `OPERATIONS.md` 5절에 현재 연결과 기존 DB로 돌아가는 방법을 기록했다. API 계약·스키마·Migration·제품 소스 변경 및 Git 커밋은 없다. 추천 커밋: `docs: 복원 DB 연결 전환과 실제 수동 수집 결과 기록`.
+
+## 51. 사용자 추가 요청: 외부 접속 IP와 포트 및 env 정리 (2026-11-06)
+
+사용자 요청에 따라 PC 접속용 `BIND_IP=127.0.0.1`, `WEB_PORT=3000`, `API_PORT=4000`, `DB_PORT=5433`을 `.env`와 `.env.example`에 추가하고 Compose의 포트 공개 설정에 연결했다. 컨테이너 내부 포트, 웹의 내부 API 주소, healthcheck는 유지한다. DB 공개는 기존처럼 `compose.local.yaml`을 함께 적용할 때만 활성화된다.
+
+두 env 파일을 접속 IP/포트 → DB → 웹 주소/시간대 → 수집 → 관리자 순서로 정리했다. 실제 `.env`의 기존 비밀번호·키·DB 이름·주소·관리자 설정을 모두 보존했고, 예시에 없는 기존 개별 설정도 별도 구분으로 남겼다. 호스트 직접 실행용 `DATABASE_URL`과 Docker에서 Compose가 구성하는 주소를 주석으로 구분했다. 외부 IP/포트는 Compose에서 사용하므로 `environment.ts` 수정은 없다.
+
+기본 및 로컬 Compose의 `config --format json` 결과는 변경 전후 SHA-256이 각각 동일했다. 프로세스 환경변수로 IP `127.0.0.2`, 웹/API/DB 포트 `3200`/`4200`/`5544`를 지정한 추가 검사에서 외부 공개 설정만 바뀌고 내부 주소·포트·healthcheck와 자동 수집 false는 같음을 확인했다. 실제 env의 모든 기존 값 보존, 예시의 설정 항목 포함, 호스트 DB URL과 Compose용 DB 설정 일치 및 권한 600을 확인했다. 전체 접속 주소와 비밀값은 출력하지 않았다. `git diff --check`도 통과했다.
+
+`ARCHITECTURE.md` 7장과 MVP1 `OPERATIONS.md` 1절에 설정 역할과 관련 URL을 함께 맞추는 방법을 반영했다. 컨테이너 재시작·재생성, DB 변경, 실제 수집과 자동 수집 활성화는 실행하지 않았다. API 계약·제품 소스·의존성 변경은 없다. 커밋은 실행하지 않고 환경설정 파일과 관련 문서만 선택하는 명령과 한국어 메시지를 안내한다. SUMMARY에는 이전 미커밋 Step 기록도 있으므로 파일 전체를 이 환경설정 커밋에 넣지 않는다.

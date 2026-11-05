@@ -6,9 +6,17 @@
 
 Docker Engine와 Docker Compose가 필요하다. 호스트에 Node.js·PostgreSQL을 설치하지 않아도 컨테이너에서 빌드·Migration·수집을 실행할 수 있다.
 
-- `.env`가 없다면 `.env.example`을 복사하고 `POSTGRES_PASSWORD`와 실제 `YOUTH_CENTER_API_KEY`를 편집기로 입력한다. 기존 `.env`는 덮어쓰지 않는다. 비밀번호는 예시 설명대로 URL에 사용할 수 있는 영문·숫자로 설정한다.
+- `.env`가 없다면 `.env.example`을 복사하고 `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`와 실제 `YOUTH_CENTER_API_KEY`를 편집기로 입력한다. 기존 `.env`에는 빠진 항목만 추가한다. DB 이름과 사용자 기본값은 각각 `youth_kkultong`이며, 비밀번호는 예시 설명대로 URL에 사용할 수 있는 영문·숫자로 설정한다.
 - 조회·Migration·지역 시드는 인증키 없이 실행할 수 있지만 실제 수집에는 제품용 인증키가 필요하다. `.env`는 권한 `600`으로 보관하고 Git에 추가하지 않는다.
-- 아래 `dc` 배열은 기존 프로젝트명과 볼륨을 유지한다. DBeaver 접속도 필요하면 배열 마지막에 `-f compose.local.yaml`을 추가한다. 이 경우 DB 접속 주소는 `127.0.0.1:5433`이다. 모든 후속 명령에 같은 배열을 사용한다.
+- 아래 `dc` 배열은 기존 프로젝트명과 볼륨을 유지한다. DBeaver 접속도 필요하면 배열 마지막에 `-f compose.local.yaml`을 추가한다. 이 경우 DB 접속 주소 기본값은 `127.0.0.1:5433`이다. 모든 후속 명령에 같은 배열을 사용한다.
+
+설정 파일의 역할은 다음과 같다. `.env`에 환경별 값을 적고, `compose.yaml`의 `environment`가 필요한 값을 컨테이너에 전달한다. Compose는 `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`로 API 내부 접속 주소인 `DATABASE_URL`을 만든다. API의 `environment.ts`는 이 주소를 검증하므로 DB 이름이나 사용자 값을 바꿀 때 수정할 필요가 없다. API가 직접 사용할 새 설정 항목을 추가할 때는 전달 설정과 해당 설정의 검증 코드도 함께 추가한다.
+
+호스트에서 Node로 API·테스트·Migration을 직접 실행할 때는 `.env`에 `127.0.0.1:5433` 주소의 `DATABASE_URL`을 별도로 적는다. 그 주소의 DB 이름·사용자·비밀번호는 Compose용 값과 맞춘다. API는 실행 환경변수를 `.env`보다 우선 사용하며, Docker에서는 Compose가 전달한 내부 주소를 사용한다.
+
+PC 접속용 IP와 포트는 `.env`의 `BIND_IP`, `WEB_PORT`, `API_PORT`, `DB_PORT`에서 바꾼다. 기본값은 `.env.example`과 같고 컨테이너 내부의 웹 3000·API 4000·DB 5432는 유지한다. 웹 포트를 바꾸면 `ADMIN_WEB_ORIGIN`과 `API_CORS_ORIGINS`, DB 포트를 바꾸면 직접 실행용 `DATABASE_URL`도 맞춘다. API 포트를 바꾸고 호스트에서 웹을 직접 실행한다면 웹 실행 환경의 `API_INTERNAL_URL`도 맞춘다. `environment.ts`는 `.env` 안의 `${변수명}`을 자동 치환하지 않으므로 URL에는 완성된 주소를 적는다. 이 IP·포트 항목은 Compose용이므로 API 설정 스키마 수정은 필요하지 않다.
+
+설정 변경은 실행 중인 API에 자동 반영되지 않는다. Compose 환경변수를 바꾸면 API 컨테이너를 재생성해 반영한다. `POSTGRES_DB`나 `POSTGRES_USER`의 값 변경은 기존 DB·계정의 생성·이름 변경·백업 복원을 대신하지 않으므로, 연결 대상은 먼저 준비한다. 아래 운영 명령의 DB 이름과 사용자는 기본값 기준이며 다른 값을 사용하면 명령의 대상도 맞춘다.
 
 ```bash
 chmod 600 .env
