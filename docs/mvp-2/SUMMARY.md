@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-05 · 상태: Step 1~38 완료 · Step 39~41 미착수
+수정일: 2026-11-05 · 상태: Step 1~40 완료 · Step 41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -1455,3 +1455,150 @@ git diff --check
 | T2-49 | Step 37 `backup-restore.live.cjs`: 별도 빈 DB 복원과 원본·검수·로그 보존 |
 
 API 계약과 DB 스키마·Migration·의존성 및 SPEC의 기능 의미는 변경하지 않았다. 전체 웹 검수와 실제 외부 수집, 자동 수집 활성화는 Step 39~41 범위다. 핵심 읽는 순서: 승인/거절 서비스의 재시도 진입점 → `policy-review-retry.integration.spec.ts`의 전체 취소와 최신 상태 재확인 → `admin-proxy.integration.spec.ts`의 전용 스키마 준비 → 위 T2 검증 근거. Step 38 변경은 미커밋 상태로 남기고 이번 요청 범위에서 중단한다.
+
+## 47. Step 39 공개 및 관리자 웹 최종 검수 (2026-11-05)
+
+사용자 요청으로 Step 38을 `c3b02f8`(`fix: 검수 충돌 재시도와 전체 API 회귀 검증 보완`)로 커밋한 뒤 Step 39를 수행했다. AGENT_RULES → PLAN Step 39 → SPEC 8장과 T2-46~48 → Step 35 및 Step 38의 검증 범위 → 현재 웹과 브라우저 테스트를 대조했다. Sites의 로컬 미리보기 절차를 적용하고 기존 프로젝트와 컨테이너를 사용했다. 기능·API·DB 설계를 변경해야 하는 충돌은 없었다.
+
+### 추가한 실제 흐름 검증과 파일 배치
+
+- `apps/web/test/admin-flow.live.mjs`에 5개 시나리오를 추가했다. 별도 PostgreSQL의 전용 스키마와 최신 빌드의 NestJS API를 준비하고, 기존 `apps/api/test/fixtures/admin-proxy.cjs`로 현재 웹 소스를 별도 Next.js 프로덕션 빌드로 실행한다. 실제 동일 출처 프록시를 통해 브라우저에서 로그인하고 인증 쿠키로 조회·처리를 수행한다. 관리자 자격은 합성 값이며 기존 관리자 설정은 변경하지 않는다.
+- 신규와 변경 승인의 실제 HTTP 200, 처리 후 상세 재조회, 공개 UUID 보존·최신 조회수·공개 원문, 실제 공개 상세 화면 반영을 확인했다. 거절은 공개 행 전체를 보존하고 사유를 텍스트로 표시하며 처리 이력에서 확인할 수 있다. 미공개 누락 후보의 상세 링크·NULL 수집 시각·누락 경고도 확인했다.
+- 화면을 연 뒤 실제 수집 저장 서비스로 B를 C 후보로 교체했다. 오래된 화면의 승인 요청은 실제 409이며 상세 재조회에서 대체 이력과 최신 후보 링크를 표시한다. 현재 공개 본문은 유지하고 수집 조회수만 최신화했다.
+- 유효한 서명이 있으나 만료된 합성 쿠키를 실제 API가 401로 거부하고 화면이 로그인으로 복귀하는지 확인했다. 목록 요청의 연결을 끊은 뒤 실제 API로 재시도해 복구되는지도 확인했다. 320/390px에서 가로 넘침이 없고 관리자 데이터·인증값은 브라우저 저장소에 남지 않았다.
+- 기존 `admin-recovery.live.mjs` 2개도 재실행했다. 실제 승인·거절 COMMIT 뒤 브라우저 응답만 끊어도 POST를 한 번만 보내고 GET으로 확정 결과를 확인했다. 이 두 사례는 실제 API로 전달한 응답의 전송만 끊으며 DB 처리 결과를 가짜 응답으로 대체하지 않는다.
+- `admin-auth.browser.mjs`의 모바일 메뉴 검증은 경로 이동 뒤 인증 재확인이 끝난 시점에 로그아웃 버튼을 검사하도록 보완했다. 초기 실패는 화면 너비가 아니라 재인증 중의 일시적인 공통 메뉴 숨김 시점을 즉시 검사한 문제였다. 실제 390px 너비와 키보드 이동을 별도로 확인했고 인증 응답과 버튼 표시를 기다린 재검증이 통과했다. 제품 화면 코드는 변경하지 않았다.
+
+### 검증 결과
+
+| 검증 | 결과 |
+| --- | --- |
+| 공개 웹 전체 회귀 | **65개 모두 통과**. 실제 API와 조건·지역·분야·정렬·페이지·상세·링크를 대조하고 탭 세션 및 저장소 오류, 모바일·키보드 흐름 확인 |
+| 관리자 웹 전체 회귀 | 최초 124개 중 123개 통과. 모바일 메뉴 시험의 대기 시점을 보완한 뒤 **영향 범위인 인증 12개 모두 통과**. 나머지 112개는 기존 통과 결과를 유지하며 최종 미해결 실패 0건 |
+| 별도 실제 웹/API/DB 흐름 | 신규 5개와 기존 응답 유실 2개, **7개 모두 통과** |
+| 최종 검수 범위 | 공개 65개·관리자 124개·실제 흐름 7개, **총 196개 고유 시나리오 확인**. 영향 범위 재실행을 포함한 결과를 구분해 보관 |
+| 정적 검사 | shared/API/web 전체 타입 검사, 변경한 두 브라우저 테스트의 Node 구문 및 diff 검사 통과 |
+| 데이터 보존과 정리 | 각 실행의 기존 5개 테이블 전체 행 체크섬과 수집 로그 해시 동일. 검증용 컨테이너·전용 스키마·Advisory Lock과 임시 Next.js 서버 정리 |
+
+신규 실제 흐름 시험의 초기 실패는 화면 재조회 이후 응답 본문을 다시 읽으려던 브라우저 관찰 시점, SUPERSEDED 전용 안내 문구와 다른 기대값, ORM 클래스와 비교 객체의 프로토타입 차이였다. 실제 HTTP 상태·확정된 DB 행·현재 화면 문구로 검증기를 맞춘 뒤 7개를 모두 통과했다. 제품의 승인·거절·충돌 판정이나 오류 응답을 변경하지 않았다. 기존 화면 회귀의 오류·원문 경계 사례는 응답 대체를 사용하고 정상 탐색·인증·이력·누락은 실제 API를 사용했다. 새 실제 흐름의 정상 처리·충돌·만료는 실제 API와 DB에서 확인했다.
+
+실행 명령:
+
+```sh
+# 기존 Playwright와 Chromium 사용. 누락된 라이브러리와 한글 글꼴만 /tmp에 추출
+node /tmp/mvp2-step39-browser-verify.cjs public
+node /tmp/mvp2-step39-browser-verify.cjs admin
+node /tmp/mvp2-step39-browser-verify.cjs auth
+node /tmp/mvp2-step39-browser-verify.cjs live
+npm run typecheck
+node --check apps/web/test/admin-flow.live.mjs
+node --check apps/web/test/admin-auth.browser.mjs
+git diff --check
+```
+
+검증기는 기존 관리자 파일의 값을 메모리에서 읽어 로그인하고 출력에서 비밀값을 가린다. 새 실제 흐름을 단독 실행하려면 API를 먼저 빌드하고 별도 `DATABASE_URL`과 기존 브라우저 환경을 준비한 뒤 **`apps/web`에서** `node --test test/admin-flow.live.mjs`를 실행한다. 새 테스트는 별도 웹 빌드와 서버를 직접 준비하며 원래 웹의 프록시 대상을 바꾸지 않는다.
+
+최종 결과는 `/tmp/mvp2-step39-final-results.json`이다. 공개·관리자·영향 범위 인증·실제 흐름 결과와 출력은 `/tmp/mvp2-step39-{public,admin,auth,live}-{summary.json,output.log}`에 있다. 관리자 최초 124개 결과와 보완 후 12개 결과를 테스트 제목별로 대조해 124개 전체의 미해결 실패가 없음을 확인했다. 각 실행의 DB와 로그 대조는 같은 접두사의 `before.json`과 `after.json`에 있다. 기존 공개 3,396건·원본 3,399건·검수 10건·지역 537개·Migration 3개의 체크섬은 45장과 동일하다.
+
+실제 흐름의 `/tmp/mvp2-step39-live-{public,missing,conflict}.png`를 직접 열어 승인된 공개 상세, 320px 미공개 누락과 390px 최신 후보 비교 화면을 확인했다. 기존 관리자 회귀의 320/390px 비교와 확인 폼, 모바일 이력·누락도 검증했다. 기존 Chromium에 누락된 libnspr4·libnss3·libasound2와 한글 글꼴은 `/tmp/mvp2-step39-browser`에만 준비했으며 프로젝트 패키지나 시스템 설치를 추가하지 않았다.
+
+웹·API·DB는 기존 컨테이너와 볼륨을 유지하고 모두 healthy다. API health 및 공개 목록·관리자 로그인·이력·누락 화면은 HTTP 200이며 자동 수집은 false다. 제품 화면 소스와 API/DB 계약·Migration·의존성·SPEC 의미 변경은 없다. 현재 웹에서 쓰는 제품 소스와 같은 소스를 별도 프로덕션 빌드로 검증했으며 `http://localhost:3000`에서 기존 체험 상태를 계속 확인할 수 있다.
+
+PLAN과 SUMMARY를 Step 39 완료 상태로 맞췄다. T2-46~47의 관리자 화면과 T2-48의 공개 웹·탭 세션 최종 회귀 근거를 보완했으며 실제 온통청년 수집과 일일 활성화는 Step 40~41에 남긴다. 핵심 읽는 순서: `admin-flow.live.mjs`의 격리 DB와 실제 프록시 준비 → 승인·거절과 공개 행 대조 → 실제 충돌·만료·연결 복구 → `admin-auth.browser.mjs`의 모바일 인증 대기. 변경사항은 미커밋 상태로 남기고 이번 요청 범위인 Step 39에서 중단한다.
+
+## 48. Step 40 실제 수집과 이관 운영 재현 (2026-11-05)
+
+AGENT_RULES → PLAN Step 40 → SPEC 2.4, 5.2~5.5, 6.3과 T2-01, T2-03~05 → Step 4·37~39의 완료 및 백업 기록 → 현재 Migration·수집 CLI·원본/검수/공개 저장과 관리자 API를 대조했다. 선행 Step 39의 미커밋 변경은 유지했다. 이번 Step은 원래 DB를 유지하면서 별도 복원 환경에서 검증하며, 자동 수집 활성화는 Step 41 범위다.
+
+### 구현과 이관 결과
+
+- `apps/api/test/migration-collection.live.cjs`를 기존 API 검증 파일과 같은 위치에 추가했다. 실제 Docker/PostgreSQL과 빌드된 Migration CLI·수집 CLI, 최신 NestJS HTTP API를 사용하며 일반 Jest 테스트에는 포함하지 않는다. 패키지나 제품 실행 코드는 변경하지 않았다.
+- 이관 전 백업 `backups/mvp2-step4-20261028225754/`의 SHA-256을 확인하고 기존 볼륨과 분리된 새 임시 PostgreSQL 17의 빈 DB에 복원했다. 복원 환경의 옛 API/CLI를 시작하지 않고 다른 연결 0개를 확인한 뒤 공통 Advisory Lock을 잡아 최신 Migration CLI를 실행했다. 기존 환경에는 읽기 전용 SQL만 보내며 원래 API·웹을 중지하거나 접속 대상을 전환하지 않았다.
+- 공개 3,390건·지역 537개·Migration 2개에서 원본 3,390건·검수 0건·Migration 3개로 이관됐다. 공개와 지역의 전체 행 및 UUID, 원본 대응·해시·조회수, NULL 수집 시각·결과와 누락 0을 확인했다. 이번 `to_jsonb` 쿼리 기준 공개 체크섬 `02575d9d37be7670ec17d32181b1f902`, 지역 `9321528ac6944aff3cfb0c706feebd70`이 이관 전후 동일하다. ORM 스키마 차이와 재실행 Migration은 각각 0건이다.
+- 백업 원문을 같은 수집 저장 서비스에 재입력해 3,390건 모두 UNCHANGED, 후보 0건과 첫/최근 수집 시각 채움을 확인했다. 이 시험 입력과 실제 외부 호출의 시각·결과를 구분해 기록했다.
+
+### 실제 외부 호출과 안전한 실패
+
+최초 실제 수집은 50건씩 78페이지를 요청 간 3초로 순차 조회해 **3,860건**을 수집했다. 요청 78회, 저장 1회, 약 279초이며 실제 수집 CLI 종료 코드는 0이다. 원본 해시로 결과를 다시 계산하고 DB·로그와 대조했다.
+
+| 판정/반영 | 실제 결과 |
+| --- | --- |
+| 신규 / 변경 / 동일 | 498 / 495 / 2,867건 |
+| 누락 | 기존 원본 28건 |
+| 검수 후보 생성 / 대체 | 993 / 0건 |
+| 공개 조회수 갱신 | 3,362건 |
+| 미승인 공개 본문과 기존 공개 UUID | 전체 보존 |
+| 정상 확정 로그 | `SUCCESS`, `saved=true`, `COMMITTED`, 실패 항목 0개 |
+
+실제 호출 성공 근거는 `backups/mvp2-step40-1793863062614-437079bf/`의 `collection-cli.log`, `policies-import.jsonl`, `collected-raw.json`, `verification.json`이다. 실행 ID는 `dd1796eb-e721-440b-94ca-8ae5f59ad1da`다. 이 전체 시험은 수집 이후 검증기의 누락 목록 경로 오기(`/admin/missing-policies`)로 404가 발생해 **전체 FAIL을 유지**한다. 경로를 실제 계약인 `/admin/source-policies/missing`으로 수정했으며 제품 API는 바꾸지 않았다.
+
+그 뒤 실제 호출 두 번은 각각 70페이지와 24페이지에서 중복 ID를 검출해 명세대로 재시도 없이 저장 전에 실패했다. 증거는 `backups/mvp2-step40-1793863368233-94a1e7d6/`, `backups/mvp2-step40-1793863683521-32472ac7/`이다. 두 실행 모두 `NOT_COMMITTED`·`saved=false`이며 세 번째 실행에서는 수집 전후 복원 DB의 5개 테이블 전체 행 체크섬도 같음을 확인했다. 중복 자료를 제거해 강제로 성공시키거나 재시도 기준을 완화하지 않았다.
+
+### 보관한 실제 원문으로 관리자 검수 완료
+
+외부 호출 성공과 후속 관리자 검수의 근거를 분리했다. `REHEARSAL_CAPTURE` 모드는 위 최초 정상 수집 원문의 SHA-256과 같은 이관 dump, 성공/확정 로그와 원래 데이터 보존·정리를 확인한 뒤 새 복원 환경에 재입력한다. 재입력에서 나온 증거 폴더를 최초 외부 호출 근거로 사용하는 것은 거부한다. 원본 폴더의 전체 FAIL과 원래 실행 ID를 보존하고 새 보고서에 `mode=CAPTURE_REPLAY`, `networkExecutedThisRun=false`를 명시한다. 이 검증을 새로운 외부 호출 성공으로 집계하지 않는다.
+
+- 최신 코드의 새 복원 환경에서 최초 수집과 같은 신규/변경/동일/누락 및 후보 993건을 재현했다. 실제 수집 원문 SHA-256은 `7530e71e87c0d641fd70083aeec68fcd891e8f9b0a29a7097129c5e7115bfcfd`다.
+- 같은 원문을 다시 입력하면 3,860건 모두 UNCHANGED이고 후보 생성·대체가 0건이며 검수 전체 행이 동일했다. 이 정상 전체 재입력으로 누락 원본 28건의 횟수가 1에서 2로 늘어나는 점도 실제 외부 호출 결과와 구분했다.
+- 합성 관리자 자격으로 실제 API에 로그인하고 무인증 401, 대기 목록 993건과 누락 목록 28건, 기준/변경 원문 및 검수 가능 여부를 확인했다. 실제 신규 후보와 변경 후보를 각각 한 건 승인하고 한 건 거절했다. 승인 후 공개 상세의 UUID·제목·설명·혜택, 저장 스냅샷·해시·최신 조회수와 처리 이력을 대조했고 거절은 공개 행 전체와 미공개 상태를 유지했다.
+- 최종 변경 승인 예시: 외부 ID `20260421005400212818`, 공개 UUID `2f206143-d6ea-40d1-a27e-04ea9e86fbc3`는 승인 전후 같고 생성 시각도 유지됐다. 기존 공개 3,390건의 모든 UUID를 최종 상태에서도 다시 확인했다.
+- 최종 복원 DB는 공개 3,391건·원본 3,888건·검수 993건(대기 989, 승인 2, 거절 2)·지역 537개·Migration 3개다. 승인으로 신규 공개 한 건만 추가됐으며 원래 운영 DB와 별개다.
+
+보관본 검수는 사전 확인과 최종 코드 재검증에서 각각 통과했다. **최종 결과는 `backups/mvp2-step40-1793863959754-2172ecfe/verification.json`의 PASS이며 1개 운영 재현 시나리오, 실패·건너뜀 0건, 약 21초**다. 실제 외부 호출 성공 근거와 이 보관본 검수 PASS를 함께 Step 40 완료 근거로 사용한다. 최신 외부 호출부터 관리자 검수까지 한 실행에서 모두 통과했다고 보고하지 않는다.
+
+### 검증과 최종 상태
+
+```sh
+npm run build --workspace apps/api
+npm run typecheck
+node --test apps/api/test/migration-collection.live.cjs
+REHEARSAL_CAPTURE=backups/mvp2-step40-1793863062614-437079bf \
+  node --test apps/api/test/migration-collection.live.cjs
+node --check apps/api/test/migration-collection.live.cjs
+bash -n /tmp/mvp2-step40-operations-check.sh
+git diff --check
+```
+
+API 빌드와 전체 타입 검사, Node 구문 및 운영 문서의 Bash 구문 검사를 통과했다. 실제 외부 호출과 보관본 재입력의 결과 범위는 위와 같이 구분한다. 기존 TypeORM 스키마 비교 내부의 pg 동시 query 중단 예정 경고는 Step 37~38과 같으며 검증 실패 원인은 아니다.
+
+다섯 검증 폴더의 SHA-256과 디렉터리 700·파일 600, 각 실행의 원래 DB/로그 전후 동일성을 모두 확인했다. 원래 공개 3,396건·원본 3,399건·검수 10건·지역 537개·Migration 3개를 유지했다. 기존 `policies-import.jsonl` SHA-256도 `4c1ca0a16d32600a0781fc9332bd8d830c9d8a9c985f66c918529e3cd419892a`로 같다. 백업과 원문은 Git 제외 상태다.
+
+`/tmp/mvp2-step40-final-state.json`에서 기존 DB·API·웹 모두 healthy, 남은 Step 40 검증 컨테이너와 기존 DB Advisory Lock 각각 0개를 확인했다. API와 웹 프록시 health, 공개 목록·관리자 로그인은 HTTP 200이고 무인증 me는 401이다. 자동 수집은 false를 유지하며 `http://localhost:3000`에서 기존 상태를 확인할 수 있다.
+
+`OPERATIONS.md`에 실제 호출과 보관본 재입력의 실행·증거 확인 절차를 추가하고 PLAN과 SUMMARY를 Step 40 완료로 맞췄다. API 계약·DB 스키마·Migration·의존성·SPEC 의미는 변경하지 않았다. 남은 운영 주의점은 실제 외부 응답의 중복/변화 시 로그를 확인하고 새 수동 수집을 판단하는 것이며, 대상 환경 전환의 최종 확인과 자동 수집 활성화는 Step 41에서 수행한다. 핵심 읽는 순서: `migration-collection.live.cjs`의 빈 DB 복원/쓰기 연결 확인 → Migration과 동일 자료 검사 → 실제 CLI/성공 원문 검증 분기 → 원본·후보·공개 대조와 관리자 검수 → `OPERATIONS.md` 4절. 커밋하지 않고 요청 범위인 Step 40에서 중단한다.
+
+## 50. 사용자 요청: 복원 DB를 실제 사이트에 연결하고 수동 수집 (2026-11-05)
+
+사용자가 제안한 백업 → 별도 DB 복원 → MVP2 이관 → 현재 사이트 연결 전환 → 실제 수집 한 번의 실행을 승인했다. 검수 승인·거절은 사용자가 직접 수행하도록 남기고 자동 수집은 false를 유지했다. Step 41의 일일 활성화는 진행하지 않았다.
+
+### 백업과 연결 전환
+
+- 현재 DB `youth_kkultong`과 수집 로그를 먼저 백업했다. 위치는 `backups/site-preview-1793881085877-47feac/current-state/`다. 기존 `backup-restore.live.cjs`를 실행해 별도 빈 PostgreSQL에 실제 복원하고 전체 행·UUID·해시·스키마·공개 및 관리자 조회·로그 무결성까지 검증했다. **1개 실제 백업/복원 시나리오 통과, 실패·건너뜀 0건**이며 원래 DB·볼륨은 유지했다. 전환 전 `.env`는 상위 폴더의 `environment-before.env`에 600 권한으로 보관했다.
+- 기존 PostgreSQL 서버 안에 새 DB `youth_mvp2_preview_20261105_bd3479`를 생성하고, MVP2 이전 백업 `backups/mvp2-step4-20261028225754/production.dump`를 단일 트랜잭션으로 복원했다. 공개 3,390건·지역 537개·Migration 2개에서 현재 Migration CLI를 실행해 원본 3,390건·검수 0건·Migration 3개로 이관했다. 공개 전체 행과 UUID 및 지역 체크섬이 동일하며, 원본 대응·NULL 수집 시각·결과와 누락 0을 확인했다. 최신 ORM 스키마 차이와 미적용 Migration은 0건이다.
+- 최초 운영 스크립트가 호스트용 `DATABASE_URL`도 설정돼 있다고 가정해 전환 전 검사에서 중단됐다. 이때 기존 API를 다시 시작했고 복원 DB와 이관 결과는 보존했다. 검사 주소를 명시하도록 스크립트를 고친 뒤 전체 행과 스키마를 재확인하고 연결 전환만 이어서 수행했다. 제품 코드의 설정 오류는 아니며 `environment.ts`를 변경하지 않았다.
+- `.env`의 `POSTGRES_DB`를 새 DB로 바꾸고 호스트 직접 실행용 `DATABASE_URL`도 같은 DB 이름으로 추가했다. `POLICY_SCHEDULE_ENABLED=false`를 명시했다. 현재 소스로 API 이미지를 빌드하고 API만 재생성했다. 기존 관리자 설정과 계정, 웹·DB 컨테이너 및 볼륨을 유지했다. 전환 직후 실제 웹 프록시에서 로그인·공개 3,390건·검수 대기/처리 이력/누락 각각 0건을 확인했다.
+
+### 현재 연결된 DB의 실제 수집 결과
+
+현재 API 컨테이너에서 `node apps/api/dist/cli/import-policies.js`를 **한 번** 실행했다. 보관 원문 재입력이나 가짜 응답을 사용하지 않았다. 50건씩 79페이지, 요청 간 3초, 약 284초 후 CLI 종료 코드 0이며 `RUN_FINISHED`는 `SUCCESS`·`saved=true`·`COMMITTED`, 실패 항목 0건이다. 실제 실행 ID는 `7c67be60-f7a4-48a9-89b3-0447dfec5559`다.
+
+| 항목 | 결과 |
+| --- | --- |
+| 실제 수집 | 3,935건 |
+| 신규 / 변경 / 동일 | 573 / 483 / 2,879건 |
+| 누락 | 28건 |
+| 검수 후보 생성 / 대체 | 1,056 / 0건 |
+| 공개 조회수 갱신 | 3,362건 |
+| 현재 공개 / 원본 / 검수 | 3,390 / 3,963 / 1,056건 |
+| 검수 상태 | 신규 PENDING 573, 변경 PENDING 483, 처리 이력 0건 |
+
+수집 전후 공개 행에서 허용된 조회수·갱신 시각만 제외한 전체 값의 체크섬은 `16d6dac569fa442b6cc13111b3b2618b`로 동일하다. 공개 본문과 모든 UUID가 유지됐고 미승인 신규는 공개되지 않았다. 누락 28건은 백업 이관 후 이번 실제 수집에 나타나지 않아 마지막 수집 시각이 NULL이며 누락 목록에서 확인할 수 있다.
+
+### 사이트 확인과 현재 상태
+
+- 실제 `http://localhost:3000`의 관리자 로그인, 대기 목록 1,056건, 후보 비교 화면을 Playwright 브라우저로 확인했다. 승인·거절 POST 요청은 **0회**다. 화면은 상위 백업 폴더의 `admin-pending.png`, `admin-comparison.png`, 확인 결과는 `browser-verification.json`에 보관했다.
+- 기존 DB `youth_kkultong`의 5개 테이블 전체 행 체크섬은 전환·수집 전후 동일하다. 공개 3,396건·원본 3,399건·검수 10건 등 기존 데이터는 그 DB에 그대로 보존했다. 새 복원 DB는 기존 `db_data` 영구 볼륨 안에 남기며 API가 실제로 사용한다. 현재 수집 로그는 기존 로그 볼륨에 이어 기록하고 전환 전 로그는 위 백업으로 보관했다.
+- 최종 웹·API·DB는 모두 healthy이며 수집 Advisory Lock 0개다. `.env`와 API 컨테이너의 실제 DB 이름이 새 DB로 일치하고 자동 수집은 false다. 관리자 계정과 로그인 정보는 기존 `.local/admin-login.txt`를 유지했다.
+- 작업 근거는 `backups/site-preview-1793881085877-47feac/`의 `operation.json`, `final-state.json`, `collection-cli.log`, `ingestion-logs-after.jsonl`, 각 단계 로그와 SHA-256에 보관했다. 백업·환경 파일은 Git 제외와 디렉터리 700·파일 600을 유지한다. 기존 TypeORM 스키마 조회의 pg 중단 예정 경고는 검증 실패를 일으키지 않았다.
+
+실행 명령은 `npm run build --workspace apps/api`, `/tmp/youth-site-switch.cjs`의 `prepare` → `resume` → `collect`, `/tmp/youth-site-browser-check.cjs`다. 준비 단계에서 최신 API 빌드·기존 백업 복원 검증·새 DB 이관 및 스키마 검사, 수집 단계에서 실제 CLI와 기존 DB/공개 본문 보존, 브라우저 단계에서 조회만 검증했다. `OPERATIONS.md` 5절에 현재 연결과 기존 DB로 돌아가는 방법을 기록했다. API 계약·스키마·Migration·제품 소스 변경 및 Git 커밋은 없다. 추천 커밋: `docs: 복원 DB 연결 전환과 실제 수동 수집 결과 기록`.

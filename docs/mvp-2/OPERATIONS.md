@@ -1,6 +1,6 @@
-# MVP2 검수 데이터 백업과 복원 지침
+# MVP2 검수 데이터 백업과 복원 및 이관 재현 지침
 
-기준: SPEC 2.4, 5.5 및 T2-49. 저장소 루트의 Bash에서 실행한다. 실제 결과는 SUMMARY 45장에 기록한다. 초기 설치와 일반 재기동은 [MVP1 운영 지침](../mvp-1/OPERATIONS.md), 자동 수집의 활성화와 장애 확인은 SUMMARY 44장을 따른다.
+기준: SPEC 2.4, 5.5 및 T2-01, T2-03~05, T2-49. 저장소 루트의 Bash에서 실행한다. 백업과 복원 결과는 SUMMARY 45장, 실제 수집과 이관 재현 결과는 48장에 기록한다. 초기 설치와 일반 재기동은 [MVP1 운영 지침](../mvp-1/OPERATIONS.md), 자동 수집의 활성화와 장애 확인은 SUMMARY 44장을 따른다.
 
 ## 1. 백업 대상과 쓰기 중단
 
@@ -131,3 +131,58 @@ curl --fail --silent -H 'Content-Type: application/json' \
 복원 후 원래 DB를 유지하면서 공개 검색과 상세, 관리자 대기·이력·누락 및 상태별 상세를 확인한다. 검증에 합격한 뒤 서비스 접속 대상 전환을 판단한다. 이번 검증에서는 원래 서비스의 접속 대상을 바꾸거나 자동 수집을 활성화하지 않는다.
 
 검증 환경 종료에는 `"${restore[@]}" down`을 사용하며 볼륨은 남긴다. 운영·검증 프로젝트 모두에서 `down -v`를 복구 명령으로 사용하지 않는다. 기존 `youth-kkultong_db_data`와 `youth-kkultong_ingestion_logs`, 원래 서비스의 접속 대상은 유지한다.
+
+## 4. 이관 전 백업에서 실제 수집과 관리자 검수 재현
+
+Step 40은 **이관 전 MVP1 백업**을 새 빈 PostgreSQL 17에 복원해 최신 코드로 전환하는 검증이다. 검수 데이터가 이미 포함된 MVP2 백업으로 이관을 대체하거나 기존 DB에서 역이관하지 않는다. 원래 API와 웹은 그대로 유지하고 복원 환경의 옛 API와 CLI를 시작하지 않는다. 복원 DB에 다른 연결이 없는지 확인하고 공통 수집 잠금을 유지한 상태에서 Migration을 실행한다. 실제 대상 환경을 전환할 때는 1절의 쓰기 중단과 최신 백업을 먼저 수행한다.
+
+다음 명령은 Docker 접근과 실제 온통청년 API 키가 설정된 기존 API 컨테이너가 필요하다. 기본 백업은 `backups/mvp2-step4-20261028225754/`이며, `SHA256SUMS`, `production.dump`, `ingestion-logs.tar`, `baseline.json`이 있어야 한다. 기본 원본 컨테이너는 `youth-kkultong-db-1`, `youth-kkultong-api-1`이다. `REHEARSAL_BACKUP`, `REHEARSAL_SOURCE_DB`, `REHEARSAL_SOURCE_API`로 변경할 수 있다. 기존 API의 자동 수집은 false여야 하며 실행 중 수동 수집과 관리자 쓰기를 추가하지 않는다.
+
+```bash
+npm run build --workspace apps/api
+node --test apps/api/test/migration-collection.live.cjs
+```
+
+검증기는 아래 순서로 실행하며 기존 컨테이너의 비밀 설정을 출력하거나 수정하지 않는다.
+
+1. 백업 SHA-256을 확인하고 원래 5개 테이블 전체 행 체크섬과 로그별 해시를 기록한다. 기존 DB에는 읽기 전용 쿼리만 보낸다.
+2. 기존 볼륨과 분리된 임시 PostgreSQL의 빈 DB에 단일 트랜잭션으로 복원한다. 복원 DB의 쓰기 연결 없음과 수집 잠금을 확인하고 최신 빌드의 실제 Migration CLI를 실행한다. 공개 전체 행과 UUID, 지역 보존, 원본 대응, NULL 수집 시각과 후보 0건, 스키마 일치와 재이관 없음도 확인한다.
+3. 백업의 동일 원문을 공통 수집 저장 서비스에 재입력해 UNCHANGED와 후보 0건을 확인한다. 이 재입력은 외부 API 호출과 구분해 기록한다.
+4. 최신 수집 CLI로 **실제 온통청년 전체 페이지**를 50건씩, 요청 간 3초로 조회한다. 응답을 가짜 자료로 대체하지 않는다. 원본 해시로 신규/변경/동일/누락을 다시 계산해 CLI 로그 및 DB 결과와 대조한다. 후보 스냅샷과 공개 기준본, 미승인 공개 본문과 UUID 보존 및 조회수 갱신을 확인한다. 확정 전 실패는 복원 DB의 전체 행 체크섬도 대조해 무반영을 확인하고 실패 로그를 보관한다.
+5. 실제 수집 원문을 같은 저장 서비스에 재입력해 후보 중복 생성 없이 유지되는지 확인한다. 이 정상 전체 재입력도 누락 횟수를 1 늘리므로 실제 외부 호출의 결과와 따로 기록한다.
+6. 별도 포트의 최신 NestJS API에서 합성 관리자 자격으로 로그인한다. 실제 신규/변경 후보를 각각 승인·거절하고 공개 상세와 처리 이력을 조회한다. 변경 승인은 기존 공개 UUID와 생성 시각을 유지하고, 거절은 공개 행 전체를 보존해야 한다.
+7. 원래 DB와 로그의 전후 일치를 확인하고 이번에 만든 연결·API·임시 DB 컨테이너·프로젝트만 정리한다. 원래 서비스의 접속 대상과 자동 수집 설정은 유지한다.
+
+증거는 새 `backups/mvp2-step40-<시각>-<임의값>/`에 보관한다. Migration·CLI 출력, 복원 로그에 이어 기록한 실제 수집 로그, 실제 수집 원문, 기존 DB/로그 전후 체크섬, `verification.json`, `SHA256SUMS`를 포함한다. 원문과 로그는 디렉터리 700·파일 600 및 Git 제외를 유지한다. 검증용 합성 관리자 비밀번호와 서명 키는 저장하지 않는다.
+
+종료 코드 0, `verification.json`의 `status=PASS`, `originalUnchanged=true`, `cleanupSucceeded=true`와 SHA-256을 확인한다. 외부 자료가 달라 실제 신규/변경/동일 사례 또는 승인·거절에 필요한 후보가 부족하면 해당 근거를 확인하지 못한 실패로 기록한다. 실패한 실행을 완료로 사용하지 않고 원인을 확인한 뒤 새 환경에서 다시 실행한다. 자동 수집 활성화와 대상 환경 전환의 최종 확인은 Step 41에서 수행한다.
+
+### 실제 수집 성공본으로 검수 이어서 재현
+
+실제 호출이 성공한 뒤 검수 시험에서 실패했거나 후속 호출이 중복 ID 등으로 중단되면, 보관한 정상 수집 원문으로 새 복원 환경에서 검수를 재현할 수 있다. 다음 선택 설정을 사용한다.
+
+```bash
+REHEARSAL_CAPTURE='backups/<실제 수집 성공 원문과 로그를 보관한 폴더>' \
+  node --test apps/api/test/migration-collection.live.cjs
+```
+
+이 모드는 원본 폴더의 SHA-256, 같은 이관 dump, `actualCollection.result`의 `SUCCESS`·`saved=true`·`COMMITTED`, 원래 데이터 보존과 정리 성공을 확인한다. 원문을 현재 공통 저장 서비스에 재입력해 최초 수집의 판정 건수와 원본/후보/공개 결과를 대조하고 실제 관리자 HTTP API로 승인·거절을 검증한다. 재입력에서 파생된 폴더를 최초 외부 호출 근거로 다시 사용하는 것은 거부한다.
+
+수집 뒤 다른 검사가 실패한 원본 폴더는 전체 `FAIL` 상태를 유지한다. 새 보고서는 `mode=CAPTURE_REPLAY`, `networkExecutedThisRun=false`, 원본 폴더의 상태와 실제 외부 호출의 실행 ID를 명시한다. 최초 성공 로그는 `captured-network.jsonl`로 별도 복사한다. 이 모드의 PASS는 보관 원문 재입력과 관리자 검수 범위이며, 실제 외부 호출 성공은 원본 폴더의 실행 ID와 로그에서 따로 확인한다. 새 외부 호출까지 모두 통과한 검증으로 해석하지 않는다.
+
+## 5. 사용자가 사이트에서 검수할 복원 DB 연결
+
+2026-11-05 사용자 요청으로 기존 PostgreSQL 안에 `youth_mvp2_preview_20261105_bd3479` DB를 별도로 만들고, MVP2 이전 백업을 복원해 현재 Migration을 적용했다. 같은 서버의 기존 `youth_kkultong` DB와 `db_data` 볼륨은 보존한다. 현재 연결은 `.env`의 `POSTGRES_DB`와 호스트 직접 실행용 `DATABASE_URL`에 반영하고 API 컨테이너만 재생성했다. 웹 주소는 `http://localhost:3000`이며 기존 관리자 계정과 로그 볼륨을 사용한다. 자동 수집은 false다. 실제 수동 수집 결과와 검수 대기 건수는 SUMMARY 50절을 확인한다.
+
+전환 직전 DB와 로그의 백업은 `backups/site-preview-1793881085877-47feac/current-state/`에 보관한다. 이 백업을 별도 빈 DB에 실제 복원하고 행·해시·관리자/공개 API 및 로그의 동일성까지 검증했다. 같은 상위 폴더에 `environment-before.env`, 이관·빌드·수집 로그와 `operation.json`을 보관한다. 환경 백업에는 비밀값이 있으므로 파일 600·디렉터리 700 및 Git 제외를 유지한다.
+
+현재 자료를 직접 확인할 화면은 `/admin/reviews`(검수 대기), `/admin/history`(처리 이력), `/admin/missing`(누락 정책)이다. 수집만으로 신규·변경 원문이 공개되지는 않으며 사용자가 비교 후 승인·거절한다. 이 전환 작업에서는 승인·거절 요청을 보내지 않는다.
+
+기존 DB로 돌아가려면 현재 `.env`의 추가 변경을 먼저 보관하고 `POSTGRES_DB`를 `youth_kkultong`으로, `DATABASE_URL`의 마지막 DB 이름도 `youth_kkultong`으로 맞춘다. 자동 수집은 false로 유지한 뒤 아래 명령으로 API만 재생성한다. 접속 대상을 바꾸는 작업이므로 기존 DB를 초기화하거나 dump를 덮어쓸 필요가 없다. 복원 DB도 계속 보관한다.
+
+```bash
+docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml \
+  up -d --no-deps --no-build --wait --wait-timeout 90 api
+```
+
+DB 컨테이너는 이 전환에서 재생성하지 않았다. 컨테이너의 초기 `POSTGRES_DB` 설정은 기존 값일 수 있지만, API의 실제 접속 대상은 전달된 `DATABASE_URL`로 결정된다. 두 데이터베이스는 같은 PostgreSQL의 기존 영구 볼륨 안에 유지된다. Step 41의 일일 자동 수집 활성화는 별도 요청 전까지 수행하지 않는다.

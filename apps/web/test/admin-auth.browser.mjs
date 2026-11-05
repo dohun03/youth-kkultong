@@ -233,8 +233,12 @@ test('좁은 화면에서도 메뉴와 로그아웃을 사용할 수 있고 가�
     await waitForProtected(page);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await page.getByRole('link', { name: '처리 이력', exact: true }).focus();
+    // 메뉴 이동 뒤 서버 인증 재확인까지 끝나야 공통 메뉴와 로그아웃이 다시 표시됨
+    const checked = page.waitForResponse((response) => response.url().endsWith('/api/v1/admin/auth/me') && response.status() === 200);
     await page.keyboard.press('Enter');
+    await checked;
     await page.getByRole('heading', { name: '처리 이력', exact: true }).waitFor();
+    await page.getByRole('button', { name: '로그아웃', exact: true }).waitFor();
     await page.screenshot({ path: '/tmp/mvp2-step29-mobile.png', fullPage: true });
     assert.equal(await page.getByRole('button', { name: '로그아웃', exact: true }).isVisible(), true);
   }, { width: 390, height: 844 });
