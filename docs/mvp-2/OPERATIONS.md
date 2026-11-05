@@ -19,13 +19,17 @@ DB dump 자체는 일관된 읽기 시점을 제공하지만 로그와 같은 �
 
 ```bash
 dc=(docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml)
+# 중지 전에 실제 API의 접속 대상을 읽는다. 비밀번호는 출력하지 않는다.
+mapfile -t backup_target < <("${dc[@]}" exec -T api node -e \
+  'const u=new URL(process.env.DATABASE_URL); console.log(decodeURIComponent(u.username)); console.log(decodeURIComponent(u.pathname.slice(1)));')
+test "${#backup_target[@]}" -eq 2
 "${dc[@]}" stop -t 120 api
 "${dc[@]}" up -d --no-deps --wait db
-"${dc[@]}" exec -T db psql -X -v ON_ERROR_STOP=1 -U youth_kkultong -d youth_kkultong -Atc \
+"${dc[@]}" exec -T db psql -X -v ON_ERROR_STOP=1 -U "${backup_target[0]}" -d "${backup_target[1]}" -Atc \
   "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND state<>'idle';"
 ```
 
-결과는 `0`이어야 한다. API와 CLI를 여러 환경에서 실행 중이라면 같은 DB에 쓰는 모든 프로세스를 중지한다. DB·로그 백업 완료 뒤 원본 API를 다시 시작할 수 있다. 아래 자동 검증기는 검증 종료까지 원본 API 중지를 요구한다. 실패했을 때도 원인을 확인하고 원래의 실행 상태를 복구한다. 서비스 재시작은 누락된 수집을 자동 보충하지 않는다.
+API가 실행 중일 때 접속 대상부터 확인한다. `backup_target`의 항목이 두 개가 아니면 중단하고 원인을 확인한다. SQL 결과는 `0`이어야 한다. API와 CLI를 여러 환경에서 실행 중이라면 같은 DB에 쓰는 모든 프로세스를 중지한다. DB·로그 백업 완료 뒤 원본 API를 다시 시작할 수 있다. 아래 자동 검증기는 검증 종료까지 원본 API 중지를 요구한다. 실패했을 때도 원인을 확인하고 원래의 실행 상태를 복구한다. 서비스 재시작은 누락된 수집을 자동 보충하지 않는다.
 
 ## 2. 백업부터 별도 빈 DB 복원까지 자동 검증
 
@@ -172,7 +176,7 @@ REHEARSAL_CAPTURE='backups/<실제 수집 성공 원문과 로그를 보관한 �
 
 ## 5. 사용자가 사이트에서 검수할 복원 DB 연결
 
-2026-11-05 사용자 요청으로 기존 PostgreSQL 안에 `youth_mvp2_preview_20261105_bd3479` DB를 별도로 만들고, MVP2 이전 백업을 복원해 현재 Migration을 적용했다. 같은 서버의 기존 `youth_kkultong` DB와 `db_data` 볼륨은 보존한다. 현재 연결은 `.env`의 `POSTGRES_DB`와 호스트 직접 실행용 `DATABASE_URL`에 반영하고 API 컨테이너만 재생성했다. 웹 주소는 `http://localhost:3000`이며 기존 관리자 계정과 로그 볼륨을 사용한다. 자동 수집은 false다. 실제 수동 수집 결과와 검수 대기 건수는 SUMMARY 50절을 확인한다.
+2026-11-05 사용자 요청으로 기존 PostgreSQL 안에 `youth_mvp2_preview_20261105_bd3479` DB를 별도로 만들고, MVP2 이전 백업을 복원해 현재 Migration을 적용했다. 같은 서버의 기존 `youth_kkultong` DB와 `db_data` 볼륨은 보존한다. 현재 연결은 `.env`의 `POSTGRES_DB`와 호스트 직접 실행용 `DATABASE_URL`에 반영하고 API 컨테이너만 재생성했다. 웹 주소는 `http://localhost:3000`이며 기존 관리자 계정과 로그 볼륨을 사용한다. 전환 당시 자동 수집은 false였으며, 현재 일일 수집 상태는 6절을 따른다. 실제 수동 수집 결과와 검수 대기 건수는 SUMMARY 50절을 확인한다.
 
 전환 직전 DB와 로그의 백업은 `backups/site-preview-1793881085877-47feac/current-state/`에 보관한다. 이 백업을 별도 빈 DB에 실제 복원하고 행·해시·관리자/공개 API 및 로그의 동일성까지 검증했다. 같은 상위 폴더에 `environment-before.env`, 이관·빌드·수집 로그와 `operation.json`을 보관한다. 환경 백업에는 비밀값이 있으므로 파일 600·디렉터리 700 및 Git 제외를 유지한다.
 
@@ -185,4 +189,39 @@ docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml \
   up -d --no-deps --no-build --wait --wait-timeout 90 api
 ```
 
-DB 컨테이너는 이 전환에서 재생성하지 않았다. 컨테이너의 초기 `POSTGRES_DB` 설정은 기존 값일 수 있지만, API의 실제 접속 대상은 전달된 `DATABASE_URL`로 결정된다. 두 데이터베이스는 같은 PostgreSQL의 기존 영구 볼륨 안에 유지된다. Step 41의 일일 자동 수집 활성화는 별도 요청 전까지 수행하지 않는다.
+DB 컨테이너는 이 전환에서 재생성하지 않았다. 컨테이너의 초기 `POSTGRES_DB` 설정은 기존 값일 수 있지만, API의 실제 접속 대상은 전달된 `DATABASE_URL`로 결정된다. 두 데이터베이스는 같은 PostgreSQL의 기존 영구 볼륨 안에 유지된다. 이후 Step 41에서 활성화한 일일 자동 수집은 6절을 따른다.
+
+## 6. 일일 자동 수집 운영
+
+2026-11-06 Step 41에서 현재 DB `youth_mvp2_preview_20261105_bd3479`를 사용하는 단일 API에 `POLICY_SCHEDULE_ENABLED=true`를 적용했다. API를 최신 이미지로 재생성하고 실제 시작 로그 `POLICY_SCHEDULE_READY`에서 작업 `policy-daily-import` 한 개, `active=true`, Cron `0 0 4 * * *`, 시간대 `Asia/Seoul`을 확인했다. 활성화 시 확인한 첫 예정 시각은 **2026-11-06 04:00 한국 시간**이다. 시작 즉시 수집하지 않으며 실제 예약 실행 결과는 해당 시각 이후 확인한다.
+
+현재 대상은 로컬 Docker 환경이다. 한국 시간 04:00에 PC가 깨어 있고 Docker와 API가 계속 실행 중이어야 한다. 정지·절전 중 놓친 수집은 자동 보충하지 않는다. API와 Docker 상태를 확인하고 복구한 뒤 SPEC의 수동 수집 절차를 사용한다.
+
+활성화 직전 최신 DB와 로그 백업은 `backups/mvp2-step41-1793897371478-62812c53/current-state/`다. 별도 빈 DB에 실제 복원한 검증이 PASS이며, 상위 폴더에 이전 환경 파일과 `activation.json` 및 실행 로그를 보관한다. 현재 데이터·검수 결과를 유지한 채 API만 재생성했고 웹·DB 컨테이너와 볼륨은 유지했다.
+
+아래 명령으로 실행 중인 API와 부팅 당시 등록 정보를 확인한다. `nextRunAt`은 해당 부팅 시점에 계산한 다음 실행 시각이며, 매일의 실제 실행 결과는 수집 로그에서 확인한다.
+
+```bash
+dc=(docker compose -p youth-kkultong -f compose.yaml -f compose.local.yaml)
+"${dc[@]}" ps
+"${dc[@]}" logs --no-color api | rg 'POLICY_SCHEDULE_READY'
+"${dc[@]}" exec -T api tail -n 30 /app/logs/policies-import.jsonl
+```
+
+수집 결과 파일은 API의 `/app/logs/policies-import.jsonl`, 영구 볼륨은 `youth-kkultong_ingestion_logs`다. 예정 시각 이후 새로운 `runId`와 `timestamp`의 `RUN_FINISHED`를 확인한다. 활성화 전의 수동 수집 로그를 새 예약 실행의 결과로 취급하지 않는다.
+
+| 최종 결과 | 확인과 조치 |
+| --- | --- |
+| `SUCCESS`, `saved=true`, `COMMITTED` | 원본과 후보 저장 완료. 공개 본문은 관리자 승인 후 반영 |
+| `FAILED`, `saved=false`, `NOT_COMMITTED` | DB 반영 전 실패. `failures`의 단계·원인을 확인한 뒤 수동 재실행 판단 |
+| `FAILED`, `saved=true`, `COMMITTED` | DB 확정 후 로그나 자원 정리 실패. 저장 결과를 먼저 확인 |
+| `FAILED`, `saved=null`, `UNKNOWN` | DB 확정 여부를 먼저 확인한 뒤 재실행 판단 |
+| `ALREADY_RUNNING` | 다른 수집과 겹쳐 추가 실행을 건너뜀 |
+
+파일 기록 실패는 `docker compose logs`의 대체 기록도 확인한다. 수집 실패 후 API와 다음 예약은 유지된다. 외부 응답의 중복 ID·총 건수 변화도 저장 전 실패 사유이므로 중복 제거 등으로 우회하지 않는다. 수동 수집과 자동 수집은 같은 Advisory Lock을 사용한다.
+
+수집을 중지하려면 `.env`의 `POLICY_SCHEDULE_ENABLED=false`를 설정하고 아래 명령으로 API를 재생성한다. 다시 활성화할 때는 true로 변경한 뒤 같은 명령과 시작 로그를 확인한다. `.env.example`의 기본값은 false를 유지한다.
+
+```bash
+"${dc[@]}" up -d --no-deps --no-build --wait --wait-timeout 90 api
+```

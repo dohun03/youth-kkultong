@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-05 · 상태: Step 1~40 완료 · Step 41 미착수
+수정일: 2026-11-06 · 상태: Step 1~41 완료
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -1624,3 +1624,66 @@ Compose 설정 해석 검사만 수행했으며 컨테이너 재시작·재생�
 기본 및 로컬 Compose의 `config --format json` 결과는 변경 전후 SHA-256이 각각 동일했다. 프로세스 환경변수로 IP `127.0.0.2`, 웹/API/DB 포트 `3200`/`4200`/`5544`를 지정한 추가 검사에서 외부 공개 설정만 바뀌고 내부 주소·포트·healthcheck와 자동 수집 false는 같음을 확인했다. 실제 env의 모든 기존 값 보존, 예시의 설정 항목 포함, 호스트 DB URL과 Compose용 DB 설정 일치 및 권한 600을 확인했다. 전체 접속 주소와 비밀값은 출력하지 않았다. `git diff --check`도 통과했다.
 
 `ARCHITECTURE.md` 7장과 MVP1 `OPERATIONS.md` 1절에 설정 역할과 관련 URL을 함께 맞추는 방법을 반영했다. 컨테이너 재시작·재생성, DB 변경, 실제 수집과 자동 수집 활성화는 실행하지 않았다. API 계약·제품 소스·의존성 변경은 없다. 커밋은 실행하지 않고 환경설정 파일과 관련 문서만 선택하는 명령과 한국어 메시지를 안내한다. SUMMARY에는 이전 미커밋 Step 기록도 있으므로 파일 전체를 이 환경설정 커밋에 넣지 않는다.
+
+## 52. Step 41 최종 인수와 일일 수집 활성화 (2026-11-06)
+
+사용자의 다음 Step 요청을 PLAN의 Step 41로 확인했다. AGENT_RULES → PLAN 완료 조건 → SPEC 5.1 및 T2-43 → Step 36~40과 현재 DB 전환 기록 → 실제 실행 설정을 대조했다. Step 38의 전체 API/DB 회귀 2,369개, Step 39 웹 검수 196개, Step 40 실제 수집과 이관 및 별도 실제 원문 검수, 현재 사이트의 수동 수집 성공과 최신 백업·스키마 전환 근거를 확인했다. 자동 수집 활성화와 운영 로그 보완은 Step 41 범위이며 별도 기능·API·DB 설계 변경은 없다.
+
+### 실제 등록 상태를 확인할 시작 로그
+
+- `services/policy-schedule.service.ts`에 `OnApplicationBootstrap`을 추가했다. HTTP 스케줄러가 실제 등록한 `SchedulerRegistry`에서 작업 이름·개수·Cron·시간대·활성 상태·다음 실행 시각을 읽어 `POLICY_SCHEDULE_READY` JSON 로그로 남긴다. 인증값이나 DB 주소는 기록하지 않는다. 기존 공통 수집 호출과 실패 처리 흐름은 유지한다.
+- `policy-schedule.integration.spec.ts`에서 비활성 HTTP 서버에는 이 기록이 없고, 실제 활성 서버의 등록 상태와 시작 로그가 같은지 확인했다. 시간대·재시작·누락 실행의 보충 없음·등록 타이머의 실제 호출·실패 후 다음 실행 및 CLI 분리를 포함한 **3개 스위트 31개가 모두 통과**, 실패·건너뜀 0건이다.
+- 별도 임시 PostgreSQL에서 실행했으며 임시 스키마·잠금·추가 DB·공개 테이블 각각 0개로 정리했다. 실행 결과는 `/tmp/mvp2-step41-tests-{summary.json,results.json,output.log}`에 보관했다. shared/API/web 전체 타입 검사와 API 빌드도 통과했다.
+
+### 최신 백업과 실제 API 활성화
+
+현재 API의 DB와 `.env`가 `youth_mvp2_preview_20261105_bd3479`로 일치하고 API 인스턴스 한 개 및 자동 수집 false임을 먼저 확인했다. API 이미지를 현재 소스로 빌드한 뒤 API를 잠시 중지하고 최신 DB/로그를 백업했다. 기존 `backup-restore.live.cjs`로 별도 빈 PostgreSQL에 실제 복원해 전체 행·UUID·해시·스키마·공개/관리자 API와 로그를 대조했다. **실제 백업/복원 1개 시나리오 PASS**이며 임시 복원 환경은 정리했다.
+
+백업은 `backups/mvp2-step41-1793897371478-62812c53/current-state/`, 활성화 근거는 상위 폴더의 `activation.json`과 단계별 로그 및 `SHA256SUMS`다. 이전 `.env`도 `environment-before.env`로 보관했다. 파일 600·디렉터리 700 및 Git 제외를 유지한다.
+
+이어서 `.env`의 `POLICY_SCHEDULE_ENABLED`만 true로 바꾸고 `docker compose up -d --no-deps --no-build --wait api`로 최신 API를 재생성했다. 기존 DB 연결과 관리자 설정, 웹·DB 컨테이너 및 볼륨을 유지했다. 실제 API 프로세스가 남긴 시작 로그를 읽어 다음 상태를 확인했다.
+
+| 항목 | 실제 확인값 |
+| --- | --- |
+| 대상 DB | `youth_mvp2_preview_20261105_bd3479` |
+| API 인스턴스 / 등록된 Cron 작업 | 1개 / 1개 |
+| 작업 이름 / 활성 상태 | `policy-daily-import` / true |
+| Cron / 시간대 | `0 0 4 * * *` / `Asia/Seoul` |
+| 다음 실행 | **2026-11-06 04:00:00 한국 시간** (`2026-11-05T19:00:00Z`) |
+| 활성화 검증 완료 | 2026-11-06 01:50:06 한국 시간 |
+| 결과 파일 / 볼륨 | `/app/logs/policies-import.jsonl` / `youth-kkultong_ingestion_logs` |
+
+등록 로그의 다음 실행은 같은 Cron 설정의 별도 시각 계산과 일치하고 검증 시점보다 미래다. API 시작으로 새 수집이 즉시 발생하지 않았음을 로그 파일 SHA-256의 전후 동일성으로 확인했다. 이번 Step에서 수동 수집이나 승인·거절을 추가 실행하지 않았다. 첫 실제 예약 실행의 성공·실패는 위 예정 시각 이후 새 `RUN_FINISHED`로 확인해야 하며, 아직 실행되지 않은 예약 수집을 성공으로 보고하지 않는다.
+
+### 데이터 보존과 최종 인수
+
+착수 시점의 승인 2건·대기 1,054건을 포함해 공개 3,391건·원본 3,963건·검수 1,056건·지역 537개·Migration 3개를 백업하고 유지했다. 활성화 전후 각 테이블의 전체 행 체크섬이 동일하다. 기존 승인 결과와 대기 후보는 그대로다. 수집 로그 SHA-256도 `6eb62e69e6ad38667ec8328d506d99c7b8dd85db068815b057f080cce9383355`로 전후 같다.
+
+최종 웹·API·DB는 모두 healthy, API 인스턴스 1개, Advisory Lock 0개다. 직접 API와 웹 프록시 health·공개 목록·관리자 로그인 화면은 HTTP 200, 무인증 me는 401이다. 최신 백업을 복원한 API에서도 대기 1,054건·처리 2건·누락 28건 및 대표 상세가 동일했다. `http://localhost:3000`에서 현재 상태를 계속 확인할 수 있다.
+
+현재는 로컬 Docker에서 실행된다. 한국 04:00에 PC가 깨어 있고 Docker와 API가 계속 실행 중이어야 한다. 정지·절전으로 놓친 수집은 자동 보충하지 않으며 복구 후 운영자가 수동 수집한다. `POLICY_SCHEDULE_READY.nextRunAt`은 부팅 시점의 다음 실행이고 매일의 결과는 새 runId와 시각을 가진 수집 로그에서 확인한다. 이 운영 조건과 결과별 점검·중지·재활성화 절차를 OPERATIONS 6절에 기록했다.
+
+실행 명령:
+
+```sh
+npm run build --workspace apps/api
+npm run typecheck
+node /tmp/mvp2-step38-verify.cjs focused \
+  test/policy-schedule.spec.ts test/policy-schedule.integration.spec.ts \
+  test/ingestion-cli-process.integration.spec.ts
+node --check /tmp/mvp2-step41-activate.cjs
+node /tmp/mvp2-step41-activate.cjs
+git diff --check
+```
+
+마지막 실행기는 Docker API 빌드 → 현재 DB와 로그 백업/별도 복원 검증 → true 설정 → API만 재생성 → 실제 시작 로그·서비스 상태·DB/로그 전후 일치를 확인했다. 활성화 보고서 `status=PASS`이며 민감한 환경변수와 접속 문자열을 출력하지 않았다. 기존 TypeORM 스키마 비교의 pg 동시 query 중단 예정 경고는 검증 실패를 일으키지 않았다.
+
+PLAN의 Step 41과 전체 완료 기준을 충족한 항목으로 표시하고 SUMMARY를 Step 1~41 완료로 맞췄다. API 계약·DB 스키마·Migration·패키지 의존성과 SPEC 의미 변경은 없다. `.env.example`의 기본값 false는 유지하며 실제 로컬 `.env`만 활성화했다. 핵심 읽는 순서: `policy-schedule.service.ts`의 시작 로그 → `policy-schedule.integration.spec.ts`의 실제 등록 검증 → `OPERATIONS.md` 6절의 실행/로그/복구 → 활성화 백업의 `activation.json`. 커밋은 실행하지 않았으며 추천 메시지는 `feat: 일일 정책 수집 활성화와 등록 상태 로그 추가`다. MVP2의 마지막 Step에서 중단한다.
+
+### 사용자 커밋 요청에 따른 MVP2 잔업 점검 (2026-11-06)
+
+한국 시간 02:00에 현재 실행 환경과 PLAN·SPEC 및 코드의 미완료 표기를 다시 확인했다. PLAN 미완료 항목과 제품 소스의 TODO/FIXME는 없으며 기존 SUMMARY의 후속 작업 표현은 과거 Step 당시 기록이다. 웹·API·DB healthy, 활성 API 1개와 Cron 1개, 적용된 Migration 3개, Advisory Lock 0개, 공개 3,391건·원본 3,963건·검수 1,056건 및 최신 백업 두 묶음의 무결성을 확인했다. 점검 근거는 `/tmp/mvp2-final-audit.json`이다.
+
+남은 운영 확인은 오늘 04:00의 첫 실제 예약 수집 결과다. 점검 시각이 예정 전이므로 완료된 예약 수집은 0회이며, 마지막 수집 SUCCESS는 전날 수동 실행 기록이다. PC/Docker/API를 계속 실행하고 예정 시각 이후 새 RUN_FINISHED의 상태와 확정 여부를 확인한다. 장기 운영 시 백업의 별도 저장소 보관·주기 운영과 계속 켜지는 실행 환경도 준비해야 한다. 이번 점검에서 별도 저장소 복사나 새로운 운영 인프라를 만들지는 않았다.
+
+운영 문서의 쓰기 중단 전 SQL 예시가 초기 기본 DB 이름에 고정된 점을 발견해 실제 API의 DATABASE_URL에서 사용자·DB 이름만 읽도록 보완했다. 비밀번호는 출력하지 않는다. 스케줄 서비스의 사용자 주석/서식 수정은 유지하고 빈 줄의 공백만 정리했다. 전체 타입 검사와 diff 검사를 다시 통과했다. 추가 기능 개발과 수집·검수 처리는 실행하지 않았으며 Step 41의 코드·테스트·운영 문서 5개 파일을 한 커밋으로 묶는다.

@@ -31,6 +31,7 @@ describe('HTTP 자동 수집의 등록된 타이머와 실패 복구', () => {
   let fetchMock: jest.SpiedFunction<typeof fetch>;
   let log: jest.SpiedFunction<IngestionLogService['write']>;
   let consoleError: jest.SpiedFunction<Logger['error']>;
+  let scheduleReady: jest.SpiedFunction<Logger['log']>;
 
   /** 테스트가 소유한 스키마에 연결한 실제 HTTP 서버를 생성 */
   async function start(enabled?: string): Promise<INestApplication> {
@@ -93,6 +94,7 @@ describe('HTTP 자동 수집의 등록된 타이머와 실패 복구', () => {
       return original.call(this, entry);
     });
     consoleError = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+    scheduleReady = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
     fetchMock = jest.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json({ resultCode: 200, resultMessage: '성공',
       result: { pagging: { totCount: 0, pageNum: 1, pageSize: environment.YOUTH_CENTER_PAGE_SIZE }, youthPolicyList: [] } }));
   });
@@ -114,6 +116,8 @@ describe('HTTP 자동 수집의 등록된 타이머와 실패 복구', () => {
     await request(server.getHttpServer()).get('/api/v1/health').expect(200);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(log).not.toHaveBeenCalled();
+    expect(scheduleReady.mock.calls.some(([message]) => typeof message === 'string'
+      && message.includes('POLICY_SCHEDULE_READY'))).toBe(false);
   });
 
   it('T2-43: 04:00 시간대와 다음 실행을 확인하고 재시작 뒤 놓친 수집을 보충하지 않는다', async () => {
@@ -135,6 +139,12 @@ describe('HTTP 자동 수집의 등록된 타이머와 실패 복구', () => {
       expect(job.nextDate().hour).toBe(4);
       expect(job.nextDate().toISO()).toBe(restart === 0 ? '2026-11-04T04:00:00.000+09:00' : '2026-11-05T04:00:00.000+09:00');
       expect(job.nextDate().toMillis()).toBeGreaterThan(Date.now());
+      // 실제 부팅에서 남긴 운영 로그가 등록된 타이머의 설정과 다음 실행 시각을 담는지 확인
+      expect(scheduleReady).toHaveBeenCalledWith(JSON.stringify({
+        event: 'POLICY_SCHEDULE_READY', jobName: 'policy-daily-import', jobCount: 1,
+        cron: '0 0 4 * * *', timeZone: 'Asia/Seoul', active: true,
+        nextRunAt: job.nextDate().toISO(),
+      }));
       await delay(80);
       expect(fetchMock).not.toHaveBeenCalled();
       expect(log).not.toHaveBeenCalled();
