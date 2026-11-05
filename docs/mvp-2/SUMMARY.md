@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-04 · 상태: Step 1~36 완료 · Step 37~41 미착수
+수정일: 2026-11-05 · 상태: Step 1~37 완료 · Step 38~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -1303,3 +1303,50 @@ git diff --check
 API 계약과 DB 스키마 및 Migration, SPEC의 기능 의미는 변경하지 않았다. PRD/ARCHITECTURE/SPEC 및 검수 요약은 그대로 유지하며 PLAN과 이 SUMMARY에 실제 구현 및 검증 상태를 반영한다. 전체 API/웹 회귀와 실제 온통청년 수집은 Step 38~40 범위로 남긴다.
 
 핵심 읽는 순서: `ingestion-schedule.module.ts`의 HTTP 설정/조건부 등록 → `policy-schedule.service.ts`의 Cron과 오류 처리 → `main.ts`의 HTTP 구성 → `policy-schedule.integration.spec.ts`의 시간대/실패/다음 실행 → `ingestion-cli-process.integration.spec.ts`의 양방향 경쟁. 다음 미완료 순서는 Step 37이며 이번 요청 범위인 Step 36에서 중단한다.
+
+## 45. Step 37 검수 데이터 백업과 복원 (2026-11-05)
+
+AGENT_RULES → PLAN Step 37 → SPEC 2.4, 5.5와 T2-49 → Step 36 완료 기록 → DB 구성, 해시와 로그, 공개 및 관리자 조회 코드를 대조했다. 기존 MVP1 OPERATIONS는 검수 도입 이전 기록이므로 MVP2 절차를 별도로 작성하고 ARCHITECTURE 7장의 안내 링크를 맞췄다. 선행 Step은 완료 상태이며 기능·API·DB 설계를 변경해야 하는 충돌은 없다.
+
+### 구현과 파일 배치
+
+- `docs/mvp-2/OPERATIONS.md`: 공개·원본·검수·지역·Migration·로그 백업 대상, 쓰기 중단, 자동 복원 검증과 별도 Compose 프로젝트의 수동 복원, 체크섬 대조 및 재시작 절차를 정리했다. 관리자 자격은 환경 설정으로 별도 관리하고 기존 볼륨을 유지한다.
+- `apps/api/test/backup-restore.live.cjs`: Docker 접근이 필요한 실제 백업 검증을 기존 `test/`에 배치했다. `node --test`로 별도 실행하며 일반 Jest 테스트에 포함하지 않는다. 기존 API와 DB의 연결 설정을 메모리에서 읽고 실제 관리자 자격 대신 임시 합성 자격으로 인증한다. 제품 실행 코드나 새 패키지를 추가하지 않는다.
+- 원본 API 중지·DB 작업 없음을 확인하고 공통 Advisory Lock을 유지한 채 읽기 전용으로 백업한다. 새 PostgreSQL 17 컨테이너의 빈 DB에 전체 dump를 단일 트랜잭션으로 복원하며 기존 볼륨은 연결하지 않는다. 로그는 원본 볼륨을 읽기 전용으로 백업하고 새 임시 폴더로 추출한다.
+- 전체 행·상태·제약 정보·인덱스·Migration 시퀀스와 내용 해시를 대조한다. 읽기 전용 HTTP 서버로 원본/복원 API 응답을 비교하고, 잘못된 입력 거부는 복원 DB에서 롤백으로 확인한다. 연결 반환, 임시 컨테이너 및 폴더 정리가 모두 성공한 뒤에만 `verification.json`의 PASS를 기록한다.
+
+### 실제 백업 및 복원 결과
+
+착수 당시 Docker의 기존 API·웹·DB는 종료 상태였고 원래 볼륨은 남아 있었다. 같은 DB 컨테이너만 시작해 백업했으며 실제 외부 수집이나 기존 검수 처리는 실행하지 않았다. 현재 체험 상태는 이전 SUMMARY 기록 이후 사용자가 처리한 결과를 그대로 포함한다.
+
+| 테이블 | 행 수 | 원본과 복원본 및 서비스 재시작 뒤의 전체 행 JSONB MD5 |
+| --- | --- | --- |
+| `policies` | 3,396 | `049ac2d5164ed7b93b33b23fd2dd8205` |
+| `source_policies` | 3,399 | `cd49acaa81378a5e929ec2aa2579b67d` |
+| `policy_reviews` | 10 | `59d4c355a6feb8f77d79d154bb7310c9` |
+| `regions` | 537 | `9321528ac6944aff3cfb0c706feebd70` |
+| `migrations` | 3 | `6a8c66507f0e4623aa276a3e35a7f8cb` |
+
+- 검수 상태는 PENDING 4건, APPROVED 2건, REJECTED 3건, SUPERSEDED 1건이다. UUID·스냅샷·해시·처리자·사유·시각·누락 횟수를 포함한 전체 행 값이 일치했다. 공개/원본/검수 변경본/검수 기준본의 내용 해시를 재계산해 모두 확인했다.
+- 실제 API에서 마감 포함 공개 검색 총 3,396건, 공개 상세 2건, 지역과 분야, 관리자 로그인·무인증 401·대기 4건·처리 이력 6건·누락 1건·검수 4상태별 대표 상세가 원본/복원 DB에서 동일했다. 승인·거절 요청은 실행하지 않았다.
+- 미적용 Migration 0건, ORM 스키마 차이 0건이며 부분/유일 인덱스와 Migration 시퀀스도 동일하다. 복원 DB에서 잘못된 값 7종, 존재하지 않는 원본 참조, 중복 대기를 거부하고 모두 롤백했다.
+- `policies-import.jsonl`의 원본/추출 SHA-256은 `4c1ca0a16d32600a0781fc9332bd8d830c9d8a9c985f66c918529e3cd419892a`로 동일했다. 최종 백업은 `backups/mvp2-step37-1793853544299-a37ea728/`에 보관했다. `production.dump`, `ingestion-logs.tar`, `source.json`, `SHA256SUMS`, `verification.json`을 확인했으며 디렉터리 700·파일 600이다. Git 제외 상태를 유지한다.
+- 초기 검증기에서 PostgreSQL CHECK 배열 형변환의 동등한 표기 차이, 외래키 시험의 대기 유일성 충돌, 관리자 limit 최대 50과 공개 검색의 기본 마감 제외를 반영했다. 제품 계약과 판정은 그대로 유지했다. 최종 실행은 **1개 실제 복원 시나리오 통과, 실패·건너뜀 0건**이다. 초기 검증 백업은 PASS 기록 없이 남아 있으며 위 최종 경로가 인수 근거다.
+
+실행 명령:
+
+```sh
+npm run build --workspace apps/api
+npm run typecheck
+node --trace-deprecation --test apps/api/test/backup-restore.live.cjs
+node --check apps/api/test/backup-restore.live.cjs
+docker compose --env-file .env -p youth-kkultong-restore37 \
+  -f compose.yaml -f /tmp/mvp2-step37-restore.yaml config --quiet
+git diff --check
+```
+
+API 빌드와 전체 타입 검사, 문서 Bash 7개 블록의 문법 및 복원 Compose 설정 검사는 통과했다. PostgreSQL 스키마 조회 중 pg의 동시 query 사용 중단 예정 경고 1건이 있어 `--trace-deprecation`으로 TypeORM의 `PostgresQueryRunner.getUserDefinedTypeName()` 내부 병렬 조회에서 발생함을 확인했다. 복원과 스키마 비교 결과에는 실패가 없고 의존성 변경은 이번 범위에 포함하지 않았다.
+
+검증 후 기존 API·웹을 같은 컨테이너·이미지·볼륨으로 시작했고 세 서비스 모두 healthy다. API와 웹 프록시 health, 공개 목록, 관리자 로그인 화면은 HTTP 200이고 무인증 me는 401이다. 자동 수집은 `POLICY_SCHEDULE_ENABLED=false`를 유지하며 `http://localhost:3000`에서 확인할 수 있다. 원래 DB의 전체 체크섬이 위와 같고 남은 검증 컨테이너·임시 스키마·Advisory Lock은 각각 0개다.
+
+API 계약과 DB 스키마·Migration·패키지 의존성·SPEC 의미 변경은 없다. PLAN과 SUMMARY를 완료 상태로 맞췄다. 전체 API/웹 최종 회귀와 실제 온통청년 수집, 자동 수집 활성화는 Step 38~41에 남긴다. 핵심 읽는 순서: `OPERATIONS.md`의 대상/쓰기 중단 → `backup-restore.live.cjs`의 `snapshot()`/`verifyHashes()` → 실제 dump/빈 DB 복원 → `apiSnapshot()`/정리 및 완료 기록. 변경사항은 미커밋 상태이며 이번 요청 범위인 Step 37에서 중단한다.

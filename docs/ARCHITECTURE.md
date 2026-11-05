@@ -217,11 +217,11 @@ Admin은 `controllers/`, `services/`, `guards/`를 유지한다. Ingestion은 �
 | 공개 API 보호 | 정확한 출처의 CORS, NestJS 내장 보안 헤더, JSON 본문 한도, 단일 프로세스 접속 주소별 호출 제한. 공개·관리자 한도는 분리하며 수치·프록시 공유 한계는 MVP2 SPEC 7.2 및 MVP1 SPEC 4.3 참조 |
 | 외부 링크 | `https://`/`http://` URL만 렌더링, 새 탭 이동 시 `noopener noreferrer` 적용 |
 | 장애 대응 | 수집 실패 시 기존 DB 보존, 읽기 API는 기존 정상 정책 제공 |
-| 백업 | 호스트 `backups/`에 PostgreSQL custom dump·수집 로그 tar 보관. 초기 실행·재기동·별도 DB 복원 절차는 `mvp-1/OPERATIONS.md` 참조 |
+| 백업 | 호스트 `backups/`에 PostgreSQL custom dump·수집 로그 tar 보관. 초기 실행·재기동은 `mvp-1/OPERATIONS.md`, 원본·검수 데이터를 포함한 별도 빈 DB 복원은 `mvp-2/OPERATIONS.md` 참조 |
 
 관리자 요청은 기존 웹 프록시와 같은 출처로 처리하며, 익명 공개 API의 CORS·요청 계약을 불필요하게 바꾸지 않는다. 인증 쿠키와 관리자 비밀값은 URL·브라우저 저장소·로그에 기록하지 않는다. 환경변수의 비밀값은 `.env` 또는 운영 비밀 저장소로 전달하며 Git에 커밋하지 않는다. TypeORM의 `synchronize`는 `false`로 고정하고 스키마 변경은 Migration으로 관리한다.
 
-로컬 DB 검수는 기존 `compose.local.yaml`의 `127.0.0.1:5433` 연결만 사용한다. 기본 DB 내부 네트워크·볼륨은 유지한다. 실행·접속·백업·복원 명령은 `mvp-1/OPERATIONS.md`를 따른다.
+로컬 DB 검수는 기존 `compose.local.yaml`의 `127.0.0.1:5433` 연결만 사용한다. 기본 DB 내부 네트워크·볼륨은 유지한다. 실행·접속은 `mvp-1/OPERATIONS.md`, MVP2 백업·복원 명령은 `mvp-2/OPERATIONS.md`를 따른다.
 
 ## 8. 검증 기준과 설계 결정
 
