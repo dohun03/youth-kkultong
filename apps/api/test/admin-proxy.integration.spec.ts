@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import type { ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
@@ -8,6 +9,9 @@ import type { IncomingMessage } from 'node:http';
 import { Logger } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import type { DataSource } from 'typeorm';
+import * as database from '../src/database/data-source';
+import { loadEnvironment } from '../src/common/environment';
 import { createApplication } from '../src/main';
 import { AdminCookieService } from '../src/modules/admin/services/admin-cookie.service';
 import { testAdminValues } from './helpers/admin';
@@ -24,6 +28,10 @@ async function freePort(): Promise<number> {
 }
 
 describe('실제 Next.js 프로덕션 프록시를 통한 관리자 인증', () => {
+  const schema = `admin_proxy_test_${randomUUID().replaceAll('-', '')}`;
+  let admin: DataSource;
+  let connection: DataSource;
+  let schemaCreated = false;
   let api: INestApplication;
   let child: ChildProcess;
   let webOrigin: string;
@@ -40,7 +48,18 @@ describe('실제 Next.js 프로덕션 프록시를 통한 관리자 인증', () 
     logs = ['log', 'warn', 'error', 'debug', 'verbose'].map((name) => jest.spyOn(Logger.prototype, name as 'log').mockImplementation(() => {}));
     const port = await freePort();
     webOrigin = `http://127.0.0.1:${port}`;
-    api = await createApplication({ ...testAdminValues, ADMIN_WEB_ORIGIN: webOrigin });
+    // 빈 DB에서도 독립 실행되도록 이 프록시 테스트만 사용하는 스키마 준비
+    const environment = loadEnvironment();
+    admin = database.createDataSource(environment).setOptions({ entities: [], migrations: [] });
+    await admin.initialize();
+    await admin.query(`CREATE SCHEMA "${schema}"`);
+    schemaCreated = true;
+    connection = database.createDataSource(environment).setOptions({ schema,
+      extra: { options: `-c timezone=Asia/Seoul -c search_path=${schema}` } });
+    const factory = jest.spyOn(database, 'createDataSource').mockReturnValue(connection);
+    try { api = await createApplication({ ...testAdminValues, ADMIN_WEB_ORIGIN: webOrigin }); }
+    finally { factory.mockRestore(); }
+    await connection.runMigrations();
     // API에서 관찰한 원래 출처와 쿠키 존재 여부만 기록 (비밀번호와 쿠키 원문은 기록하지 않음)
     api.use((req: IncomingMessage, _res: unknown, next: () => void) => {
       arrivals.push({ path: req.url ?? '', origin: req.headers.origin, hasCookie: Boolean(req.headers.cookie?.includes('youth_admin_auth=')) });
@@ -84,7 +103,16 @@ describe('실제 Next.js 프로덕션 프록시를 통한 관리자 인증', () 
         if (project?.startsWith(prefix)) await rm(project, { recursive: true, force: true, maxRetries: 3 });
       } finally {
         try { if (api) await api.close(); }
-        finally { jest.restoreAllMocks(); }
+        finally {
+          try { if (connection?.isInitialized) await connection.destroy(); }
+          finally {
+            try { if (schemaCreated && admin?.isInitialized) await admin.query(`DROP SCHEMA "${schema}" CASCADE`); }
+            finally {
+              try { if (admin?.isInitialized) await admin.destroy(); }
+              finally { jest.restoreAllMocks(); }
+            }
+          }
+        }
       }
     }
   }, 20000);

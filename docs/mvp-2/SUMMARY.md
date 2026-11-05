@@ -1,6 +1,6 @@
 # 청년꿀통(youth-kkultong) — MVP2 작업 결과
 
-수정일: 2026-11-05 · 상태: Step 1~37 완료 · Step 38~41 미착수
+수정일: 2026-11-05 · 상태: Step 1~38 완료 · Step 39~41 미착수
 
 ## 1. Step 1 범위와 기준 문서
 
@@ -1350,3 +1350,108 @@ API 빌드와 전체 타입 검사, 문서 Bash 7개 블록의 문법 및 복원
 검증 후 기존 API·웹을 같은 컨테이너·이미지·볼륨으로 시작했고 세 서비스 모두 healthy다. API와 웹 프록시 health, 공개 목록, 관리자 로그인 화면은 HTTP 200이고 무인증 me는 401이다. 자동 수집은 `POLICY_SCHEDULE_ENABLED=false`를 유지하며 `http://localhost:3000`에서 확인할 수 있다. 원래 DB의 전체 체크섬이 위와 같고 남은 검증 컨테이너·임시 스키마·Advisory Lock은 각각 0개다.
 
 API 계약과 DB 스키마·Migration·패키지 의존성·SPEC 의미 변경은 없다. PLAN과 SUMMARY를 완료 상태로 맞췄다. 전체 API/웹 최종 회귀와 실제 온통청년 수집, 자동 수집 활성화는 Step 38~41에 남긴다. 핵심 읽는 순서: `OPERATIONS.md`의 대상/쓰기 중단 → `backup-restore.live.cjs`의 `snapshot()`/`verifyHashes()` → 실제 dump/빈 DB 복원 → `apiSnapshot()`/정리 및 완료 기록. 변경사항은 미커밋 상태이며 이번 요청 범위인 Step 37에서 중단한다.
+
+## 46. Step 38 전체 API와 DB 회귀 검증 (2026-11-05)
+
+사용자 요청에 따라 Step 37을 `226c551`(`test: 검수 데이터 백업과 실제 복원 검증 추가`)로 커밋한 뒤 Step 38을 수행했다. AGENT_RULES → PLAN Step 38 → SPEC 5.5, 6.3, 8.4와 T2-01~49 → Step 37 및 이전 검증 기록 → 현재 수집·검수·인증·공개 API 테스트를 대조했다. 기존 SPEC을 구현하기 위한 누락 보완이며 기능·계약·스키마를 바꾸는 설계 변경은 없다.
+
+### 발견한 누락과 보완
+
+- `services/reviews/policy-review-approval.service.ts`, `policy-review-rejection.service.ts`: SPEC 6.3에서 요구하는 검수 DB 충돌 재시도가 빠져 있었다. 두 서비스에 `40P01`·`40001`만 최초 포함 최대 2회 시도하도록 추가했다. 매 시도는 새 READ COMMITTED 트랜잭션에서 원본→후보→공개본을 잠그고 공통 조건을 다시 확인한다. CHECK 위반, 업무 충돌, 연결 오류와 COMMIT 응답 유실은 반복하지 않는다.
+- `test/policy-review-retry.integration.spec.ts`: 기존 검수 테스트와 같은 위치에 실제 PostgreSQL 검증 18개를 추가했다. 신규/변경 후보의 승인·거절에서 기록 UPDATE 뒤 SQLSTATE를 발생시켜 첫 공개 저장과 검수 기록이 모두 취소되는지 확인한다. 서로 다른 트랜잭션 ID, 최종 1건 확정, 2회 한도, 재시도 직전 원본 변경의 409, CHECK 무재시도와 COMMIT 후 응답 유실의 확정 상태 유지도 검증한다. 실제 교착 재현은 기존 `policy-storage-retry.integration.spec.ts`에서 별도로 통과했다.
+- `test/admin-proxy.integration.spec.ts`: 처음부터 비어 있는 검증 DB에서 공개 검색이 500인 기존 의존성을 발견했다. 이 테스트도 전용 스키마와 Migration을 준비하고 종료 시 정리하도록 맞췄다. 실제 Next.js 프로덕션 프록시를 빌드해 Origin·Set-Cookie·인증 및 공개 응답을 확인하는 기존 범위는 유지했다.
+
+### 실제 실행과 데이터 보존
+
+별도 PostgreSQL 17 컨테이너의 빈 DB에서 전체 테스트를 실행했다. 기존 DB·웹·API·볼륨을 테스트 쓰기 대상으로 사용하지 않았다. 환경변수와 출력의 비밀값 가림은 `/tmp/mvp2-step38-verify.cjs`에서 처리하고, 실제 외부 API 응답은 기존 fixture로 대체했다.
+
+| 검증 | 결과 |
+| --- | --- |
+| 최초 전체 API/DB | 78개 스위트 중 77개, 2,351개 중 2,350개 통과. 프록시 테스트 1개 실패 원인을 위와 같이 보완 |
+| 보완 후 관련 회귀 | 승인·거절·동시성·신규 재시도·실제 프록시 5개 스위트 100개 통과 |
+| 최종 전체 API/DB | **79개 스위트 2,369개 모두 통과**, 실패·건너뜀·todo 0건, 약 136초 |
+| 빌드와 타입 | 수정 후 API 빌드 및 shared/API/web 전체 타입 검사 통과 |
+| 테스트 DB 정리 | 잔여 임시 스키마·Advisory Lock·별도 테스트 DB 각 0개. 빈 `public.migrations`는 기존 연결 검증의 `showMigrations()`가 만든 것이며 테스트 컨테이너와 함께 정리 |
+| 기존 데이터 | 공개 3,396건·원본 3,399건·검수 10건·지역 537개·Migration 3개와 각 전체 행 체크섬, 수집 로그 SHA-256 전후 동일 |
+
+최종 결과와 가림 처리한 출력은 `/tmp/mvp2-step38-final-{results.json,summary.json,output.log}`, 관련 회귀는 같은 경로의 `focused` 파일에 있다. 원래 DB와 로그 대조는 `/tmp/mvp2-step38-{before,after}.json`, 테스트 자원 점검은 `/tmp/mvp2-step38-test-cleanup.json`에 있다. 원래 데이터의 체크섬과 로그 해시는 45장 표와 동일하다. Node VM Modules 실험 기능과 기존 TypeORM 내부 pg 동시 query 경고가 있으며 테스트 실패는 없다.
+
+실행 명령:
+
+```sh
+npm run build --workspace apps/api
+npm run typecheck
+# 별도 PostgreSQL URL과 검증용 API 키는 실행기가 자식 환경에만 전달
+node /tmp/mvp2-step38-verify.cjs focused \
+  test/policy-review-retry.integration.spec.ts \
+  test/policy-review-approval.integration.spec.ts \
+  test/policy-review-rejection.integration.spec.ts \
+  test/policy-review-concurrency.integration.spec.ts \
+  test/admin-proxy.integration.spec.ts
+node /tmp/mvp2-step38-verify.cjs final
+# 위 실행기가 호출한 최종 테스트 명령
+npm run test --workspace apps/api -- --json --outputFile=/tmp/mvp2-step38-final-results.json
+node /tmp/mvp2-step38-deploy.cjs
+node /tmp/mvp2-step38-final-state.cjs
+git diff --check
+```
+
+최종 API 이미지만 빌드하고 같은 프로젝트의 API 컨테이너를 재생성했다. `/tmp/mvp2-step38-deploy.cjs`가 기존 API의 자격과 실행 설정을 메모리에서만 읽어 유지했으며 `.env`와 사용자 Docker 인증 설정은 수정하지 않았다. 빌드 및 반영 로그는 `/tmp/mvp2-step38-api-{build,up}.log`에 있다. 기존 웹·DB·볼륨은 유지하고 세 서비스 모두 healthy다. API와 웹 프록시 health, 공개 목록 및 관리자 로그인 화면은 HTTP 200이고 무인증 me는 401이다. 마감 포함 공개 검색은 3,396건이며 최신 승인·거절 재시도 코드가 이미지에 있고 자동 수집은 false다. `/tmp/mvp2-step38-after-api.json`에서도 위 5개 테이블과 로그의 전후 동일성을 확인했다. 남은 Step 38 검증 컨테이너는 0개이고 `http://localhost:3000`에서 계속 확인할 수 있다.
+
+### T2-01~49 검증 근거 대조
+
+파일명은 `apps/api/test/` 기준이며 `.spec.ts`를 생략했다. 웹 항목은 `apps/web/test/` 기준이다. API/DB 근거 46개 항목의 파일이 이번 최종 결과에서 모두 통과했음을 결과 JSON과 다시 대조했다. 화면 관련 근거는 43장의 Step 35, 복원은 45장의 Step 37 실제 결과를 유지한다. 전체 웹과 탭 세션의 최종 재실행은 Step 39에 남긴다.
+
+| ID | 근거 파일 및 확인 사항 |
+| --- | --- |
+| T2-01 | `policy-review-migration.integration`: 공개 UUID·전체 행·지역 보존 |
+| T2-02 | `policy-review-migration.integration`: 해시 오류·중간 실패 전체 취소 |
+| T2-03 | `policy-collection-write.integration`: 이관 동일 자료와 실제 수집 시각 |
+| T2-04 | `policy-collection-write.integration`, `admin-public-isolation.integration`: 신규 대기와 공개 비노출 |
+| T2-05 | `policy-collection-write.integration`: 기준 A/변경 B와 공개 A 유지 |
+| T2-06 | `policy-collection-write.integration`, `policy-review-storage.integration`: 반복 B 대기·스냅샷 유지 |
+| T2-07 | `policy-collection-write.integration`: B 대체와 최신 C 대기 한 건 |
+| T2-08 | `policy-collection-write.integration`: 공개 A 복귀와 새 후보 없음 |
+| T2-09 | `policy-review-rejection.integration`: 거절 B 반복과 다른 내용 후 복귀 |
+| T2-10 | `policy-review-storage.integration`: 거절 B 이후 새로운 C 후보 |
+| T2-11 | `policy-review-storage.integration`: 과거 승인 A 복귀의 새 후보 |
+| T2-12 | `policy-review-storage.integration`: 과거 대체 B와 최신 B 구분 |
+| T2-13 | `policy-collection-write.integration`, `policy-public-write.integration`: 조회수 갱신과 본문 보존 |
+| T2-14 | `policy-collection-write.integration`: 대기·거절 중 조회수 최신화 |
+| T2-15 | `policy-review-approval.integration`: 검수 스냅샷과 최신 조회수 승인 |
+| T2-16 | `policy-collection-write.integration`: 누락 횟수 증가와 내용 유지 |
+| T2-17 | `policy-collection-write.integration`, `source-policy-storage.integration`: 재등장과 횟수 초기화 |
+| T2-18 | `ingestion-failure.integration`, `ingestion-collection`, `ingestion-run.integration`: 페이지·총합·중복·변환 실패 무반영 |
+| T2-19 | `policy-collection-write.integration`: 정상 전체 0건과 미공개·미수집 원본 누락 |
+| T2-20 | `policy-collection-write.integration`, `policy-collection`: 같은 날 두 번 누락하여 횟수 2 |
+| T2-21 | `policy-collection-write.integration`, `ingestion-failure.integration`: 후반 묶음 오류 전체 취소 |
+| T2-22 | `policy-storage-retry.integration`, `policy-review-retry.integration`: DB 충돌과 재시도 한도·재확인 |
+| T2-23 | `ingestion-cli-process.integration`: CLI·예약 경쟁과 강제 종료 복구 |
+| T2-24 | `policy-review-approval.integration`, `admin-review-actions.integration`: 승인과 공개·이력 원자성 |
+| T2-25 | `policy-review-approval.integration`: 공개 저장 뒤 승인 기록 실패 취소 |
+| T2-26 | `policy-review-approval.integration`, `admin-review-actions.integration`: 요청·원본 해시 충돌 409 |
+| T2-27 | `policy-review-concurrency.integration`: 공개 해시·UUID·신규 공개본 충돌 |
+| T2-28 | `policy-review-concurrency.integration`: 공개 기준 변경 후 후보 조정 |
+| T2-29 | `policy-review-concurrency.integration`: 승인·거절 동시 요청 한 건 확정 |
+| T2-30 | `policy-review-concurrency.integration`: 수집 선행·승인 선행의 일관성 |
+| T2-31 | `policy-review-rejection.integration`, `admin-validation`: 사유 경계와 거절 이력·공개 유지 |
+| T2-32 | `policy-review-approval.integration`, `policy-review-rejection.integration`: 누락 후보 승인·거절 |
+| T2-33 | `policy-review-rejection.integration`, `policy-review-storage.integration`: 종료 이력 불변과 재처리 409 |
+| T2-34 | `admin-reviews.integration`, `policy-review-storage.integration`: 당시 제목과 스냅샷 보존 |
+| T2-35 | `policy-field-diff`: 없는 필드·NULL·중첩·공백 비교 |
+| T2-36 | `admin-public-isolation.integration`, `admin-auth`: 인증 선검사와 비밀값 비노출 |
+| T2-37 | `admin-auth`, `admin-cookie`: 로그인·만료·쿠키 삭제. 브라우저 저장소는 Step 35 근거 |
+| T2-38 | `admin-proxy.integration`, `admin-public-isolation.integration`: 실제 프록시의 Origin·쿠키 전달 |
+| T2-39 | `admin-auth`, `admin-reviews.integration`: 로그인 제한과 공개/관리자 한도 분리 |
+| T2-40 | `admin-access`, `admin-cookie`, `admin-cli.integration`, `ingestion-cli-process.integration`, `policy-schedule`: HTTP 설정·Secure·CLI 분리 |
+| T2-41 | `admin-reviews.integration`, `admin-validation`: 필터·순서·페이지·메타문자 검색 |
+| T2-42 | `admin-missing-policies.integration`: 미공개·NULL 수집 시각·누락 링크 |
+| T2-43 | `policy-schedule.integration`, `ingestion-cli-process.integration`: 실제 타이머·시간대·실패 후 다음 실행 |
+| T2-44 | `ingestion-run.integration`: COMMIT 전후 로그 실패와 결과 불명 |
+| T2-45 | `ingestion-cli-process.integration`, `admin-public-isolation.integration`: 수집·승인 중 공개 조회 |
+| T2-46 | Step 35 `admin-accessibility.browser.mjs`, `admin-recovery.live.mjs`: 오류 복구·실제 응답 유실. 최종 웹은 Step 39 |
+| T2-47 | Step 35 `admin-accessibility.browser.mjs`, `admin-review-detail.browser.mjs`: HTML·URL·긴 원문. 최종 웹은 Step 39 |
+| T2-48 | 이번 전체 API 회귀의 공개 계약·매칭·정렬 통과. 탭 세션·전체 웹의 최종 재확인은 Step 39 |
+| T2-49 | Step 37 `backup-restore.live.cjs`: 별도 빈 DB 복원과 원본·검수·로그 보존 |
+
+API 계약과 DB 스키마·Migration·의존성 및 SPEC의 기능 의미는 변경하지 않았다. 전체 웹 검수와 실제 외부 수집, 자동 수집 활성화는 Step 39~41 범위다. 핵심 읽는 순서: 승인/거절 서비스의 재시도 진입점 → `policy-review-retry.integration.spec.ts`의 전체 취소와 최신 상태 재확인 → `admin-proxy.integration.spec.ts`의 전용 스키마 준비 → 위 T2 검증 근거. Step 38 변경은 미커밋 상태로 남기고 이번 요청 범위에서 중단한다.

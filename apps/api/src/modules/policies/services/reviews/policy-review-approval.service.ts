@@ -1,6 +1,6 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { ReviewActionRequest, ReviewActionResponse } from '@youth-kkultong/shared';
-import { DataSource } from 'typeorm';
+import { DataSource, QueryFailedError } from 'typeorm';
 import { createYouthCenterPolicyContentHash } from '../../../ingestion/youth-center/youth-center-policy.hash';
 import { transformYouthCenterPolicy } from '../../../ingestion/youth-center/youth-center-policy.transform';
 import { getPolicyReviewConflict } from '../../rules/reviews/policy-review-eligibility';
@@ -22,6 +22,19 @@ export class PolicyReviewApprovalService {
     request: ReviewActionRequest,
     reviewedBy: string
   ): Promise<ReviewActionResponse> {
+    // DB가 취소를 확정한 충돌만 한 번 재시도
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await this.approveOnce(id, request, reviewedBy);
+      } catch (error) {
+        const code = error instanceof QueryFailedError && 'code' in error.driverError ? error.driverError.code : undefined;
+        if (attempt >= 2 || (code !== '40P01' && code !== '40001')) throw error;
+      }
+    }
+  }
+
+  /** 새 트랜잭션에서 원본과 후보 및 공개본을 잠그고 승인 조건을 다시 확인 */
+  private async approveOnce(id: string, request: ReviewActionRequest, reviewedBy: string): Promise<ReviewActionResponse> {
     // 트랜잭션 시작
     return this.dataSource.transaction('READ COMMITTED', async (manager) => {
       const context = await this.reviews.findReviewForUpdate(manager, id);
