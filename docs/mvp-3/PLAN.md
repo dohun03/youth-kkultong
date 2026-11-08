@@ -2,7 +2,7 @@
 
 > 저장 위치: `docs/mvp-3/PLAN.md`  
 > 기준: PRD v0.14, ARCHITECTURE v0.9, MVP3 SPEC v0.3
-> 작성일: 2026-11-08, 상태: Step 1~35 미착수
+> 작성일: 2026-11-08, 상태: Step 1 완료, Step 2~35 미착수
 
 이 문서는 작업 순서와 Step별 완료 조건을 관리한다. 기능, DB, API와 예외의 세부 기준은 [SPEC](SPEC.md), 공통 작업 규칙은 [AGENT_RULES](../AGENT_RULES.md)를 따른다.
 
@@ -49,8 +49,8 @@
 
 **설명:** 이미 동작하는 MVP2와 앞으로 추가할 MVP3의 경계를 먼저 확인한다.
 
-- [ ] SPEC, PRD와 ARCHITECTURE를 실제 검수, 수집, 인증, 웹 코드 및 MVP2 완료 기록과 대조한다.
-- [ ] 현재 타입 검사와 핵심 회귀 결과, 테스트 DB와 외부 응답 자료의 준비 상태를 확인하고 MVP3 SUMMARY에 기록한다.
+- [x] SPEC, PRD와 ARCHITECTURE를 실제 검수, 수집, 인증, 웹 코드 및 MVP2 완료 기록과 대조한다.
+- [x] 현재 타입 검사와 핵심 회귀 결과, 테스트 DB와 외부 응답 자료의 준비 상태를 확인하고 MVP3 SUMMARY에 기록한다.
 
 **주요 위치:** `docs/mvp-2/SUMMARY.md`, `docs/mvp-3/SUMMARY.md`, 기존 Policies와 Ingestion 모듈.
 **완료 조건:** 재사용 위치, 시작 상태와 설계 충돌 여부를 설명할 수 있다. 기능별 적용 기준은 SPEC으로 일치시킨다.
